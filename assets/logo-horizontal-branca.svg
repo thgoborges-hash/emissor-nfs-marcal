@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120">
+  <!-- Icon: rounded square with chevrons + arrow -->
+  <g transform="translate(5, 5)">
+    <!-- Rounded square background (transparent, just the shape) -->
+    <rect x="0" y="0" width="110" height="110" rx="18" ry="18" fill="none"/>
+
+    <!-- Bottom chevron (lightest) -->
+    <path d="M8 95 Q0 90 8 82 L48 52 Q55 47 62 52 L102 82 Q110 90 102 95 L62 108 Q55 113 48 108 Z" fill="white" opacity="0.4"/>
+
+    <!-- Middle chevron -->
+    <path d="M8 75 Q0 70 8 62 L48 32 Q55 27 62 32 L102 62 Q110 70 102 75 L62 88 Q55 93 48 88 Z" fill="white" opacity="0.65"/>
+
+    <!-- Top chevron -->
+    <path d="M8 55 Q0 50 8 42 L48 12 Q55 7 62 12 L102 42 Q110 50 102 55 L62 68 Q55 73 48 68 Z" fill="white" opacity="0.9"/>
+
+    <!-- Arrow pointing upper-right -->
+    <g transform="translate(62, 8)">
+      <path d="M12 38 L12 8 L42 8" fill="none" stroke="white" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M42 8 L30 8" fill="none" stroke="white" stroke-width="10" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- Text: Marçal -->
+  <text x="130" y="72" fill="white" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif" font-size="68" font-weight="700" letter-spacing="-2">Marçal</text>
+
+  <!-- Text: CONTABILIDADE -->
+  <text x="133" y="102" fill="white" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif" font-size="24" font-weight="300" letter-spacing="3.5">CONTABILIDADE</text>
+</svg>

@@ -1,0 +1,8 @@
+{
+  "short_name": "Emissor NFS-e",
+  "name": "Emissor NFS-e - Marçal Contabilidade",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1e40af",
+  "background_color": "#f8fafc"
+}

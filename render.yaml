@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: emissor-nfs-marcal
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /app/data/emissor.db
+    disk:
+      name: emissor-data
+      mountPath: /app/data
+      sizeGB: 1

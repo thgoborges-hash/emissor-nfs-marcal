@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emissor NFS-e | Marçal Contabilidade - Protótipo</title>
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --primary:#1e40af; --primary-light:#3b82f6; --primary-dark:#1e3a8a;
+  --success:#16a34a; --warning:#f59e0b; --danger:#dc2626;
+  --bg:#f8fafc; --bg-card:#fff; --text:#1e293b; --text-light:#64748b; --border:#e2e8f0;
+  --shadow:0 1px 3px rgba(0,0,0,.1); --radius:8px;
+}
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
+
+/* Layout */
+.app { display:flex; min-height:100vh; }
+.sidebar { width:260px; background:var(--primary-dark); color:#fff; flex-shrink:0; display:flex; flex-direction:column; }
+.sidebar-header { padding:20px 20px; border-bottom:1px solid rgba(255,255,255,.1); }
+.sidebar-header h2 { font-size:18px; }
+.sidebar-header small { opacity:.7; font-size:12px; }
+.sidebar-logo { width:180px; height:auto; margin-bottom:4px; }
+.login-logo { width:260px; height:auto; margin:0 auto 8px; display:block; }
+.sidebar-nav { padding:12px 0; flex:1; }
+.sidebar-nav a { display:flex; align-items:center; gap:12px; padding:12px 20px; color:rgba(255,255,255,.8); text-decoration:none; font-size:14px; cursor:pointer; transition:all .2s; }
+.sidebar-nav a:hover, .sidebar-nav a.active { background:rgba(255,255,255,.1); color:#fff; }
+.sidebar-nav a.active { border-left:3px solid #fff; }
+.sidebar-footer { padding:16px 20px; border-top:1px solid rgba(255,255,255,.1); font-size:13px; }
+.sidebar-footer a { color:rgba(255,255,255,.7); cursor:pointer; text-decoration:none; }
+.main { flex:1; padding:32px; max-width:1200px; overflow-y:auto; }
+
+/* Login */
+.login-bg { display:flex; align-items:center; justify-content:center; min-height:100vh; background:linear-gradient(135deg,var(--primary-dark),var(--primary)); }
+.login-card { background:#fff; border-radius:12px; padding:40px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.login-card h1 { font-size:24px; text-align:center; margin-bottom:8px; color:var(--primary-dark); }
+.login-card .sub { text-align:center; color:var(--text-light); margin-bottom:32px; font-size:14px; }
+.tabs { display:flex; border-bottom:2px solid var(--border); margin-bottom:24px; }
+.tabs button { flex:1; padding:12px; border:none; background:none; font-size:14px; font-weight:500; color:var(--text-light); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px; }
+.tabs button.active { color:var(--primary); border-bottom-color:var(--primary); }
+
+/* Components */
+.page-title { font-size:24px; font-weight:700; margin-bottom:24px; }
+.card { background:var(--bg-card); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin-bottom:20px; }
+.card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+.card-title { font-size:16px; font-weight:600; }
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px; }
+.kpi { background:var(--bg-card); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; }
+.kpi .label { font-size:13px; color:var(--text-light); margin-bottom:4px; }
+.kpi .valor { font-size:28px; font-weight:700; }
+.kpi .valor.blue { color:var(--primary); }
+.kpi .valor.green { color:var(--success); }
+.kpi .valor.yellow { color:var(--warning); }
+
+.form-group { margin-bottom:16px; }
+.form-group label { display:block; font-size:13px; font-weight:600; margin-bottom:4px; }
+.form-group input, .form-group select, .form-group textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px; font-size:14px; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline:none; border-color:var(--primary-light); box-shadow:0 0 0 3px rgba(59,130,246,.1); }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.form-row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 20px; border:none; border-radius:6px; font-size:14px; font-weight:500; cursor:pointer; transition:all .2s; }
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-primary:hover { background:var(--primary-dark); }
+.btn-success { background:var(--success); color:#fff; }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+.btn-sm { padding:6px 12px; font-size:13px; }
+
+table { width:100%; border-collapse:collapse; }
+th { text-align:left; padding:12px 16px; font-size:12px; font-weight:600; color:var(--text-light); text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid var(--border); }
+td { padding:12px 16px; font-size:14px; border-bottom:1px solid var(--border); }
+tr:hover { background:#f1f5f9; }
+
+.badge { display:inline-block; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+.badge-emitida { background:#dcfce7; color:#166534; }
+.badge-pendente { background:#fef3c7; color:#92400e; }
+.badge-aprovada { background:#dbeafe; color:#1e40af; }
+
+.alert-success { background:#dcfce7; color:#166534; padding:12px 16px; border-radius:6px; font-size:14px; margin-bottom:16px; }
+.resumo-box { background:#f0f9ff; border-radius:var(--radius); padding:20px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; text-align:center; margin-bottom:20px; }
+.resumo-box .label { font-size:13px; color:var(--text-light); }
+.resumo-box .val { font-size:20px; font-weight:600; }
+.resumo-box .val.red { color:var(--danger); }
+.resumo-box .val.grn { color:var(--success); }
+
+.hidden { display:none !important; }
+
+@media(max-width:768px) {
+  .sidebar { display:none; }
+  .main { padding:16px; }
+  .form-row, .form-row-3 { grid-template-columns:1fr; }
+  .kpi-grid { grid-template-columns:1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== TELA DE LOGIN ===== -->
+<div id="page-login" class="login-bg">
+  <div class="login-card">
+    <svg class="login-logo" viewBox="0 0 480 110" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="grad-login-1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1a2e5a"/><stop offset="100%" stop-color="#2d4a8a"/></linearGradient>
+        <linearGradient id="grad-login-2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2d4a8a"/><stop offset="100%" stop-color="#4a7bc8"/></linearGradient>
+        <linearGradient id="grad-login-3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4a7bc8"/><stop offset="100%" stop-color="#8ab4e8"/></linearGradient>
+        <clipPath id="clip-login"><rect x="2" y="2" width="96" height="96" rx="16" ry="16"/></clipPath>
+      </defs>
+      <g clip-path="url(#clip-login)">
+        <rect x="2" y="2" width="96" height="96" rx="16" ry="16" fill="#8ab4e8" opacity="0.3"/>
+        <path d="M0 98 L50 58 L100 98 L100 110 L0 110Z" fill="#8ab4e8"/>
+        <path d="M0 78 L50 38 L100 78 L100 98 L50 58 L0 98Z" fill="#4a7bc8"/>
+        <path d="M0 58 L50 18 L100 58 L100 78 L50 38 L0 78Z" fill="#2d4a8a"/>
+        <path d="M0 2 L0 58 L50 18 L100 58 L100 2Z" fill="#1a2e5a"/>
+      </g>
+      <rect x="2" y="2" width="96" height="96" rx="16" ry="16" fill="none" stroke="none"/>
+      <path d="M56 32 L56 18 L70 18" fill="none" stroke="#1a2e5a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="116" y="68" fill="#1a2e5a" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif" font-size="62" font-weight="700" letter-spacing="-2">Mar&#231;al</text>
+      <text x="118" y="96" fill="#1a2e5a" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif" font-size="22" font-weight="300" letter-spacing="4">CONTABILIDADE</text>
+    </svg>
+    <h1 style="font-size:20px;margin-bottom:4px">Emissor NFS-e</h1>
+    <p class="sub">Portal de emissão de notas fiscais</p>
+    <div class="tabs">
+      <button class="active" onclick="setLoginTab('cliente')">Sou Cliente</button>
+      <button onclick="setLoginTab('escritorio')">Sou do Escritório</button>
+    </div>
+    <div id="login-form-cliente">
+      <div class="form-group">
+        <label>CNPJ</label>
+        <input type="text" placeholder="00.000.000/0001-00" id="login-cnpj">
+      </div>
+      <div class="form-group">
+        <label>Senha</label>
+        <input type="password" placeholder="Sua senha" id="login-senha-c">
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="loginCliente()">Entrar como Cliente</button>
+    </div>
+    <div id="login-form-escritorio" class="hidden">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" placeholder="seu@email.com" id="login-email">
+      </div>
+      <div class="form-group">
+        <label>Senha</label>
+        <input type="password" placeholder="Sua senha" id="login-senha-e">
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="loginEscritorio()">Entrar como Escritório</button>
+    </div>
+    <p style="margin-top:16px;font-size:12px;color:var(--text-light);text-align:center">
+      Teste: CNPJ 12.345.678/0001-90 / senha: qualquer | Email: qualquer / senha: qualquer
+    </p>
+  </div>
+</div>
+
+<!-- ===== PORTAL DO CLIENTE ===== -->
+<div id="page-cliente" class="app hidden">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <svg class="sidebar-logo" viewBox="0 0 480 110" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="clip-sb1"><rect x="2" y="2" width="96" height="96" rx="16" ry="16"/></clipPath>
+        </defs>
+        <g clip-path="url(#clip-sb1)">
+          <rect x="2" y="2" width="96" height="96" rx="16" ry="16" fill="rgba(255,255,255,0.15)"/>
+          <path d="M0 98 L50 58 L100 98 L100 110 L0 110Z" fill="rgba(255,255,255,0.35)"/>
+          <path d="M0 78 L50 38 L100 78 L100 98 L50 58 L0 98Z" fill="rgba(255,255,255,0.5)"/>
+          <path d="M0 58 L50 18 L100 58 L100 78 L50 38 L0 78Z" fill="rgba(255,255,255,0.7)"/>
+          <path d="M0 2 L0 58 L50 18 L100 58 L100 2Z" fill="rgba(255,255,255,0.9)"/>
+        </g>
+        <path d="M56 32 L56 18 L70 18" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="116" y="68" fill="white" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif" font-size="62" font-weight="700" letter-spacing="-2">Mar&#231;al</text>
+        <text x="118" y="96" fill="white" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif" font-size="22" font-weight="300" letter-spacing="4">CONTABILIDADE</text>
+      </svg>
+      <small style="display:block;margin-top:6px;opacity:.8">Tech Solutions Ltda</small>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="active" onclick="showClientePage('dashboard')">📊 Dashboard</a>
+      <a onclick="showClientePage('emitir')">📝 Emitir NF</a>
+      <a onclick="showClientePage('historico')">📋 Histórico</a>
+      <a onclick="showClientePage('tomadores')">👥 Tomadores</a>
+    </nav>
+    <div class="sidebar-footer">
+      <a onclick="voltarLogin()">Sair da conta</a>
+    </div>
+  </aside>
+  <main class="main">
+    <!-- Dashboard Cliente -->
+    <div id="cli-dashboard">
+      <h1 class="page-title">Dashboard</h1>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">NFs este mês</div><div class="valor blue">7</div></div>
+        <div class="kpi"><div class="label">Faturamento do mês</div><div class="valor green">R$ 42.500,00</div></div>
+        <div class="kpi"><div class="label">Emitidas no mês</div><div class="valor">5</div></div>
+        <div class="kpi"><div class="label">Pendentes de aprovação</div><div class="valor yellow">2</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Últimas notas fiscais</h3>
+          <button class="btn btn-primary btn-sm" onclick="showClientePage('emitir')">+ Nova NF</button>
+        </div>
+        <table>
+          <thead><tr><th>DPS #</th><th>NFS-e #</th><th>Tomador</th><th>Valor</th><th>Competência</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>7</td><td>-</td><td>Empresa ABC Ltda</td><td>R$ 8.500,00</td><td>2026-03</td><td><span class="badge badge-pendente">Pendente</span></td></tr>
+            <tr><td>6</td><td>-</td><td>XYZ Tecnologia S.A.</td><td>R$ 4.000,00</td><td>2026-03</td><td><span class="badge badge-pendente">Pendente</span></td></tr>
+            <tr><td>5</td><td>384721</td><td>Empresa ABC Ltda</td><td>R$ 8.500,00</td><td>2026-03</td><td><span class="badge badge-emitida">Emitida</span></td></tr>
+            <tr><td>4</td><td>384590</td><td>XYZ Tecnologia S.A.</td><td>R$ 4.000,00</td><td>2026-02</td><td><span class="badge badge-emitida">Emitida</span></td></tr>
+            <tr><td>3</td><td>384412</td><td>Empresa ABC Ltda</td><td>R$ 8.500,00</td><td>2026-02</td><td><span class="badge badge-emitida">Emitida</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Emitir NF -->
+    <div id="cli-emitir" class="hidden">
+      <h1 class="page-title">Emitir Nota Fiscal</h1>
+      <div id="emitir-sucesso" class="alert-success hidden">Nota fiscal criada e enviada para aprovação do escritório!</div>
+      <form onsubmit="return criarNF()">
+        <div class="card">
+          <h3 class="card-title" style="margin-bottom:16px">Tomador do Serviço</h3>
+          <div class="form-group">
+            <label>Selecione o tomador</label>
+            <select id="nf-tomador">
+              <option value="">-- Selecione um tomador --</option>
+              <option value="1">⭐ Empresa ABC Ltda (98.765.432/0001-10)</option>
+              <option value="2">XYZ Tecnologia S.A. (11.222.333/0001-44)</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="showClientePage('tomadores')">+ Cadastrar novo tomador</button>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="margin-bottom:16px">Dados do Serviço</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Código do Serviço (Subitem LC 116)</label>
+              <input type="text" value="01.01" required>
+            </div>
+            <div class="form-group">
+              <label>Competência</label>
+              <input type="month" value="2026-03" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Descrição do Serviço</label>
+            <textarea rows="3" placeholder="Descreva o serviço prestado..." required>Prestação de serviços de desenvolvimento de software</textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="margin-bottom:16px">Valores</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Valor do Serviço (R$)</label>
+              <input type="number" id="nf-valor" value="5000" step="0.01" oninput="calcularResumo()" required>
+            </div>
+            <div class="form-group">
+              <label>Deduções (R$)</label>
+              <input type="number" value="0" step="0.01">
+            </div>
+          </div>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label>Alíquota ISS (%)</label>
+              <input type="number" id="nf-aliq" value="5" step="0.01" oninput="calcularResumo()">
+            </div>
+            <div class="form-group">
+              <label>ISS Retido?</label>
+              <select id="nf-retido" onchange="calcularResumo()">
+                <option value="0">Não</option>
+                <option value="1">Sim</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Valor ISS</label>
+              <input type="text" id="nf-iss" value="R$ 250,00" readonly style="background:#f1f5f9">
+            </div>
+          </div>
+        </div>
+
+        <div class="resumo-box">
+          <div><div class="label">Base de Cálculo</div><div class="val" id="res-base">R$ 5.000,00</div></div>
+          <div><div class="label">Total Retenções</div><div class="val red" id="res-ret">R$ 0,00</div></div>
+          <div><div class="label">Valor Líquido</div><div class="val grn" id="res-liq">R$ 5.000,00</div></div>
+        </div>
+
+        <div class="card">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Observações (opcional)</label>
+            <textarea rows="2" placeholder="Informações adicionais..."></textarea>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
+          <button type="button" class="btn btn-outline" onclick="showClientePage('dashboard')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Solicitar Emissão</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Histórico -->
+    <div id="cli-historico" class="hidden">
+      <h1 class="page-title">Histórico de Notas Fiscais</h1>
+      <div class="card" style="display:flex;gap:16px;align-items:center">
+        <select style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+          <option>Todos os status</option>
+          <option>Emitida</option>
+          <option>Pendente</option>
+          <option>Aprovada</option>
+          <option>Cancelada</option>
+        </select>
+        <span style="font-size:13px;color:var(--text-light)">7 notas encontradas</span>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>DPS #</th><th>NFS-e #</th><th>Tomador</th><th>Valor</th><th>Competência</th><th>Status</th><th>Ações</th></tr></thead>
+          <tbody>
+            <tr><td><strong>7</strong></td><td>-</td><td>Empresa ABC Ltda</td><td>R$ 8.500,00</td><td>2026-03</td><td><span class="badge badge-pendente">Aguardando Aprovação</span></td><td><button class="btn btn-outline btn-sm">Ver</button></td></tr>
+            <tr><td><strong>6</strong></td><td>-</td><td>XYZ Tecnologia S.A.</td><td>R$ 4.000,00</td><td>2026-03</td><td><span class="badge badge-pendente">Aguardando Aprovação</span></td><td><button class="btn btn-outline btn-sm">Ver</button></td></tr>
+            <tr><td><strong>5</strong></td><td>384721</td><td>Empresa ABC Ltda</td><td>R$ 8.500,00</td><td>2026-03</td><td><span class="badge badge-emitida">Emitida</span></td><td><button class="btn btn-outline btn-sm">Ver</button></td></tr>
+            <tr><td><strong>4</strong></td><td>384590</td><td>XYZ Tecnologia S.A.</td><td>R$ 4.000,00</td><td>2026-02</td><td><span class="badge badge-emitida">Emitida</span></td><td><button class="btn btn-outline btn-sm">Ver</button></td></tr>
+            <tr><td><strong>3</strong></td><td>384412</td><td>Empresa ABC Ltda</td><td>R$ 8.500,00</td><td>2026-02</td><td><span class="badge badge-emitida">Emitida</span></td><td><button class="btn btn-outline btn-sm">Ver</button></td></tr>
+            <tr><td><strong>2</strong></td><td>384201</td><td>XYZ Tecnologia S.A.</td><td>R$ 4.000,00</td><td>2026-01</td><td><span class="badge badge-emitida">Emitida</span></td><td><button class="btn btn-outline btn-sm">Ver</button></td></tr>
+            <tr><td><strong>1</strong></td><td>384089</td><td>Empresa ABC Ltda</td><td>R$ 5.000,00</td><td>2026-01</td><td><span class="badge badge-emitida">Emitida</span></td><td><button class="btn btn-outline btn-sm">Ver</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tomadores -->
+    <div id="cli-tomadores" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+        <h1 class="page-title" style="margin-bottom:0">Tomadores</h1>
+        <button class="btn btn-primary" id="btn-novo-tomador" onclick="toggleFormTomador()">+ Novo Tomador</button>
+      </div>
+      <div id="form-tomador" class="card hidden">
+        <h3 class="card-title" style="margin-bottom:16px">Novo Tomador</h3>
+        <div class="form-row">
+          <div class="form-group"><label>Tipo de Documento</label><select><option>CNPJ</option><option>CPF</option></select></div>
+          <div class="form-group"><label>CNPJ</label><input type="text" placeholder="00.000.000/0001-00"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Razão Social</label><input type="text"></div>
+          <div class="form-group"><label>Nome Fantasia</label><input type="text"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Email</label><input type="email"></div>
+          <div class="form-group"><label>Município / UF</label><input type="text" placeholder="São Paulo / SP"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="toggleFormTomador()">Cancelar</button>
+          <button class="btn btn-primary">Cadastrar Tomador</button>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th></th><th>Razão Social</th><th>Documento</th><th>Email</th><th>Município/UF</th><th>NFs</th><th>Ações</th></tr></thead>
+          <tbody>
+            <tr><td>⭐</td><td><strong>Empresa ABC Ltda</strong></td><td>98.765.432/0001-10</td><td>financeiro@abc.com.br</td><td>São Paulo/SP</td><td>4</td><td><button class="btn btn-outline btn-sm">Editar</button></td></tr>
+            <tr><td></td><td><strong>XYZ Tecnologia S.A.</strong></td><td>11.222.333/0001-44</td><td>nf@xyz.com.br</td><td>Rio de Janeiro/RJ</td><td>3</td><td><button class="btn btn-outline btn-sm">Editar</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ===== PAINEL DO ESCRITÓRIO ===== -->
+<div id="page-escritorio" class="app hidden">
+  <aside class="sidebar" style="background:#1a1a2e">
+    <div class="sidebar-header">
+      <svg class="sidebar-logo" viewBox="0 0 480 110" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="clip-sb2"><rect x="2" y="2" width="96" height="96" rx="16" ry="16"/></clipPath>
+        </defs>
+        <g clip-path="url(#clip-sb2)">
+          <rect x="2" y="2" width="96" height="96" rx="16" ry="16" fill="rgba(255,255,255,0.15)"/>
+          <path d="M0 98 L50 58 L100 98 L100 110 L0 110Z" fill="rgba(255,255,255,0.35)"/>
+          <path d="M0 78 L50 38 L100 78 L100 98 L50 58 L0 98Z" fill="rgba(255,255,255,0.5)"/>
+          <path d="M0 58 L50 18 L100 58 L100 78 L50 38 L0 78Z" fill="rgba(255,255,255,0.7)"/>
+          <path d="M0 2 L0 58 L50 18 L100 58 L100 2Z" fill="rgba(255,255,255,0.9)"/>
+        </g>
+        <path d="M56 32 L56 18 L70 18" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="116" y="68" fill="white" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif" font-size="62" font-weight="700" letter-spacing="-2">Mar&#231;al</text>
+        <text x="118" y="96" fill="white" font-family="'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif" font-size="22" font-weight="300" letter-spacing="4">CONTABILIDADE</text>
+      </svg>
+      <small style="display:block;margin-top:6px;opacity:.8">Painel Administrativo</small>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="active" onclick="showEscritorioPage('dashboard')">📊 Dashboard</a>
+      <a onclick="showEscritorioPage('aprovacoes')">✅ Aprovações</a>
+      <a onclick="showEscritorioPage('notas')">📋 Todas as NFs</a>
+      <a onclick="showEscritorioPage('clientes')">🏢 Clientes</a>
+    </nav>
+    <div class="sidebar-footer">
+      <span>Thiago Borges</span><br>
+      <a onclick="voltarLogin()">Sair da conta</a>
+    </div>
+  </aside>
+  <main class="main">
+    <!-- Dashboard Escritório -->
+    <div id="esc-dashboard">
+      <h1 class="page-title">Painel do Escritório</h1>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">Clientes ativos</div><div class="valor blue">8</div></div>
+        <div class="kpi"><div class="label">NFs este mês</div><div class="valor">23</div></div>
+        <div class="kpi"><div class="label">Faturamento total do mês</div><div class="valor green">R$ 187.350,00</div></div>
+        <div class="kpi" style="cursor:pointer" onclick="showEscritorioPage('aprovacoes')"><div class="label">Pendentes de aprovação</div><div class="valor yellow">5</div></div>
+      </div>
+      <div class="card" style="border-left:4px solid var(--warning)">
+        <h3 class="card-title" style="margin-bottom:12px">Notas aguardando aprovação</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div><strong>Tech Solutions Ltda</strong> <span style="font-size:13px;color:var(--text-light)">12.345.678/0001-90</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span class="badge badge-pendente">2 pendentes</span><button class="btn btn-primary btn-sm" onclick="showEscritorioPage('aprovacoes')">Revisar</button></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div><strong>Consulting Pro Ltda</strong> <span style="font-size:13px;color:var(--text-light)">33.444.555/0001-66</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span class="badge badge-pendente">2 pendentes</span><button class="btn btn-primary btn-sm" onclick="showEscritorioPage('aprovacoes')">Revisar</button></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
+          <div><strong>Design Studio ME</strong> <span style="font-size:13px;color:var(--text-light)">77.888.999/0001-11</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span class="badge badge-pendente">1 pendente</span><button class="btn btn-primary btn-sm" onclick="showEscritorioPage('aprovacoes')">Revisar</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aprovações -->
+    <div id="esc-aprovacoes" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+        <h1 class="page-title" style="margin-bottom:0">Fila de Aprovação</h1>
+        <button class="btn btn-success">Aprovar todas (5)</button>
+      </div>
+      <div class="card" style="border-left:4px solid var(--warning)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:13px;color:var(--text-light);margin-bottom:4px">DPS #7 · Tech Solutions Ltda (12.345.678/0001-90)</div>
+            <div style="font-size:16px;font-weight:600;margin-bottom:8px">R$ 8.500,00 <span style="font-size:13px;font-weight:400;color:var(--text-light)">ISS 5.0%</span></div>
+            <div style="font-size:14px"><strong>Tomador:</strong> Empresa ABC Ltda (98.765.432/0001-10)</div>
+            <div style="font-size:14px"><strong>Serviço:</strong> Prestação de serviços de desenvolvimento de software</div>
+            <div style="font-size:13px;color:var(--text-light);margin-top:4px">Competência: 2026-03 · Criada em: 29/03/2026 10:30</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button class="btn btn-success">Aprovar</button>
+            <button class="btn btn-danger">Rejeitar</button>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="border-left:4px solid var(--warning)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:13px;color:var(--text-light);margin-bottom:4px">DPS #6 · Tech Solutions Ltda (12.345.678/0001-90)</div>
+            <div style="font-size:16px;font-weight:600;margin-bottom:8px">R$ 4.000,00 <span style="font-size:13px;font-weight:400;color:var(--text-light)">ISS 5.0%</span></div>
+            <div style="font-size:14px"><strong>Tomador:</strong> XYZ Tecnologia S.A. (11.222.333/0001-44)</div>
+            <div style="font-size:14px"><strong>Serviço:</strong> Consultoria em tecnologia da informação</div>
+            <div style="font-size:13px;color:var(--text-light);margin-top:4px">Competência: 2026-03 · Criada em: 28/03/2026 15:45</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button class="btn btn-success">Aprovar</button>
+            <button class="btn btn-danger">Rejeitar</button>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="border-left:4px solid var(--warning)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:13px;color:var(--text-light);margin-bottom:4px">DPS #12 · Consulting Pro Ltda (33.444.555/0001-66)</div>
+            <div style="font-size:16px;font-weight:600;margin-bottom:8px">R$ 15.000,00 <span style="font-size:13px;font-weight:400;color:var(--text-light)">ISS 3.0%</span></div>
+            <div style="font-size:14px"><strong>Tomador:</strong> Banco Nacional S.A. (00.111.222/0001-33)</div>
+            <div style="font-size:14px"><strong>Serviço:</strong> Consultoria empresarial e planejamento estratégico</div>
+            <div style="font-size:13px;color:var(--text-light);margin-top:4px">Competência: 2026-03 · Criada em: 27/03/2026 09:15</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button class="btn btn-success">Aprovar</button>
+            <button class="btn btn-danger">Rejeitar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Todas Notas -->
+    <div id="esc-notas" class="hidden">
+      <h1 class="page-title">Todas as Notas Fiscais</h1>
+      <div class="card">
+        <table>
+          <thead><tr><th>DPS</th><th>NFS-e</th><th>Cliente</th><th>Tomador</th><th>Valor</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td><strong>7</strong></td><td>-</td><td>Tech Solutions</td><td>Empresa ABC</td><td>R$ 8.500</td><td><span class="badge badge-pendente">Pendente</span></td></tr>
+            <tr><td><strong>12</strong></td><td>-</td><td>Consulting Pro</td><td>Banco Nacional</td><td>R$ 15.000</td><td><span class="badge badge-pendente">Pendente</span></td></tr>
+            <tr><td><strong>5</strong></td><td>384721</td><td>Tech Solutions</td><td>Empresa ABC</td><td>R$ 8.500</td><td><span class="badge badge-emitida">Emitida</span></td></tr>
+            <tr><td><strong>11</strong></td><td>384650</td><td>Consulting Pro</td><td>StartupX</td><td>R$ 12.000</td><td><span class="badge badge-emitida">Emitida</span></td></tr>
+            <tr><td><strong>8</strong></td><td>384520</td><td>Design Studio</td><td>Agência Criativa</td><td>R$ 3.200</td><td><span class="badge badge-emitida">Emitida</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Clientes -->
+    <div id="esc-clientes" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+        <h1 class="page-title" style="margin-bottom:0">Gestão de Clientes</h1>
+        <button class="btn btn-primary">+ Novo Cliente</button>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>Razão Social</th><th>CNPJ</th><th>Município</th><th>Modo</th><th>NFs</th><th>Pendentes</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Tech Solutions Ltda</strong></td><td>12.345.678/0001-90</td><td>São Paulo/SP</td><td><button class="btn btn-outline btn-sm">🟡 Aprovação</button></td><td>7</td><td><span class="badge badge-pendente">2</span></td><td style="color:var(--success)">Ativo</td></tr>
+            <tr><td><strong>Consulting Pro Ltda</strong></td><td>33.444.555/0001-66</td><td>São Paulo/SP</td><td><button class="btn btn-outline btn-sm">🟡 Aprovação</button></td><td>12</td><td><span class="badge badge-pendente">2</span></td><td style="color:var(--success)">Ativo</td></tr>
+            <tr><td><strong>Design Studio ME</strong></td><td>77.888.999/0001-11</td><td>Campinas/SP</td><td><button class="btn btn-outline btn-sm">🟢 Autônomo</button></td><td>8</td><td><span class="badge badge-pendente">1</span></td><td style="color:var(--success)">Ativo</td></tr>
+            <tr><td><strong>Arq & Engenharia Ltda</strong></td><td>55.666.777/0001-88</td><td>São Paulo/SP</td><td><button class="btn btn-outline btn-sm">🟢 Autônomo</button></td><td>5</td><td>0</td><td style="color:var(--success)">Ativo</td></tr>
+            <tr><td><strong>Marketing Digital EIRELI</strong></td><td>22.333.444/0001-55</td><td>Rio de Janeiro/RJ</td><td><button class="btn btn-outline btn-sm">🟡 Aprovação</button></td><td>3</td><td>0</td><td style="color:var(--success)">Ativo</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// === Navegação ===
+function hideAll(prefix) {
+  document.querySelectorAll(`[id^="${prefix}"]`).forEach(el => el.classList.add('hidden'));
+}
+
+function setLoginTab(tab) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('login-form-cliente').classList.toggle('hidden', tab !== 'cliente');
+  document.getElementById('login-form-escritorio').classList.toggle('hidden', tab !== 'escritorio');
+}
+
+function loginCliente() {
+  document.getElementById('page-login').classList.add('hidden');
+  document.getElementById('page-cliente').classList.remove('hidden');
+}
+
+function loginEscritorio() {
+  document.getElementById('page-login').classList.add('hidden');
+  document.getElementById('page-escritorio').classList.remove('hidden');
+}
+
+function voltarLogin() {
+  document.querySelectorAll('.app').forEach(el => el.classList.add('hidden'));
+  document.getElementById('page-login').classList.remove('hidden');
+}
+
+function showClientePage(page) {
+  hideAll('cli-');
+  document.getElementById('cli-' + page).classList.remove('hidden');
+  document.querySelectorAll('#page-cliente .sidebar-nav a').forEach(a => a.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+function showEscritorioPage(page) {
+  hideAll('esc-');
+  document.getElementById('esc-' + page).classList.remove('hidden');
+  document.querySelectorAll('#page-escritorio .sidebar-nav a').forEach(a => a.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+function toggleFormTomador() {
+  document.getElementById('form-tomador').classList.toggle('hidden');
+}
+
+// === Cálculos NF ===
+function fmt(v) { return 'R$ ' + v.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+
+function calcularResumo() {
+  const valor = parseFloat(document.getElementById('nf-valor').value) || 0;
+  const aliq = parseFloat(document.getElementById('nf-aliq').value) / 100 || 0;
+  const retido = document.getElementById('nf-retido').value === '1';
+  const iss = valor * aliq;
+  const ret = retido ? iss : 0;
+  document.getElementById('nf-iss').value = fmt(iss);
+  document.getElementById('res-base').textContent = fmt(valor);
+  document.getElementById('res-ret').textContent = fmt(ret);
+  document.getElementById('res-liq').textContent = fmt(valor - ret);
+}
+
+function criarNF() {
+  document.getElementById('emitir-sucesso').classList.remove('hidden');
+  window.scrollTo(0, 0);
+  return false;
+}
+</script>
+</body>
+</html>
