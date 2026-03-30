@@ -47,12 +47,14 @@ export default function TodasNotas() {
   };
 
   const handleVerPDF = (id) => {
-    window.open(`/api/notas-fiscais/${id}/danfse`, '_blank');
+    const token = localStorage.getItem('token');
+    window.open(`/api/notas-fiscais/${id}/danfse?token=${token}`, '_blank');
   };
 
   const handleBaixarPDF = (id, numeroDps) => {
+    const token = localStorage.getItem('token');
     const link = document.createElement('a');
-    link.href = `/api/notas-fiscais/${id}/danfse?download=1`;
+    link.href = `/api/notas-fiscais/${id}/danfse?download=1&token=${token}`;
     link.download = `NFSe_DPS_${numeroDps}.html`;
     document.body.appendChild(link);
     link.click();

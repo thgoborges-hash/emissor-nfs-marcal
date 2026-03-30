@@ -9,12 +9,21 @@ function gerarToken(payload) {
 
 // Middleware: verifica se o usuário está autenticado
 function autenticado(req, res, next) {
+  let token;
+
+  // Tenta obter token do header Authorization
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ erro: 'Token não fornecido' });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  }
+  // Fallback: aceita token via query string (para rotas que abrem em nova aba, ex: DANFSe)
+  else if (req.query.token) {
+    token = req.query.token;
   }
 
-  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ erro: 'Token não fornecido' });
+  }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.usuario = decoded;
