@@ -1,6 +1,7 @@
 const express = require('express');
 const { getDb } = require('../database/init');
 const { autenticado, apenasEscritorio, clienteOuEscritorio } = require('../middleware/auth');
+const nfseNacionalService = require('../services/nfseNacionalService');
 
 const router = express.Router();
 
@@ -286,11 +287,12 @@ router.put('/:id/rejeitar', autenticado, apenasEscritorio, (req, res) => {
   }
 });
 
-// PUT /api/notas-fiscais/:id/emitir - Emite a NF via API (simula por enquanto)
-router.put('/:id/emitir', autenticado, (req, res) => {
+// PUT /api/notas-fiscais/:id/emitir - Emite a NF via API NFS-e Nacional
+router.put('/:id/emitir', autenticado, async (req, res) => {
   try {
     const db = getDb();
     const notaId = parseInt(req.params.id);
+    const modoSimulacao = process.env.NFSE_SIMULACAO === 'true';
 
     const nota = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(notaId);
     if (!nota) {
@@ -300,25 +302,88 @@ router.put('/:id/emitir', autenticado, (req, res) => {
       return res.status(400).json({ erro: `Nota precisa estar aprovada para ser emitida (status atual: ${nota.status})` });
     }
 
-    // TODO: Integração real com API NFS-e Nacional
-    // Por enquanto, simula a emissão
-    const numeroNfse = String(Math.floor(Math.random() * 900000) + 100000);
-    const chaveAcesso = Array.from({ length: 50 }, () =>
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]
-    ).join('');
+    // Busca dados do cliente e tomador
+    const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(nota.cliente_id);
+    const tomador = nota.tomador_id
+      ? db.prepare('SELECT * FROM tomadores WHERE id = ?').get(nota.tomador_id)
+      : null;
 
+    if (!tomador) {
+      return res.status(400).json({ erro: 'Tomador é obrigatório para emissão' });
+    }
+
+    // Marca como processando
+    db.prepare(`
+      UPDATE notas_fiscais SET status = 'processando', updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(notaId);
+
+    let numeroNfse, chaveAcesso, xmlEnvio, xmlRetorno;
+
+    if (modoSimulacao) {
+      // === MODO SIMULAÇÃO (para testes sem certificado) ===
+      numeroNfse = String(Math.floor(Math.random() * 900000) + 100000);
+      chaveAcesso = Array.from({ length: 50 }, () =>
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]
+      ).join('');
+      xmlEnvio = '[SIMULAÇÃO] DPS não enviada';
+      xmlRetorno = '[SIMULAÇÃO] Retorno simulado';
+    } else {
+      // === MODO REAL - API NFS-e Nacional ===
+      // Verifica se o cliente tem certificado
+      if (!cliente.certificado_a1_path || !cliente.certificado_a1_senha_encrypted) {
+        db.prepare(`UPDATE notas_fiscais SET status = 'aprovada', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(notaId);
+        return res.status(400).json({
+          erro: 'Cliente não possui certificado digital A1 cadastrado. Faça upload do certificado antes de emitir.',
+        });
+      }
+
+      try {
+        const resultado = await nfseNacionalService.emitirNFSe(nota, cliente, tomador);
+        numeroNfse = resultado.numeroNfse;
+        chaveAcesso = resultado.chaveAcesso;
+        xmlEnvio = resultado.xmlEnvio;
+        xmlRetorno = resultado.xmlRetorno;
+      } catch (apiErr) {
+        // Falha na API - volta o status para aprovada
+        const msgErro = apiErr.mensagem || apiErr.message || 'Erro desconhecido na API';
+        db.prepare(`
+          UPDATE notas_fiscais
+          SET status = 'rejeitada', mensagem_erro = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(msgErro, notaId);
+
+        db.prepare(`
+          INSERT INTO log_atividades (tipo, descricao, usuario_tipo, usuario_id, cliente_id, nota_fiscal_id)
+          VALUES ('nf_erro', ?, ?, ?, ?, ?)
+        `).run(
+          `Erro na emissão da NF #${nota.numero_dps}: ${msgErro}`,
+          req.usuario.tipo,
+          req.usuario.tipo === 'escritorio' ? req.usuario.id : null,
+          nota.cliente_id,
+          notaId
+        );
+
+        return res.status(502).json({
+          erro: 'Erro na comunicação com a API NFS-e Nacional',
+          detalhes: msgErro,
+        });
+      }
+    }
+
+    // Atualiza a nota com os dados da emissão
     db.prepare(`
       UPDATE notas_fiscais
       SET status = 'emitida', numero_nfse = ?, chave_acesso = ?,
-          data_emissao = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          data_emissao = CURRENT_TIMESTAMP, xml_envio = ?, xml_retorno = ?,
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(numeroNfse, chaveAcesso, notaId);
+    `).run(numeroNfse, chaveAcesso, xmlEnvio, xmlRetorno, notaId);
 
     db.prepare(`
       INSERT INTO log_atividades (tipo, descricao, usuario_tipo, usuario_id, cliente_id, nota_fiscal_id)
       VALUES ('nf_emitida', ?, ?, ?, ?, ?)
     `).run(
-      `NF #${nota.numero_dps} emitida (NFS-e ${numeroNfse})`,
+      `NF #${nota.numero_dps} emitida (NFS-e ${numeroNfse})${modoSimulacao ? ' [SIMULAÇÃO]' : ''}`,
       req.usuario.tipo,
       req.usuario.tipo === 'escritorio' ? req.usuario.id : null,
       nota.cliente_id,
@@ -326,9 +391,10 @@ router.put('/:id/emitir', autenticado, (req, res) => {
     );
 
     res.json({
-      mensagem: 'Nota fiscal emitida com sucesso',
+      mensagem: `Nota fiscal emitida com sucesso${modoSimulacao ? ' (modo simulação)' : ''}`,
       numero_nfse: numeroNfse,
-      chave_acesso: chaveAcesso
+      chave_acesso: chaveAcesso,
+      simulacao: modoSimulacao,
     });
   } catch (err) {
     console.error('Erro ao emitir NF:', err);
@@ -337,7 +403,7 @@ router.put('/:id/emitir', autenticado, (req, res) => {
 });
 
 // PUT /api/notas-fiscais/:id/cancelar - Cancela uma NF emitida
-router.put('/:id/cancelar', autenticado, apenasEscritorio, (req, res) => {
+router.put('/:id/cancelar', autenticado, apenasEscritorio, async (req, res) => {
   try {
     const db = getDb();
     const notaId = parseInt(req.params.id);
@@ -351,7 +417,27 @@ router.put('/:id/cancelar', autenticado, apenasEscritorio, (req, res) => {
       return res.status(400).json({ erro: 'Apenas notas emitidas podem ser canceladas' });
     }
 
-    // TODO: Integração com API para cancelamento real
+    const modoSimulacao = process.env.NFSE_SIMULACAO === 'true';
+
+    if (!modoSimulacao && nota.chave_acesso && nota.chave_acesso.length === 50) {
+      // Cancelamento real via API
+      try {
+        const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(nota.cliente_id);
+        await nfseNacionalService.cancelarNFSe(
+          nota.chave_acesso,
+          motivo || 'Cancelamento solicitado pelo contribuinte',
+          cliente.id,
+          cliente.certificado_a1_senha_encrypted
+        );
+      } catch (apiErr) {
+        console.error('Erro ao cancelar na API:', apiErr);
+        return res.status(502).json({
+          erro: 'Erro ao cancelar na API NFS-e Nacional',
+          detalhes: apiErr.mensagem || apiErr.message,
+        });
+      }
+    }
+
     db.prepare(`
       UPDATE notas_fiscais
       SET status = 'cancelada', data_cancelamento = CURRENT_TIMESTAMP,

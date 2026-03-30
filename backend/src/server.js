@@ -23,10 +23,18 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/clientes', require('./routes/clientes'));
 app.use('/api', require('./routes/tomadores'));
 app.use('/api/notas-fiscais', require('./routes/notasFiscais'));
+app.use('/api/certificados', require('./routes/certificados'));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', versao: '1.0.0', timestamp: new Date().toISOString() });
+  const modoSimulacao = process.env.NFSE_SIMULACAO === 'true';
+  const ambiente = process.env.NFSE_AMBIENTE || 'homologacao';
+  res.json({
+    status: 'ok',
+    versao: '1.1.0',
+    nfse: { ambiente, simulacao: modoSimulacao },
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Serve frontend estático em produção

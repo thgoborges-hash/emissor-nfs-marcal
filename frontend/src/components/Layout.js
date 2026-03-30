@@ -59,6 +59,7 @@ export function LayoutEscritorio() {
           <NavLink to="/escritorio/notas">📋 Todas as NFs</NavLink>
           <NavLink to="/escritorio/clientes">🏢 Clientes</NavLink>
           <NavLink to="/escritorio/emitir">📝 Emitir NF</NavLink>
+          <NavLink to="/escritorio/certificados">🔐 Certificados</NavLink>
         </nav>
         <div className="sidebar-footer">
           <span>{usuario?.nome}</span><br />

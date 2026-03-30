@@ -66,4 +66,19 @@ export const notasFiscaisApi = {
   resumo: () => api.get('/notas-fiscais/dashboard/resumo'),
 };
 
+// === CERTIFICADOS ===
+export const certificadosApi = {
+  listarTodos: () => api.get('/certificados'),
+  consultar: (clienteId) => api.get(`/certificados/${clienteId}`),
+  upload: (clienteId, file, senha) => {
+    const formData = new FormData();
+    formData.append('certificado', file);
+    formData.append('senha', senha);
+    return api.post(`/certificados/${clienteId}/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  remover: (clienteId) => api.delete(`/certificados/${clienteId}`),
+};
+
 export default api;

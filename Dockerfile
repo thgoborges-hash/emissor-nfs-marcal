@@ -20,13 +20,16 @@ COPY backend/ ./
 # Copia build do frontend para a pasta public do backend
 COPY --from=frontend-build /app/frontend/build ./public
 
-# Cria diretório de dados
-RUN mkdir -p /app/data
+# Cria diretórios de dados e certificados
+RUN mkdir -p /app/data /app/data/certificados
 
 # Variáveis de ambiente padrão
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV DB_PATH=/app/data/emissor.db
+ENV CERTIFICADOS_DIR=/app/data/certificados
+ENV NFSE_AMBIENTE=homologacao
+ENV NFSE_SIMULACAO=true
 
 EXPOSE 3001
 

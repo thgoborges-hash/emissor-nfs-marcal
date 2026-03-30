@@ -11,6 +11,14 @@ services:
         value: production
       - key: DB_PATH
         value: /app/data/emissor.db
+      - key: CERTIFICADOS_DIR
+        value: /app/data/certificados
+      - key: NFSE_AMBIENTE
+        value: homologacao
+      - key: NFSE_SIMULACAO
+        value: "true"
+      - key: CERT_ENCRYPTION_KEY
+        generateValue: true
     disk:
       name: emissor-data
       mountPath: /app/data

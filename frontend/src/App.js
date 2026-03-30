@@ -16,6 +16,7 @@ import Aprovacoes from './pages/escritorio/Aprovacoes';
 import TodasNotas from './pages/escritorio/TodasNotas';
 import GestaoClientes from './pages/escritorio/GestaoClientes';
 import EmitirNFEscritorio from './pages/escritorio/EmitirNFEscritorio';
+import Certificados from './pages/escritorio/Certificados';
 
 import './styles/global.css';
 
@@ -76,6 +77,7 @@ function App() {
             <Route path="notas" element={<TodasNotas />} />
             <Route path="clientes" element={<GestaoClientes />} />
             <Route path="emitir" element={<EmitirNFEscritorio />} />
+            <Route path="certificados" element={<Certificados />} />
           </Route>
 
           {/* 404 */}
