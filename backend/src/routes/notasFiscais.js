@@ -518,7 +518,7 @@ router.get('/:id/danfse', autenticado, (req, res) => {
              t.razao_social as tomador_razao_social, t.nome_fantasia as tomador_nome_fantasia,
              t.tipo_documento, t.documento as tomador_documento, t.email as tomador_email,
              t.telefone as tomador_telefone, t.municipio as tomador_municipio, t.uf as tomador_uf,
-             t.endereco as tomador_endereco, t.numero as tomador_numero, t.bairro as tomador_bairro,
+             t.logradouro as tomador_endereco, t.numero as tomador_numero, t.bairro as tomador_bairro,
              t.cep as tomador_cep
       FROM notas_fiscais nf
       JOIN clientes c ON c.id = nf.cliente_id
