@@ -43,6 +43,7 @@ export const clientesApi = {
   buscar: (id) => api.get(`/clientes/${id}`),
   criar: (dados) => api.post('/clientes', dados),
   atualizar: (id, dados) => api.put(`/clientes/${id}`, dados),
+  importar: (clientes, senha_padrao) => api.post('/clientes/importar', { clientes, senha_padrao }),
 };
 
 // === TOMADORES ===

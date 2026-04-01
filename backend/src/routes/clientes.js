@@ -162,4 +162,131 @@ router.put('/:id', autenticado, apenasEscritorio, (req, res) => {
   }
 });
 
+// POST /api/clientes/importar - Importação em massa de clientes (escritório/admin)
+router.post('/importar', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const db = getDb();
+    const { clientes, senha_padrao } = req.body;
+
+    if (!clientes || !Array.isArray(clientes) || clientes.length === 0) {
+      return res.status(400).json({ erro: 'Lista de clientes é obrigatória' });
+    }
+
+    const senhaHash = senha_padrao ? bcrypt.hashSync(senha_padrao, 10) : null;
+
+    const insertStmt = db.prepare(`
+      INSERT INTO clientes (
+        razao_social, nome_fantasia, cnpj, inscricao_municipal,
+        logradouro, numero, complemento, bairro, codigo_municipio,
+        municipio, uf, cep, email, telefone,
+        modo_emissao, senha_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const checkStmt = db.prepare('SELECT id FROM clientes WHERE cnpj = ?');
+
+    const resultados = {
+      importados: 0,
+      duplicados: 0,
+      erros: 0,
+      detalhes: []
+    };
+
+    const importar = db.transaction(() => {
+      for (const c of clientes) {
+        try {
+          if (!c.razao_social || !c.documento) {
+            resultados.erros++;
+            resultados.detalhes.push({
+              documento: c.documento || '?',
+              razao_social: c.razao_social || '?',
+              status: 'erro',
+              motivo: 'Razão social e documento são obrigatórios'
+            });
+            continue;
+          }
+
+          // Limpa documento (remove pontos, barras, traços)
+          const docLimpo = c.documento.replace(/[.\-\/]/g, '');
+          // Formata CNPJ: XX.XXX.XXX/XXXX-XX ou CPF: XXX.XXX.XXX-XX
+          let docFormatado;
+          if (docLimpo.length === 14) {
+            docFormatado = docLimpo.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+          } else if (docLimpo.length === 11) {
+            docFormatado = docLimpo.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+          } else {
+            docFormatado = c.documento;
+          }
+
+          // Verifica duplicidade
+          const existente = checkStmt.get(docFormatado);
+          if (existente) {
+            resultados.duplicados++;
+            resultados.detalhes.push({
+              documento: docFormatado,
+              razao_social: c.razao_social,
+              status: 'duplicado',
+              motivo: 'CNPJ/CPF já cadastrado'
+            });
+            continue;
+          }
+
+          insertStmt.run(
+            c.razao_social,
+            c.nome_fantasia || null,
+            docFormatado,
+            c.inscricao_municipal || null,
+            c.logradouro || null,
+            c.numero || null,
+            c.complemento || null,
+            c.bairro || null,
+            c.codigo_municipio || null,
+            c.municipio || null,
+            c.uf || null,
+            c.cep || null,
+            c.email || null,
+            c.telefone || null,
+            c.modo_emissao || 'aprovacao',
+            senhaHash
+          );
+
+          resultados.importados++;
+          resultados.detalhes.push({
+            documento: docFormatado,
+            razao_social: c.razao_social,
+            status: 'importado'
+          });
+        } catch (err) {
+          resultados.erros++;
+          resultados.detalhes.push({
+            documento: c.documento || '?',
+            razao_social: c.razao_social || '?',
+            status: 'erro',
+            motivo: err.message
+          });
+        }
+      }
+    });
+
+    importar();
+
+    // Log da importação
+    db.prepare(`
+      INSERT INTO log_atividades (tipo, descricao, usuario_tipo, usuario_id)
+      VALUES ('importacao_clientes', ?, 'escritorio', ?)
+    `).run(
+      `Importação em massa: ${resultados.importados} importados, ${resultados.duplicados} duplicados, ${resultados.erros} erros`,
+      req.usuario.id
+    );
+
+    res.json({
+      mensagem: `Importação concluída: ${resultados.importados} importados, ${resultados.duplicados} duplicados, ${resultados.erros} erros`,
+      ...resultados
+    });
+  } catch (err) {
+    console.error('Erro na importação em massa:', err);
+    res.status(500).json({ erro: 'Erro interno do servidor' });
+  }
+});
+
 module.exports = router;

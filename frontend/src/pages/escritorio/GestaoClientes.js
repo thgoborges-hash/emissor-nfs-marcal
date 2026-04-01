@@ -5,6 +5,11 @@ export default function GestaoClientes() {
   const [clientes, setClientes] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [mostrarImportacao, setMostrarImportacao] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [resultadoImportacao, setResultadoImportacao] = useState(null);
+  const [dadosImportacao, setDadosImportacao] = useState(null);
+  const [senhaImportacao, setSenhaImportacao] = useState('1234');
   const [sucesso, setSucesso] = useState('');
   const [erro, setErro] = useState('');
 
@@ -75,17 +80,144 @@ export default function GestaoClientes() {
     }
   };
 
+  const handleArquivoImportacao = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const dados = JSON.parse(event.target.result);
+        if (!Array.isArray(dados)) {
+          setErro('Arquivo deve conter um array de clientes');
+          return;
+        }
+        setDadosImportacao(dados);
+        setErro('');
+      } catch {
+        setErro('Arquivo JSON inválido');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const executarImportacao = async () => {
+    if (!dadosImportacao || dadosImportacao.length === 0) return;
+    setImportando(true);
+    setErro('');
+    try {
+      const { data } = await clientesApi.importar(dadosImportacao, senhaImportacao);
+      setResultadoImportacao(data);
+      setSucesso(data.mensagem);
+      carregarClientes();
+    } catch (err) {
+      setErro(err.response?.data?.erro || 'Erro na importação');
+    } finally {
+      setImportando(false);
+    }
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 className="page-title" style={{ marginBottom: 0 }}>Gestão de Clientes</h1>
-        <button className="btn btn-primary" onClick={() => setMostrarForm(!mostrarForm)}>
-          {mostrarForm ? 'Cancelar' : '+ Novo Cliente'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-outline" onClick={() => { setMostrarImportacao(!mostrarImportacao); setMostrarForm(false); }}>
+            {mostrarImportacao ? 'Fechar Importação' : '📥 Importar Clientes'}
+          </button>
+          <button className="btn btn-primary" onClick={() => { setMostrarForm(!mostrarForm); setMostrarImportacao(false); }}>
+            {mostrarForm ? 'Cancelar' : '+ Novo Cliente'}
+          </button>
+        </div>
       </div>
 
       {sucesso && <div className="alert alert-success">{sucesso}</div>}
       {erro && <div className="alert alert-danger">{erro}</div>}
+
+      {mostrarImportacao && (
+        <div className="card">
+          <h3 className="card-title" style={{ marginBottom: 16 }}>Importar Clientes em Massa</h3>
+          <p style={{ color: 'var(--text-light)', marginBottom: 16 }}>
+            Selecione um arquivo JSON com os dados dos clientes extraídos do sistema Domínio.
+          </p>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Arquivo JSON</label>
+              <input type="file" accept=".json" onChange={handleArquivoImportacao} />
+            </div>
+            <div className="form-group">
+              <label>Senha Padrão</label>
+              <input type="text" value={senhaImportacao} onChange={(e) => setSenhaImportacao(e.target.value)} placeholder="Senha para acesso ao portal" />
+            </div>
+          </div>
+
+          {dadosImportacao && !resultadoImportacao && (
+            <div style={{ marginTop: 16 }}>
+              <p><strong>{dadosImportacao.length} clientes</strong> encontrados no arquivo.</p>
+              <div style={{ maxHeight: 200, overflow: 'auto', marginBottom: 16, border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+                <table style={{ fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr><th>Razão Social</th><th>CNPJ/CPF</th><th>Município/UF</th></tr>
+                  </thead>
+                  <tbody>
+                    {dadosImportacao.map((c, i) => (
+                      <tr key={i}>
+                        <td>{c.razao_social}</td>
+                        <td>{c.documento}</td>
+                        <td>{c.municipio ? `${c.municipio}/${c.uf}` : c.uf || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button className="btn btn-primary" onClick={executarImportacao} disabled={importando}>
+                {importando ? 'Importando...' : `Importar ${dadosImportacao.length} Clientes`}
+              </button>
+            </div>
+          )}
+
+          {resultadoImportacao && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+                <div style={{ padding: '12px 20px', background: 'var(--success)', color: '#fff', borderRadius: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{resultadoImportacao.importados}</div>
+                  <div style={{ fontSize: '0.8rem' }}>Importados</div>
+                </div>
+                <div style={{ padding: '12px 20px', background: '#f59e0b', color: '#fff', borderRadius: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{resultadoImportacao.duplicados}</div>
+                  <div style={{ fontSize: '0.8rem' }}>Duplicados</div>
+                </div>
+                <div style={{ padding: '12px 20px', background: 'var(--danger)', color: '#fff', borderRadius: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{resultadoImportacao.erros}</div>
+                  <div style={{ fontSize: '0.8rem' }}>Erros</div>
+                </div>
+              </div>
+              {resultadoImportacao.detalhes && resultadoImportacao.detalhes.filter(d => d.status !== 'importado').length > 0 && (
+                <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+                  <table style={{ fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr><th>Razão Social</th><th>Documento</th><th>Status</th><th>Motivo</th></tr>
+                    </thead>
+                    <tbody>
+                      {resultadoImportacao.detalhes.filter(d => d.status !== 'importado').map((d, i) => (
+                        <tr key={i}>
+                          <td>{d.razao_social}</td>
+                          <td>{d.documento}</td>
+                          <td><span style={{ color: d.status === 'duplicado' ? '#f59e0b' : 'var(--danger)' }}>{d.status}</span></td>
+                          <td>{d.motivo || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <button className="btn btn-outline" style={{ marginTop: 12 }} onClick={() => { setMostrarImportacao(false); setResultadoImportacao(null); setDadosImportacao(null); }}>
+                Fechar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {mostrarForm && (
         <div className="card">
