@@ -231,6 +231,9 @@ router.post('/importar', autenticado, apenasEscritorio, (req, res) => {
             continue;
           }
 
+          // Email placeholder quando não informado (campo NOT NULL no banco)
+          const email = c.email || `${docLimpo}@pendente.com`;
+
           insertStmt.run(
             c.razao_social,
             c.nome_fantasia || null,
@@ -244,7 +247,7 @@ router.post('/importar', autenticado, apenasEscritorio, (req, res) => {
             c.municipio || null,
             c.uf || null,
             c.cep || null,
-            c.email || null,
+            email,
             c.telefone || null,
             c.modo_emissao || 'aprovacao',
             senhaHash
