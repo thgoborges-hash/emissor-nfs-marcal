@@ -191,6 +191,80 @@ CREATE TABLE IF NOT EXISTS log_atividades (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- =====================================================
+-- WhatsApp - Conversas e Mensagens
+-- =====================================================
+
+-- Contatos WhatsApp (vinculados a clientes ou tomadores)
+CREATE TABLE IF NOT EXISTS whatsapp_contatos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  telefone TEXT NOT NULL UNIQUE, -- número no formato internacional (5541999999999)
+  nome TEXT, -- nome do contato no WhatsApp
+  cliente_id INTEGER, -- vínculo com cliente (se for cliente do escritório)
+  tipo TEXT DEFAULT 'desconhecido', -- 'cliente', 'tomador', 'escritorio', 'desconhecido'
+  ativo INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+);
+
+-- Conversas WhatsApp
+CREATE TABLE IF NOT EXISTS whatsapp_conversas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  contato_id INTEGER NOT NULL,
+  status TEXT DEFAULT 'ativa', -- 'ativa', 'encerrada', 'aguardando_humano'
+  contexto TEXT, -- JSON com contexto da conversa pro agente IA
+  ultimo_mensagem_at DATETIME,
+  atendente_id INTEGER, -- se foi transferido pra atendimento humano
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (contato_id) REFERENCES whatsapp_contatos(id),
+  FOREIGN KEY (atendente_id) REFERENCES usuarios_escritorio(id)
+);
+
+-- Mensagens WhatsApp
+CREATE TABLE IF NOT EXISTS whatsapp_mensagens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversa_id INTEGER NOT NULL,
+  direcao TEXT NOT NULL, -- 'entrada' (do cliente) ou 'saida' (do bot/escritório)
+  tipo TEXT DEFAULT 'texto', -- 'texto', 'imagem', 'documento', 'audio', 'template'
+  conteudo TEXT NOT NULL, -- texto da mensagem ou URL da mídia
+  whatsapp_message_id TEXT, -- ID da mensagem no WhatsApp (para tracking)
+  status_envio TEXT DEFAULT 'enviada', -- 'enviada', 'entregue', 'lida', 'erro'
+  remetente TEXT, -- 'bot', 'humano', 'cliente', 'sistema'
+  metadata TEXT, -- JSON com dados extras (template usado, nota fiscal, etc.)
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (conversa_id) REFERENCES whatsapp_conversas(id)
+);
+
+-- Configuração do WhatsApp
+CREATE TABLE IF NOT EXISTS whatsapp_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chave TEXT NOT NULL UNIQUE,
+  valor TEXT,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Notificações agendadas
+CREATE TABLE IF NOT EXISTS whatsapp_notificacoes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  contato_id INTEGER NOT NULL,
+  tipo TEXT NOT NULL, -- 'nf_emitida', 'vencimento', 'cobranca', 'lembrete'
+  referencia_id INTEGER, -- ID da nota fiscal ou outro recurso
+  mensagem TEXT NOT NULL,
+  agendado_para DATETIME,
+  enviado INTEGER DEFAULT 0,
+  enviado_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (contato_id) REFERENCES whatsapp_contatos(id)
+);
+
+-- Índices WhatsApp
+CREATE INDEX IF NOT EXISTS idx_whatsapp_contatos_telefone ON whatsapp_contatos(telefone);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_contatos_cliente ON whatsapp_contatos(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_conversas_contato ON whatsapp_conversas(contato_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_mensagens_conversa ON whatsapp_mensagens(conversa_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_notificacoes_agendado ON whatsapp_notificacoes(agendado_para);
+
 -- Índices para performance
 CREATE INDEX IF NOT EXISTS idx_clientes_cnpj ON clientes(cnpj);
 CREATE INDEX IF NOT EXISTS idx_tomadores_cliente ON tomadores(cliente_id);

@@ -24,6 +24,7 @@ app.use('/api/clientes', require('./routes/clientes'));
 app.use('/api', require('./routes/tomadores'));
 app.use('/api/notas-fiscais', require('./routes/notasFiscais'));
 app.use('/api/certificados', require('./routes/certificados'));
+app.use('/api/whatsapp', require('./routes/whatsapp'));
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -60,6 +60,7 @@ export function LayoutEscritorio() {
           <NavLink to="/escritorio/clientes">🏢 Clientes</NavLink>
           <NavLink to="/escritorio/emitir">📝 Emitir NF</NavLink>
           <NavLink to="/escritorio/certificados">🔐 Certificados</NavLink>
+          <NavLink to="/escritorio/whatsapp">💬 WhatsApp</NavLink>
         </nav>
         <div className="sidebar-footer">
           <span>{usuario?.nome}</span><br />

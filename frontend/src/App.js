@@ -17,6 +17,7 @@ import TodasNotas from './pages/escritorio/TodasNotas';
 import GestaoClientes from './pages/escritorio/GestaoClientes';
 import EmitirNFEscritorio from './pages/escritorio/EmitirNFEscritorio';
 import Certificados from './pages/escritorio/Certificados';
+import WhatsAppPainel from './pages/escritorio/WhatsApp';
 
 import './styles/global.css';
 
@@ -78,6 +79,7 @@ function App() {
             <Route path="clientes" element={<GestaoClientes />} />
             <Route path="emitir" element={<EmitirNFEscritorio />} />
             <Route path="certificados" element={<Certificados />} />
+            <Route path="whatsapp" element={<WhatsAppPainel />} />
           </Route>
 
           {/* 404 */}

@@ -390,6 +390,23 @@ router.put('/:id/emitir', autenticado, async (req, res) => {
       notaId
     );
 
+    // Envia notificação via WhatsApp (se configurado e tomador tem telefone)
+    try {
+      const whatsappService = require('../services/whatsappService');
+      if (whatsappService.isConfigured() && tomador.telefone) {
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        whatsappService.notificarNFEmitida(tomador.telefone, {
+          razao_social_tomador: tomador.razao_social,
+          numero_dps: nota.numero_dps,
+          valor_servico: nota.valor_servico,
+          descricao_servico: nota.descricao_servico,
+          link_danfse: `${baseUrl}/api/notas-fiscais/${notaId}/danfse`
+        }).catch(err => console.error('[WhatsApp] Erro ao notificar NF:', err));
+      }
+    } catch (whatsErr) {
+      console.error('[WhatsApp] Erro ao carregar serviço:', whatsErr);
+    }
+
     res.json({
       mensagem: `Nota fiscal emitida com sucesso${modoSimulacao ? ' (modo simulação)' : ''}`,
       numero_nfse: numeroNfse,
