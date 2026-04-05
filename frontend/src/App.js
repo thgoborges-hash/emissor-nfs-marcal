@@ -19,6 +19,7 @@ import EmitirNFEscritorio from './pages/escritorio/EmitirNFEscritorio';
 import Certificados from './pages/escritorio/Certificados';
 import WhatsAppPainel from './pages/escritorio/WhatsApp';
 import Relatorios from './pages/escritorio/Relatorios';
+import TestarAgente from './pages/escritorio/TestarAgente';
 
 import './styles/global.css';
 
@@ -82,6 +83,7 @@ function App() {
             <Route path="certificados" element={<Certificados />} />
             <Route path="whatsapp" element={<WhatsAppPainel />} />
             <Route path="relatorios" element={<Relatorios />} />
+            <Route path="testar-agente" element={<TestarAgente />} />
           </Route>
 
           {/* 404 */}

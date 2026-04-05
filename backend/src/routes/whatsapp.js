@@ -326,4 +326,91 @@ router.post('/enviar', autenticado, apenasEscritorio, async (req, res) => {
   }
 });
 
+// =====================================================
+// TESTE DO AGENTE IA (sem precisar de WhatsApp)
+// =====================================================
+
+// GET /api/whatsapp/agente/status - Verifica status do agente IA e WhatsApp
+router.get('/agente/status', autenticado, (req, res) => {
+  res.json({
+    agente_ia: {
+      configurado: agenteIA.isConfigured(),
+      modelo: agenteIA.modelo || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
+    },
+    whatsapp: {
+      configurado: whatsappService.isConfigured(),
+      verify_token_configurado: !!whatsappService.verifyToken,
+      webhook_url: `${req.protocol}://${req.get('host')}/api/whatsapp/webhook`,
+    },
+  });
+});
+
+// POST /api/whatsapp/agente/testar - Testa o agente IA com uma mensagem simulada
+router.post('/agente/testar', autenticado, apenasEscritorio, async (req, res) => {
+  try {
+    const { mensagem, cliente_id, historico } = req.body;
+
+    if (!mensagem) {
+      return res.status(400).json({ erro: 'Mensagem é obrigatória' });
+    }
+
+    if (!agenteIA.isConfigured()) {
+      return res.status(503).json({ erro: 'Agente IA não configurado. Configure ANTHROPIC_API_KEY nas variáveis de ambiente.' });
+    }
+
+    // Monta contexto simulado
+    let contato = { telefone: '5541999999999', nome: 'Teste' };
+    let dadosCliente = null;
+
+    if (cliente_id) {
+      const db = getDb();
+      const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(parseInt(cliente_id));
+      if (cliente) {
+        contato.cliente_id = cliente.id;
+        contato.razao_social = cliente.razao_social;
+        contato.nome_fantasia = cliente.nome_fantasia;
+        contato.cnpj = cliente.cnpj;
+        dadosCliente = agenteIA.buscarDadosCliente(cliente.id);
+      }
+    }
+
+    // Monta system prompt
+    const systemPrompt = agenteIA.montarSystemPrompt(contato, dadosCliente);
+
+    // Monta mensagens (histórico + mensagem atual)
+    const messages = [];
+    if (historico && Array.isArray(historico)) {
+      for (const h of historico) {
+        messages.push({
+          role: h.role || (h.direcao === 'entrada' ? 'user' : 'assistant'),
+          content: h.content || h.conteudo
+        });
+      }
+    }
+    messages.push({ role: 'user', content: mensagem });
+
+    // Chama Claude
+    const inicio = Date.now();
+    const respostaRaw = await agenteIA.chamarClaude(systemPrompt, messages);
+    const tempoMs = Date.now() - inicio;
+
+    // Extrai ações e limpa resposta
+    const acoes = agenteIA.extrairAcoes(respostaRaw);
+    const respostaLimpa = agenteIA.limparResposta(respostaRaw);
+
+    res.json({
+      resposta: respostaLimpa,
+      resposta_raw: respostaRaw,
+      acoes,
+      tempo_ms: tempoMs,
+      modelo: agenteIA.modelo,
+      cliente_id: cliente_id || null,
+      system_prompt_preview: systemPrompt.substring(0, 500) + '...',
+    });
+  } catch (err) {
+    console.error('Erro ao testar agente:', err);
+    res.status(500).json({ erro: err.message || 'Erro ao testar agente IA' });
+  }
+});
+
 module.exports = router;
