@@ -390,21 +390,42 @@ router.put('/:id/emitir', autenticado, async (req, res) => {
       notaId
     );
 
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const linkDanfse = `${baseUrl}/api/notas-fiscais/${notaId}/danfse`;
+
     // Envia notificação via WhatsApp (se configurado e tomador tem telefone)
     try {
       const whatsappService = require('../services/whatsappService');
       if (whatsappService.isConfigured() && tomador.telefone) {
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
         whatsappService.notificarNFEmitida(tomador.telefone, {
           razao_social_tomador: tomador.razao_social,
           numero_dps: nota.numero_dps,
           valor_servico: nota.valor_servico,
           descricao_servico: nota.descricao_servico,
-          link_danfse: `${baseUrl}/api/notas-fiscais/${notaId}/danfse`
+          link_danfse: linkDanfse
         }).catch(err => console.error('[WhatsApp] Erro ao notificar NF:', err));
       }
     } catch (whatsErr) {
       console.error('[WhatsApp] Erro ao carregar serviço:', whatsErr);
+    }
+
+    // Envia notificação por e-mail (se configurado e tomador tem e-mail)
+    let emailEnviado = false;
+    try {
+      const emailService = require('../services/emailService');
+      if (emailService.isConfigured() && tomador.email) {
+        emailService.notificarNFEmitida({
+          tomador,
+          cliente,
+          nota: { ...nota, numero_nfse: numeroNfse, data_emissao: new Date().toISOString() },
+          linkDanfse
+        }).then(() => {
+          console.log(`[Email] NF ${numeroNfse} enviada para ${tomador.email}`);
+        }).catch(err => console.error('[Email] Erro ao notificar NF:', err));
+        emailEnviado = true;
+      }
+    } catch (emailErr) {
+      console.error('[Email] Erro ao carregar serviço:', emailErr);
     }
 
     res.json({
@@ -412,6 +433,7 @@ router.put('/:id/emitir', autenticado, async (req, res) => {
       numero_nfse: numeroNfse,
       chave_acesso: chaveAcesso,
       simulacao: modoSimulacao,
+      email_enviado: emailEnviado,
     });
   } catch (err) {
     console.error('Erro ao emitir NF:', err);
@@ -1086,6 +1108,216 @@ router.get('/:id/danfse', autenticado, (req, res) => {
     res.send(html);
   } catch (err) {
     console.error('Erro ao gerar DANFSe:', err);
+    res.status(500).json({ erro: 'Erro interno do servidor' });
+  }
+});
+
+// =====================================================
+// Rotas de E-mail
+// =====================================================
+
+// POST /api/notas-fiscais/:id/enviar-email - Envia NF por e-mail
+router.post('/:id/enviar-email', autenticado, apenasEscritorio, async (req, res) => {
+  try {
+    const db = getDb();
+    const notaId = parseInt(req.params.id);
+    const { email_destino, mensagem_extra } = req.body;
+
+    const nota = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(notaId);
+    if (!nota) return res.status(404).json({ erro: 'Nota fiscal não encontrada' });
+    if (nota.status !== 'emitida') return res.status(400).json({ erro: 'Apenas NFs emitidas podem ser enviadas por e-mail' });
+
+    const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(nota.cliente_id);
+    const tomador = nota.tomador_id
+      ? db.prepare('SELECT * FROM tomadores WHERE id = ?').get(nota.tomador_id)
+      : { razao_social: 'Não informado', email: email_destino };
+
+    const emailService = require('../services/emailService');
+    if (!emailService.isConfigured()) {
+      return res.status(400).json({ erro: 'Serviço de e-mail não configurado. Configure EMAIL_USER e EMAIL_PASS nas variáveis de ambiente.' });
+    }
+
+    const para = email_destino || tomador.email;
+    if (!para) {
+      return res.status(400).json({ erro: 'Nenhum e-mail de destino fornecido e tomador não tem e-mail cadastrado.' });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const linkDanfse = `${baseUrl}/api/notas-fiscais/${notaId}/danfse`;
+
+    await emailService.enviarNFManual({
+      para,
+      nota,
+      cliente,
+      tomador,
+      linkDanfse,
+      mensagemExtra: mensagem_extra,
+    });
+
+    // Registra no log
+    db.prepare(`
+      INSERT INTO log_atividades (tipo, descricao, usuario_tipo, usuario_id, cliente_id, nota_fiscal_id)
+      VALUES ('email_nf', ?, 'escritorio', ?, ?, ?)
+    `).run(
+      `E-mail da NF #${nota.numero_dps} enviado para ${para}`,
+      req.usuario.id,
+      nota.cliente_id,
+      notaId
+    );
+
+    res.json({ mensagem: `E-mail enviado com sucesso para ${para}` });
+  } catch (err) {
+    console.error('Erro ao enviar e-mail:', err);
+    res.status(500).json({ erro: 'Erro ao enviar e-mail', detalhes: err.message });
+  }
+});
+
+// GET /api/notas-fiscais/email/status - Verifica se e-mail está configurado
+router.get('/email/status', autenticado, (req, res) => {
+  try {
+    const emailService = require('../services/emailService');
+    res.json({ configurado: emailService.isConfigured() });
+  } catch {
+    res.json({ configurado: false });
+  }
+});
+
+// =====================================================
+// Rotas de Relatórios
+// =====================================================
+
+// GET /api/notas-fiscais/relatorios/faturamento - Relatório de faturamento por período
+router.get('/relatorios/faturamento', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const db = getDb();
+    const { periodo_inicio, periodo_fim, cliente_id, agrupamento } = req.query;
+
+    // Default: últimos 12 meses
+    const hoje = new Date();
+    const inicio = periodo_inicio || new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1).toISOString().slice(0, 10);
+    const fim = periodo_fim || hoje.toISOString().slice(0, 10);
+
+    let query, params;
+
+    if (agrupamento === 'cliente') {
+      query = `
+        SELECT c.id as cliente_id, c.razao_social, c.nome_fantasia, c.cnpj,
+               COUNT(*) as total_nfs,
+               SUM(nf.valor_servico) as faturamento,
+               SUM(nf.valor_iss) as total_iss,
+               AVG(nf.valor_servico) as ticket_medio
+        FROM notas_fiscais nf
+        JOIN clientes c ON c.id = nf.cliente_id
+        WHERE nf.status = 'emitida'
+          AND nf.data_competencia >= ? AND nf.data_competencia <= ?
+          ${cliente_id ? 'AND nf.cliente_id = ?' : ''}
+        GROUP BY c.id
+        ORDER BY faturamento DESC
+      `;
+      params = cliente_id ? [inicio, fim, parseInt(cliente_id)] : [inicio, fim];
+    } else {
+      // Agrupamento por mês (padrão)
+      query = `
+        SELECT strftime('%Y-%m', nf.data_competencia) as mes,
+               COUNT(*) as total_nfs,
+               SUM(nf.valor_servico) as faturamento,
+               SUM(nf.valor_iss) as total_iss,
+               COUNT(DISTINCT nf.cliente_id) as clientes_ativos
+        FROM notas_fiscais nf
+        WHERE nf.status = 'emitida'
+          AND nf.data_competencia >= ? AND nf.data_competencia <= ?
+          ${cliente_id ? 'AND nf.cliente_id = ?' : ''}
+        GROUP BY mes
+        ORDER BY mes ASC
+      `;
+      params = cliente_id ? [inicio, fim, parseInt(cliente_id)] : [inicio, fim];
+    }
+
+    const dados = db.prepare(query).all(...params);
+
+    // Totais gerais
+    const totais = db.prepare(`
+      SELECT COUNT(*) as total_nfs,
+             COALESCE(SUM(valor_servico), 0) as faturamento_total,
+             COALESCE(SUM(valor_iss), 0) as iss_total,
+             COUNT(DISTINCT cliente_id) as clientes_ativos,
+             COALESCE(AVG(valor_servico), 0) as ticket_medio
+      FROM notas_fiscais
+      WHERE status = 'emitida'
+        AND data_competencia >= ? AND data_competencia <= ?
+        ${cliente_id ? 'AND cliente_id = ?' : ''}
+    `).get(...params);
+
+    res.json({ dados, totais, periodo: { inicio, fim } });
+  } catch (err) {
+    console.error('Erro no relatório de faturamento:', err);
+    res.status(500).json({ erro: 'Erro interno do servidor' });
+  }
+});
+
+// GET /api/notas-fiscais/relatorios/status - Relatório por status
+router.get('/relatorios/status', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const db = getDb();
+    const { periodo_inicio, periodo_fim } = req.query;
+
+    const hoje = new Date();
+    const inicio = periodo_inicio || new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1).toISOString().slice(0, 10);
+    const fim = periodo_fim || hoje.toISOString().slice(0, 10);
+
+    const porStatus = db.prepare(`
+      SELECT status, COUNT(*) as total, COALESCE(SUM(valor_servico), 0) as valor
+      FROM notas_fiscais
+      WHERE data_competencia >= ? AND data_competencia <= ?
+      GROUP BY status
+    `).all(inicio, fim);
+
+    const porMesStatus = db.prepare(`
+      SELECT strftime('%Y-%m', data_competencia) as mes, status, COUNT(*) as total
+      FROM notas_fiscais
+      WHERE data_competencia >= ? AND data_competencia <= ?
+      GROUP BY mes, status
+      ORDER BY mes ASC
+    `).all(inicio, fim);
+
+    res.json({ por_status: porStatus, por_mes_status: porMesStatus, periodo: { inicio, fim } });
+  } catch (err) {
+    console.error('Erro no relatório de status:', err);
+    res.status(500).json({ erro: 'Erro interno do servidor' });
+  }
+});
+
+// GET /api/notas-fiscais/relatorios/ranking-tomadores - Ranking de tomadores
+router.get('/relatorios/ranking-tomadores', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const db = getDb();
+    const { periodo_inicio, periodo_fim, cliente_id, limit: limite } = req.query;
+
+    const hoje = new Date();
+    const inicio = periodo_inicio || new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1).toISOString().slice(0, 10);
+    const fim = periodo_fim || hoje.toISOString().slice(0, 10);
+    const top = parseInt(limite) || 20;
+
+    const ranking = db.prepare(`
+      SELECT t.id, t.razao_social, t.documento, t.tipo_documento,
+             c.razao_social as cliente_razao_social,
+             COUNT(*) as total_nfs,
+             SUM(nf.valor_servico) as faturamento,
+             MAX(nf.data_competencia) as ultima_nf
+      FROM notas_fiscais nf
+      JOIN tomadores t ON t.id = nf.tomador_id
+      JOIN clientes c ON c.id = nf.cliente_id
+      WHERE nf.status = 'emitida'
+        AND nf.data_competencia >= ? AND nf.data_competencia <= ?
+        ${cliente_id ? 'AND nf.cliente_id = ?' : ''}
+      GROUP BY t.id
+      ORDER BY faturamento DESC
+      LIMIT ?
+    `).all(...(cliente_id ? [inicio, fim, parseInt(cliente_id), top] : [inicio, fim, top]));
+
+    res.json({ ranking, periodo: { inicio, fim } });
+  } catch (err) {
+    console.error('Erro no ranking de tomadores:', err);
     res.status(500).json({ erro: 'Erro interno do servidor' });
   }
 });

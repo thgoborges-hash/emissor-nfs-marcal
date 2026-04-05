@@ -65,6 +65,11 @@ export const notasFiscaisApi = {
   emitir: (id) => api.put(`/notas-fiscais/${id}/emitir`),
   cancelar: (id, motivo) => api.put(`/notas-fiscais/${id}/cancelar`, { motivo }),
   resumo: () => api.get('/notas-fiscais/dashboard/resumo'),
+  enviarEmail: (id, dados) => api.post(`/notas-fiscais/${id}/enviar-email`, dados),
+  emailStatus: () => api.get('/notas-fiscais/email/status'),
+  relatorioFaturamento: (params) => api.get('/notas-fiscais/relatorios/faturamento', { params }),
+  relatorioStatus: (params) => api.get('/notas-fiscais/relatorios/status', { params }),
+  relatorioRankingTomadores: (params) => api.get('/notas-fiscais/relatorios/ranking-tomadores', { params }),
 };
 
 // === CERTIFICADOS ===
