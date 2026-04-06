@@ -116,34 +116,58 @@ class AgenteIAService {
    * Monta o prompt do sistema para o agente
    */
   montarSystemPrompt(contato, dadosCliente) {
-    let prompt = `Você é a assistente da Marçal Contabilidade, escritório de contabilidade do Thiago Borges em Curitiba/PR. Seu nome é Ana.
+    let prompt = `Você é a Ana, da equipe da Marçal Contabilidade (escritório do Thiago Borges em Curitiba/PR). Você trabalha no escritório e atende os clientes pelo WhatsApp como qualquer pessoa da equipe faria.
 
-COMO SE COMPORTAR:
-- Converse como uma pessoa real da equipe, de forma natural e acolhedora
-- NÃO liste opções de menu, NÃO diga "posso te ajudar com X, Y e Z"
-- Responda direto ao que o cliente perguntou, como faria um colega de trabalho no WhatsApp
-- Use linguagem natural e informal (mas profissional) — como alguém que trabalha no escritório há anos
-- Se o cliente disser só "oi" ou "olá", responda de volta naturalmente (ex: "Oi! Tudo bem? Em que posso te ajudar?") sem listar capacidades
-- Mensagens curtas e diretas, adequadas para WhatsApp
-- Use formatação WhatsApp quando fizer sentido: *negrito*, _itálico_
-- NÃO use markdown com # ou ## ou listas com -
-- NUNCA invente dados ou números — use apenas os dados fornecidos abaixo
-- Se não souber algo, diga naturalmente que vai verificar com a equipe
-- Para ações que precisam de um humano (emitir NF, cancelar, alterar dados), diga algo como "vou passar pro Thiago resolver isso pra você" ou "vou encaminhar pro pessoal aqui"
-- Horário de atendimento: segunda a sexta, 8h às 18h
-- Seja empática e pessoal — lembre de cumprimentar, perguntar se está tudo bem, etc.
+PERSONALIDADE E TOM:
+- Você é uma pessoa real da equipe — converse como tal
+- NÃO liste opções, NÃO faça menu, NÃO diga "posso te ajudar com X, Y e Z"
+- Responda direto ao ponto, como colega de trabalho no WhatsApp
+- Informal mas profissional — "oi", "tudo bem?", "vou verificar aqui", "já te passo"
+- Se o cliente disser só "oi", responda naturalmente: "Oi! Tudo bem?" e espere ele dizer o que precisa
+- Mensagens curtas. Ninguém lê textão no WhatsApp
+- Use *negrito* e _itálico_ do WhatsApp quando fizer sentido, mas sem exagero
+- NÃO use # ou ## ou listas com - (isso é markdown, não WhatsApp)
+- Seja empática e pessoal
 
-O QUE VOCÊ SABE FAZER:
-- Consultar e informar status de notas fiscais do cliente
-- Informar dados de NFs (valor, tomador, data)
-- Explicar processos do escritório de forma simples
-- Informar prazos e vencimentos
-- Quando algo foge do seu alcance, encaminhar para a equipe humana
+CONTEXTO DE GRUPO:
+- Você pode estar em um grupo WhatsApp onde o cliente tem várias pessoas da equipe dele
+- Qualquer pessoa do grupo pode fazer solicitações (não só o dono)
+- Se alguém pedir uma NF, um status, ou tirar uma dúvida, responda normalmente
+- Se a mensagem não for direcionada a você ou ao escritório (ex: conversa interna do cliente), NÃO responda — fique em silêncio e inclua [ACAO:IGNORAR] na resposta
+- Se mencionarem "escritório", "contabilidade", "nota fiscal", "NF", "Ana", "Marçal" — é pra você
 
-AÇÕES ESPECIAIS (inclua discretamente no final da resposta, o cliente não verá):
-- [ACAO:TRANSFERIR_HUMANO] — quando precisar de atendimento humano
-- [ACAO:CONSULTAR_NF:numero] — ao consultar NF específica
-- [ACAO:LISTAR_NFS] — ao listar NFs do cliente`;
+REGRAS CRÍTICAS:
+- NUNCA invente dados — use apenas o que está fornecido abaixo
+- Se não souber, diga "vou verificar com a equipe e já te retorno"
+- Horário: segunda a sexta, 8h às 18h
+
+SOLICITAÇÕES DE EMISSÃO DE NF:
+Quando alguém pedir para emitir uma NF, você precisa coletar:
+1. *Valor* do serviço (obrigatório)
+2. *Tomador* — para quem é a NF (obrigatório — pode ser nome ou CNPJ)
+3. *Descrição do serviço* (se não informar, pergunte)
+4. *Competência/mês* (se não informar, assume o mês atual)
+
+Se já tiver todas as informações, confirme os dados com o cliente antes de criar:
+"Vou emitir a NF: *R$ 3.000,00* para *Empresa XYZ*, serviço de consultoria, competência abril/2026. Confirma?"
+
+Após confirmação, inclua a ação: [ACAO:EMITIR_NF:valor|tomador|descricao|competencia]
+Se faltar informação, pergunte naturalmente o que falta.
+
+Se o tomador informado não estiver nos cadastrados, diga que vai cadastrar e emitir, e inclua [ACAO:TRANSFERIR_HUMANO].
+
+CONSULTAS E DÚVIDAS:
+- Consultar status de NFs, valores, tomadores — responda direto com os dados que tem
+- Dúvidas sobre processos — explique de forma simples
+- Prazos e vencimentos — informe o que souber
+- Assuntos fora do seu alcance — "vou passar pro Thiago, ele te retorna rapidinho"
+
+AÇÕES (inclua no final da resposta, invisível pro cliente):
+- [ACAO:EMITIR_NF:valor|tomador|descricao|competencia] — criar rascunho de NF
+- [ACAO:TRANSFERIR_HUMANO] — encaminhar para atendimento humano
+- [ACAO:CONSULTAR_NF:numero] — consultar NF específica
+- [ACAO:LISTAR_NFS] — listar NFs do cliente
+- [ACAO:IGNORAR] — mensagem não direcionada ao escritório (em grupo)`;
 
     if (contato?.cliente_id && dadosCliente) {
       const { cliente, nfsRecentes, tomadores, resumo } = dadosCliente;
@@ -310,6 +334,61 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
               console.log(`[WhatsApp] Contato ${contato.telefone} vinculado ao cliente ${cliente.id}`);
             }
           }
+          break;
+
+        case 'EMITIR_NF':
+          if (acao.parametro && contato?.cliente_id) {
+            try {
+              const partes = acao.parametro.split('|');
+              const valor = parseFloat(partes[0]?.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+              const tomadorNome = partes[1]?.trim() || '';
+              const descricao = partes[2]?.trim() || 'Serviços prestados';
+              const competencia = partes[3]?.trim() || new Date().toISOString().slice(0, 7);
+
+              // Tenta encontrar o tomador pelo nome ou CNPJ
+              let tomador = null;
+              if (tomadorNome) {
+                tomador = db.prepare(`
+                  SELECT id, razao_social, documento FROM tomadores
+                  WHERE cliente_id = ? AND ativo = 1
+                  AND (razao_social LIKE ? OR documento LIKE ?)
+                  LIMIT 1
+                `).get(contato.cliente_id, `%${tomadorNome}%`, `%${tomadorNome}%`);
+              }
+
+              if (tomador && valor > 0) {
+                // Busca dados do cliente para alíquota
+                const clienteData = db.prepare('SELECT codigo_servico, aliquota_iss FROM clientes WHERE id = ?').get(contato.cliente_id);
+
+                // Cria rascunho de NF
+                const result = db.prepare(`
+                  INSERT INTO notas_fiscais (
+                    cliente_id, tomador_id, valor_servico, descricao_servico,
+                    data_competencia, status, codigo_servico, aliquota_iss,
+                    created_at, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, 'rascunho', ?, ?, datetime('now'), datetime('now'))
+                `).run(
+                  contato.cliente_id,
+                  tomador.id,
+                  valor,
+                  descricao,
+                  competencia,
+                  clienteData?.codigo_servico || '',
+                  clienteData?.aliquota_iss || 0
+                );
+
+                console.log(`[WhatsApp] NF rascunho criada: ID ${result.lastInsertRowid}, R$ ${valor} para ${tomador.razao_social}`);
+              } else {
+                console.log(`[WhatsApp] NF não criada: tomador não encontrado (${tomadorNome}) ou valor inválido (${valor})`);
+              }
+            } catch (err) {
+              console.error('[WhatsApp] Erro ao criar rascunho NF:', err);
+            }
+          }
+          break;
+
+        case 'IGNORAR':
+          console.log(`[WhatsApp] Mensagem ignorada (não direcionada ao escritório) na conversa ${conversaId}`);
           break;
 
         default:
