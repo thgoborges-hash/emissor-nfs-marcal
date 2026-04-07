@@ -519,14 +519,23 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
               const baseCalculo = valor;
               const valorLiquido = valor - valorIss;
 
+              // Gera próximo numero_dps para o cliente
+              const ultimaDps = db.prepare(`
+                SELECT numero_dps FROM notas_fiscais
+                WHERE cliente_id = ? AND numero_dps IS NOT NULL
+                ORDER BY CAST(numero_dps AS INTEGER) DESC LIMIT 1
+              `).get(contato.cliente_id);
+              const numeroDps = ultimaDps ? String(parseInt(ultimaDps.numero_dps) + 1) : '1';
+
               // Cria NF com status pendente_emissao
               const result = db.prepare(`
                 INSERT INTO notas_fiscais (
                   cliente_id, tomador_id, valor_servico, descricao_servico,
                   data_competencia, status, codigo_servico, aliquota_iss,
                   valor_iss, base_calculo, valor_liquido, origem,
+                  numero_dps, serie_dps,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'pendente_emissao', ?, ?, ?, ?, ?, 'whatsapp', datetime('now'), datetime('now'))
+                ) VALUES (?, ?, ?, ?, ?, 'pendente_emissao', ?, ?, ?, ?, ?, 'whatsapp', ?, '1', datetime('now'), datetime('now'))
               `).run(
                 contato.cliente_id,
                 tomador.id,
@@ -537,7 +546,8 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 aliquotaIss,
                 valorIss,
                 baseCalculo,
-                valorLiquido
+                valorLiquido,
+                numeroDps
               );
 
               const nfId = result.lastInsertRowid;

@@ -31,15 +31,15 @@ class NfseNacionalService {
     console.log(`[NFS-e] Certificado carregado: ${cert.info.titular}, valido ate ${cert.info.validade?.fim}`);
 
     // 2. Gera o XML da DPS
-    const dpsXml = this._gerarDpsXml(nota, cliente, tomador);
-    console.log(`[NFS-e] XML DPS gerado (${dpsXml.length} chars)`);
+    const { xml: dpsXml, idDPS } = this._gerarDpsXml(nota, cliente, tomador);
+    console.log(`[NFS-e] XML DPS gerado (${dpsXml.length} chars), idDPS: ${idDPS}`);
 
-    // 3. Assina o XML
+    // 3. Assina o XML (referência aponta para o Id do infDPS)
     const dpsXmlAssinado = xmlSignerService.assinarXml(
       dpsXml,
       cert.pfxBuffer,
       cert.senha,
-      `DPS_${nota.numero_dps}`
+      idDPS
     );
     console.log(`[NFS-e] XML assinado (${dpsXmlAssinado.length} chars)`);
 
@@ -134,18 +134,35 @@ class NfseNacionalService {
   // ===========================================================================
 
   /**
+   * Gera o ID da DPS no formato TSIdDPS (45 posições)
+   * Formato: DPS + codigoMunicipio(7) + tipoInscricao(1) + inscricaoFederal(14) + serie(5) + numero(15)
+   */
+  _gerarIdDPS(cliente, nota) {
+    const codigoMunicipio = (cliente.codigo_municipio || '0000000').padStart(7, '0');
+    const cnpj = (cliente.cnpj || '').replace(/\D/g, '');
+    const tipoInscricao = cnpj.length <= 11 ? '2' : '1'; // 1=CNPJ, 2=CPF
+    const inscricaoFederal = cnpj.padStart(14, '0');
+    const serie = (nota.serie_dps || '1').padStart(5, '0');
+    const numero = String(nota.numero_dps || '0').padStart(15, '0');
+    return `DPS${codigoMunicipio}${tipoInscricao}${inscricaoFederal}${serie}${numero}`;
+  }
+
+  /**
    * Gera o XML da DPS (Declaração de Prestação de Serviço)
    */
   _gerarDpsXml(nota, cliente, tomador) {
     const cnpjPrestador = cliente.cnpj.replace(/[.\-\/]/g, '');
     const documentoTomador = tomador.documento.replace(/[.\-\/]/g, '');
 
+    // Gera o ID da DPS no formato correto (TSIdDPS)
+    const idDPS = this._gerarIdDPS(cliente, nota);
+
     // Formata valores com 2 casas decimais
     const fmt = (v) => (v || 0).toFixed(2);
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<DPS xmlns="http://www.sped.fazenda.gov.br/nfse" Id="DPS_${nota.numero_dps}" versao="${nfseConfig.versaoLayout}">
-  <infDPS Id="infDPS_${nota.numero_dps}">
+<DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${nfseConfig.versaoLayout}">
+  <infDPS Id="${idDPS}">
     <tpAmb>${nfseConfig.ambienteNome === 'producao' ? '1' : '2'}</tpAmb>
     <dhEmi>${new Date().toISOString()}</dhEmi>
     <verAplic>EmissorMarcal_1.0</verAplic>
@@ -229,7 +246,7 @@ class NfseNacionalService {
   </infDPS>
 </DPS>`;
 
-    return xml;
+    return { xml, idDPS };
   }
 
   /**
