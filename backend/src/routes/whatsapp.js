@@ -396,12 +396,41 @@ router.post('/agente/testar', autenticado, apenasEscritorio, async (req, res) =>
 
     // Extrai ações e limpa resposta
     const acoes = agenteIA.extrairAcoes(respostaRaw);
-    const respostaLimpa = agenteIA.limparResposta(respostaRaw);
+    let respostaFinal = respostaRaw;
+
+    // Executa as ações de verdade (para testar o fluxo completo)
+    if (acoes.length > 0) {
+      try {
+        await agenteIA.executarAcoes(acoes, contato, null);
+
+        // Verifica feedback de emissão
+        const feedbackEmissao = acoes.find(a => a.tipo === 'EMITIR_NF' && a.feedback);
+        if (feedbackEmissao?.feedback) {
+          const fb = feedbackEmissao.feedback;
+          let feedbackMsg = '';
+          if (fb.sucesso) {
+            feedbackMsg = `\n\n✅ *NF emitida com sucesso!*\nNúmero: ${fb.numero}\nValor: R$ ${fb.valor?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\nTomador: ${fb.tomador}`;
+          } else if (fb.status === 'erro_emissao') {
+            feedbackMsg = `\n\n⚠️ A NF foi criada no sistema (ID ${fb.nfId}), mas não foi possível emitir automaticamente agora. ${fb.numero || ''}\nVou pedir pro Thiago dar uma olhada!`;
+          } else if (fb.erro) {
+            feedbackMsg = `\n\nOpa, tive um probleminha: ${fb.erro}. Vou verificar com o Thiago e te retorno!`;
+          }
+          if (feedbackMsg) {
+            respostaFinal = respostaRaw.replace(/\[ACAO:[^\]]+\]/g, '').trim() + feedbackMsg;
+          }
+        }
+      } catch (acaoErr) {
+        console.error('[Teste] Erro ao executar ações:', acaoErr);
+      }
+    }
+
+    const respostaLimpa = agenteIA.limparResposta(respostaFinal);
 
     res.json({
       resposta: respostaLimpa,
       resposta_raw: respostaRaw,
       acoes,
+      acoes_feedback: acoes.filter(a => a.feedback).map(a => a.feedback),
       tempo_ms: tempoMs,
       modelo: agenteIA.modelo,
       cliente_id: cliente_id || null,
