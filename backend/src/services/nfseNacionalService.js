@@ -168,7 +168,7 @@ class NfseNacionalService {
     <verAplic>EmissorMarcal_1.0</verAplic>
     <serie>${nota.serie_dps || '1'}</serie>
     <nDPS>${nota.numero_dps}</nDPS>
-    <dCompet>${nota.data_competencia}</dCompet>
+    <dCompet>${nota.data_competencia?.length === 7 ? nota.data_competencia + '-01' : nota.data_competencia}</dCompet>
     <tpEmit>1</tpEmit>
     <cLocEmi>${cliente.codigo_municipio || '0000000'}</cLocEmi>
 
