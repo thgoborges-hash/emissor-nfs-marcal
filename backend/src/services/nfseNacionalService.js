@@ -164,7 +164,7 @@ class NfseNacionalService {
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${nfseConfig.versaoLayout}">
   <infDPS Id="${idDPS}">
     <tpAmb>${nfseConfig.ambienteNome === 'producao' ? '1' : '2'}</tpAmb>
-    <dhEmi>${new Date().toISOString()}</dhEmi>
+    <dhEmi>${this._formatarDataUTC(new Date())}</dhEmi>
     <verAplic>EmissorMarcal_1.0</verAplic>
     <serie>${nota.serie_dps || '1'}</serie>
     <nDPS>${nota.numero_dps}</nDPS>
@@ -258,7 +258,7 @@ class NfseNacionalService {
   <infPedReg Id="CANC_${chaveAcesso}">
     <tpAmb>${nfseConfig.ambienteNome === 'producao' ? '1' : '2'}</tpAmb>
     <verAplic>EmissorMarcal_1.0</verAplic>
-    <dhEvento>${new Date().toISOString()}</dhEvento>
+    <dhEvento>${this._formatarDataUTC(new Date())}</dhEvento>
     <chNFSe>${chaveAcesso}</chNFSe>
     <nPedRegEvento>1</nPedRegEvento>
     <tpEvento>e101101</tpEvento>
@@ -368,6 +368,18 @@ class NfseNacionalService {
 
       req.end();
     });
+  }
+
+  /**
+   * Formata data no padrão TSDateTimeUTC aceito pela API NFS-e Nacional
+   * Formato: YYYY-MM-DDTHH:MM:SS-03:00 (sem milissegundos, com offset Brasil)
+   */
+  _formatarDataUTC(date) {
+    // Offset Brasil -03:00
+    const offset = -3;
+    const d = new Date(date.getTime() + offset * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}-03:00`;
   }
 
   /**
