@@ -148,17 +148,57 @@ class NfseNacionalService {
   }
 
   /**
+   * Gera endereço nacional no formato correto do schema
+   */
+  _gerarEnderecoXml(dados) {
+    if (!dados.logradouro && !dados.cep) return '';
+    return `<end>
+        <endNac>
+          ${dados.logradouro ? `<xLgr>${this._escapeXml(dados.logradouro)}</xLgr>` : ''}
+          ${dados.numero ? `<nro>${this._escapeXml(dados.numero)}</nro>` : ''}
+          ${dados.complemento ? `<xCpl>${this._escapeXml(dados.complemento)}</xCpl>` : ''}
+          ${dados.bairro ? `<xBairro>${this._escapeXml(dados.bairro)}</xBairro>` : ''}
+          ${dados.codigo_municipio ? `<cMun>${dados.codigo_municipio}</cMun>` : ''}
+          ${dados.uf ? `<UF>${dados.uf}</UF>` : ''}
+          ${dados.cep ? `<CEP>${dados.cep.replace(/\\D/g, '')}</CEP>` : ''}
+        </endNac>
+      </end>`;
+  }
+
+  /**
    * Gera o XML da DPS (Declaração de Prestação de Serviço)
+   * Estrutura conforme schema XSD NFS-e Nacional v1.00/v1.01
    */
   _gerarDpsXml(nota, cliente, tomador) {
     const cnpjPrestador = cliente.cnpj.replace(/[.\-\/]/g, '');
     const documentoTomador = tomador.documento.replace(/[.\-\/]/g, '');
+    const codMunicipio = cliente.codigo_municipio || '0000000';
 
-    // Gera o ID da DPS no formato correto (TSIdDPS)
+    // Gera o ID da DPS no formato correto (TSIdDPS - 45 posições)
     const idDPS = this._gerarIdDPS(cliente, nota);
 
     // Formata valores com 2 casas decimais
     const fmt = (v) => (v || 0).toFixed(2);
+
+    // Data de competência precisa ser YYYY-MM-DD
+    const dCompet = nota.data_competencia?.length === 7
+      ? nota.data_competencia + '-01'
+      : nota.data_competencia;
+
+    // Base de cálculo
+    const baseCalculo = nota.base_calculo || (nota.valor_servico - (nota.valor_deducoes || 0));
+    const aliquotaPercent = nota.aliquota_iss ? (nota.aliquota_iss * 100) : 0;
+
+    // Tributos federais (só inclui se valor > 0)
+    let tribFedXml = '';
+    const temTribFed = (nota.valor_ir > 0) || (nota.valor_csll > 0) || (nota.valor_inss > 0);
+    if (temTribFed) {
+      tribFedXml = `<tribFed>
+          ${nota.valor_inss > 0 ? `<vRetCP>${fmt(nota.valor_inss)}</vRetCP>` : ''}
+          ${nota.valor_ir > 0 ? `<vRetIRRF>${fmt(nota.valor_ir)}</vRetIRRF>` : ''}
+          ${nota.valor_csll > 0 ? `<vRetCSLL>${fmt(nota.valor_csll)}</vRetCSLL>` : ''}
+        </tribFed>`;
+    }
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${nfseConfig.versaoLayout}">
@@ -168,23 +208,15 @@ class NfseNacionalService {
     <verAplic>EmissorMarcal_1.0</verAplic>
     <serie>${nota.serie_dps || '1'}</serie>
     <nDPS>${nota.numero_dps}</nDPS>
-    <dCompet>${nota.data_competencia?.length === 7 ? nota.data_competencia + '-01' : nota.data_competencia}</dCompet>
+    <dCompet>${dCompet}</dCompet>
     <tpEmit>1</tpEmit>
-    <cLocEmi>${cliente.codigo_municipio || '0000000'}</cLocEmi>
+    <cLocEmi>${codMunicipio}</cLocEmi>
 
     <prest>
       <CNPJ>${cnpjPrestador}</CNPJ>
       ${cliente.inscricao_municipal ? `<IM>${cliente.inscricao_municipal}</IM>` : ''}
       <xNome>${this._escapeXml(cliente.razao_social)}</xNome>
-      <end>
-        ${cliente.logradouro ? `<xLgr>${this._escapeXml(cliente.logradouro)}</xLgr>` : ''}
-        ${cliente.numero ? `<nro>${this._escapeXml(cliente.numero)}</nro>` : ''}
-        ${cliente.complemento ? `<xCpl>${this._escapeXml(cliente.complemento)}</xCpl>` : ''}
-        ${cliente.bairro ? `<xBairro>${this._escapeXml(cliente.bairro)}</xBairro>` : ''}
-        ${cliente.codigo_municipio ? `<cMun>${cliente.codigo_municipio}</cMun>` : ''}
-        ${cliente.uf ? `<UF>${cliente.uf}</UF>` : ''}
-        ${cliente.cep ? `<CEP>${cliente.cep.replace(/\D/g, '')}</CEP>` : ''}
-      </end>
+      ${this._gerarEnderecoXml(cliente)}
     </prest>
 
     <toma>
@@ -194,18 +226,14 @@ class NfseNacionalService {
       }
       <xNome>${this._escapeXml(tomador.razao_social)}</xNome>
       ${tomador.email ? `<email>${this._escapeXml(tomador.email)}</email>` : ''}
-      <end>
-        ${tomador.logradouro ? `<xLgr>${this._escapeXml(tomador.logradouro)}</xLgr>` : ''}
-        ${tomador.numero ? `<nro>${this._escapeXml(tomador.numero)}</nro>` : ''}
-        ${tomador.complemento ? `<xCpl>${this._escapeXml(tomador.complemento)}</xCpl>` : ''}
-        ${tomador.bairro ? `<xBairro>${this._escapeXml(tomador.bairro)}</xBairro>` : ''}
-        ${tomador.codigo_municipio ? `<cMun>${tomador.codigo_municipio}</cMun>` : ''}
-        ${tomador.uf ? `<UF>${tomador.uf}</UF>` : ''}
-        ${tomador.cep ? `<CEP>${tomador.cep.replace(/\D/g, '')}</CEP>` : ''}
-      </end>
+      ${this._gerarEnderecoXml(tomador)}
     </toma>
 
     <serv>
+      <locPrest>
+        <cLocPrestacao>${codMunicipio}</cLocPrestacao>
+        <cPaisPrestacao>1058</cPaisPrestacao>
+      </locPrest>
       <cServ>
         <cTribNac>${nota.codigo_servico}</cTribNac>
         <xDescServ>${this._escapeXml(nota.descricao_servico)}</xDescServ>
@@ -215,26 +243,20 @@ class NfseNacionalService {
     <valores>
       <vServPrest>
         <vServ>${fmt(nota.valor_servico)}</vServ>
-        ${nota.valor_deducoes > 0 ? `<vDeducao>${fmt(nota.valor_deducoes)}</vDeducao>` : ''}
       </vServPrest>
-
       <trib>
+        <tribMun>
+          <tribISSQN>1</tribISSQN>
+          <cLocIncid>${codMunicipio}</cLocIncid>
+          <vBC>${fmt(baseCalculo)}</vBC>
+          <pAliq>${fmt(aliquotaPercent)}</pAliq>
+          <vISSQN>${fmt(nota.valor_iss)}</vISSQN>
+          <tpRetISSQN>${nota.iss_retido ? '1' : '2'}</tpRetISSQN>
+        </tribMun>
+        ${tribFedXml}
         <totTrib>
           <indTotTrib>0</indTotTrib>
         </totTrib>
-
-        <ISSQN>
-          <tpRetISSQN>${nota.iss_retido ? '1' : '2'}</tpRetISSQN>
-          <vBC>${fmt(nota.base_calculo || (nota.valor_servico - (nota.valor_deducoes || 0)))}</vBC>
-          <pAliq>${fmt(nota.aliquota_iss ? nota.aliquota_iss * 100 : 0)}</pAliq>
-          <vISS>${fmt(nota.valor_iss)}</vISS>
-        </ISSQN>
-
-        ${nota.valor_pis > 0 ? `<pis><vPIS>${fmt(nota.valor_pis)}</vPIS></pis>` : ''}
-        ${nota.valor_cofins > 0 ? `<cofins><vCOFINS>${fmt(nota.valor_cofins)}</vCOFINS></cofins>` : ''}
-        ${nota.valor_inss > 0 ? `<inss><vINSS>${fmt(nota.valor_inss)}</vINSS></inss>` : ''}
-        ${nota.valor_ir > 0 ? `<ir><vIR>${fmt(nota.valor_ir)}</vIR></ir>` : ''}
-        ${nota.valor_csll > 0 ? `<csll><vCSLL>${fmt(nota.valor_csll)}</vCSLL></csll>` : ''}
       </trib>
     </valores>
 
