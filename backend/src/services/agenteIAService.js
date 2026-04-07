@@ -5,6 +5,7 @@
 
 const https = require('https');
 const { getDb } = require('../database/init');
+const cnpjService = require('./cnpjService');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -63,6 +64,27 @@ class AgenteIAService {
     const acoes = this.extrairAcoes(resposta);
     if (acoes.length > 0) {
       await this.executarAcoes(acoes, contato, conversaId);
+
+      // 8. Verifica se alguma ação teve feedback que precisa de follow-up
+      const feedbackEmissao = acoes.find(a => a.tipo === 'EMITIR_NF' && a.feedback);
+      if (feedbackEmissao?.feedback) {
+        const fb = feedbackEmissao.feedback;
+        let feedbackMsg = '';
+
+        if (fb.sucesso) {
+          feedbackMsg = `\n\n✅ *NF emitida com sucesso!*\nNúmero: ${fb.numero}\nValor: R$ ${fb.valor?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\nTomador: ${fb.tomador}`;
+        } else if (fb.status === 'erro_emissao') {
+          feedbackMsg = `\n\n⚠️ A NF foi criada no sistema (ID ${fb.nfId}), mas não foi possível emitir automaticamente agora. ${fb.numero || ''}\nVou pedir pro Thiago dar uma olhada!`;
+        } else if (fb.erro) {
+          feedbackMsg = `\n\nOpa, tive um probleminha: ${fb.erro}. Vou verificar com o Thiago e te retorno!`;
+        }
+
+        if (feedbackMsg) {
+          // Append feedback to the response (will be cleaned of action tags later)
+          const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+          return respostaLimpa + feedbackMsg;
+        }
+      }
     }
 
     return resposta;
@@ -157,22 +179,30 @@ O QUE A ANA FAZ:
 1. *Emissão de Nota Fiscal* (o principal)
    Quando pedem pra emitir NF, você precisa de:
    - *Valor* do serviço (obrigatório)
-   - *Tomador* — pra quem é a NF (obrigatório — nome ou CNPJ)
+   - *CNPJ ou CPF do tomador* (obrigatório — é pra quem vai a NF)
    - *Descrição do serviço* (se não disser, pergunta de forma natural)
    - *Competência/mês* (se não disser, assume o mês atual)
 
-   Se o cliente já mandou tudo, confirma antes de emitir:
-   "Vou emitir: *R$ 3.000,00* pra *Empresa XYZ*, serviço de consultoria, competência abril/2026. Tá certinho?"
+   IMPORTANTE: Você PRECISA do CNPJ ou CPF do tomador. Sem isso, não dá pra emitir.
+   Se o cliente mandou só o nome da empresa, pede o CNPJ de forma natural:
+   "Me passa o CNPJ deles que eu já emito!" ou "Qual o CNPJ da empresa?"
 
-   Se faltar informação, puxa de forma natural:
-   "Beleza! Pra quem é essa NF?" ou "Qual o valor do serviço?"
-   NÃO pergunte tudo de uma vez — vai conversando, uma coisa de cada vez.
+   Se o tomador já está na lista de TOMADORES CADASTRADOS abaixo, você pode usar o CNPJ/CPF de lá e não precisa pedir de novo.
 
-   Após o cliente confirmar, inclua: [ACAO:EMITIR_NF:valor|tomador|descricao|competencia]
+   SOBRE A RAZÃO SOCIAL: Se o cliente informar um CNPJ, nosso sistema consulta automaticamente na Receita Federal e puxa a razão social e endereço completo. Então você NÃO precisa pedir o nome da empresa — só o CNPJ basta! Se for CPF, aí sim precisa do nome da pessoa.
 
-   Se o tomador não estiver cadastrado, avisa que vai cadastrar e encaminha:
-   "Esse tomador ainda não tá cadastrado aqui. Vou passar pro Thiago registrar e já emitimos, tá?"
-   E inclua [ACAO:TRANSFERIR_HUMANO]
+   Quando tiver os dados, confirma antes de emitir:
+   "Vou emitir: *R$ 3.000,00* pra CNPJ *12.345.678/0001-90*, serviço de consultoria, competência abril/2026. Tá certinho?"
+   (O sistema vai puxar a razão social automaticamente pelo CNPJ)
+
+   Se faltar informação, puxa de forma natural, uma coisa de cada vez:
+   "Beleza! Pra quem é essa NF?" → "Qual o CNPJ deles?" → "E o valor?"
+   NÃO pergunte tudo de uma vez — vai conversando.
+
+   Após o cliente confirmar, inclua: [ACAO:EMITIR_NF:valor|cnpj_cpf|razao_social_se_souber|descricao|competencia]
+   Exemplo CNPJ: [ACAO:EMITIR_NF:3000.00|12345678000190||Consultoria empresarial|2026-04]
+   Exemplo CPF: [ACAO:EMITIR_NF:1500.00|12345678901|João da Silva|Serviços prestados|2026-04]
+   Nota: a razão social pode ficar vazia pra CNPJ — o sistema preenche automaticamente pela Receita Federal.
 
 2. *Consultas sobre NFs*
    Status, valores, quais NFs foram emitidas — responde direto com os dados que tem.
@@ -212,7 +242,7 @@ QUANDO TRANSFERIR PRO THIAGO:
 - Qualquer coisa que a Ana não tenha certeza
 
 AÇÕES (inclua no final da resposta — o cliente não vê isso):
-- [ACAO:EMITIR_NF:valor|tomador|descricao|competencia] — emitir NF após confirmação
+- [ACAO:EMITIR_NF:valor|cnpj_cpf|razao_social|descricao|competencia] — emitir NF após confirmação (CNPJ/CPF só números)
 - [ACAO:TRANSFERIR_HUMANO] — passar pro Thiago/equipe
 - [ACAO:CONSULTAR_NF:numero] — consultar NF específica
 - [ACAO:LISTAR_NFS] — listar NFs do cliente
@@ -391,81 +421,193 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
         case 'EMITIR_NF':
           if (acao.parametro && contato?.cliente_id) {
             try {
+              // Formato: valor|cnpj_cpf|razao_social|descricao|competencia
               const partes = acao.parametro.split('|');
               const valor = parseFloat(partes[0]?.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
-              const tomadorNome = partes[1]?.trim() || '';
-              const descricao = partes[2]?.trim() || 'Serviços prestados';
-              const competencia = partes[3]?.trim() || new Date().toISOString().slice(0, 7);
+              const documentoTomador = (partes[1]?.trim() || '').replace(/\D/g, ''); // só números
+              const razaoSocialTomador = partes[2]?.trim() || '';
+              const descricao = partes[3]?.trim() || 'Serviços prestados';
+              const competencia = partes[4]?.trim() || new Date().toISOString().slice(0, 7);
 
-              // Tenta encontrar o tomador pelo nome ou CNPJ
-              let tomador = null;
-              if (tomadorNome) {
-                tomador = db.prepare(`
-                  SELECT id, razao_social, documento FROM tomadores
-                  WHERE cliente_id = ? AND ativo = 1
-                  AND (razao_social LIKE ? OR documento LIKE ?)
-                  LIMIT 1
-                `).get(contato.cliente_id, `%${tomadorNome}%`, `%${tomadorNome}%`);
+              if (!documentoTomador || valor <= 0) {
+                console.log(`[WhatsApp] NF não criada: CNPJ/CPF ausente (${documentoTomador}) ou valor inválido (${valor})`);
+                // Armazena feedback para a resposta
+                acao.feedback = { sucesso: false, erro: !documentoTomador ? 'CNPJ/CPF do tomador não informado' : 'Valor inválido' };
+                break;
               }
 
-              if (tomador && valor > 0) {
-                // Busca dados do cliente para alíquota
-                const clienteData = db.prepare('SELECT codigo_servico, aliquota_iss FROM clientes WHERE id = ?').get(contato.cliente_id);
+              // Determina tipo de documento
+              const tipoDocumento = documentoTomador.length <= 11 ? 'CPF' : 'CNPJ';
 
-                // Cria NF com status pendente_emissao para emissão automática
-                const result = db.prepare(`
-                  INSERT INTO notas_fiscais (
-                    cliente_id, tomador_id, valor_servico, descricao_servico,
-                    data_competencia, status, codigo_servico, aliquota_iss,
-                    created_at, updated_at
-                  ) VALUES (?, ?, ?, ?, ?, 'pendente_emissao', ?, ?, datetime('now'), datetime('now'))
+              // Busca tomador pelo CNPJ/CPF
+              let tomador = db.prepare(`
+                SELECT id, razao_social, documento FROM tomadores
+                WHERE cliente_id = ? AND ativo = 1
+                AND REPLACE(REPLACE(REPLACE(documento, '.', ''), '/', ''), '-', '') = ?
+                LIMIT 1
+              `).get(contato.cliente_id, documentoTomador);
+
+              // Se não encontrou, consulta CNPJ na Receita e cadastra automaticamente
+              if (!tomador) {
+                let razaoFinal = razaoSocialTomador;
+                let dadosReceita = null;
+
+                // Se for CNPJ, consulta BrasilAPI pra pegar dados completos
+                if (tipoDocumento === 'CNPJ') {
+                  try {
+                    dadosReceita = await cnpjService.consultarCNPJ(documentoTomador);
+                    if (dadosReceita) {
+                      razaoFinal = dadosReceita.razaoSocial || razaoSocialTomador;
+                      console.log(`[WhatsApp] CNPJ consultado na Receita: ${razaoFinal} (${dadosReceita.situacaoCadastral})`);
+                    }
+                  } catch (cnpjErr) {
+                    console.log(`[WhatsApp] Não conseguiu consultar CNPJ na Receita: ${cnpjErr.message}`);
+                  }
+                }
+
+                if (!razaoFinal) {
+                  console.log(`[WhatsApp] NF não criada: sem razão social pro tomador ${documentoTomador}`);
+                  acao.feedback = { sucesso: false, erro: 'Não consegui identificar a razão social do tomador. Me passa o nome da empresa?' };
+                  break;
+                }
+
+                console.log(`[WhatsApp] Cadastrando tomador: ${razaoFinal} (${documentoTomador})`);
+                const insertResult = db.prepare(`
+                  INSERT INTO tomadores (
+                    cliente_id, razao_social, nome_fantasia, documento, tipo_documento,
+                    email, logradouro, numero, complemento, bairro,
+                    municipio, uf, cep, codigo_municipio,
+                    ativo, created_at, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
                 `).run(
                   contato.cliente_id,
-                  tomador.id,
-                  valor,
-                  descricao,
-                  competencia,
-                  clienteData?.codigo_servico || '',
-                  clienteData?.aliquota_iss || 0
+                  razaoFinal,
+                  dadosReceita?.nomeFantasia || '',
+                  documentoTomador,
+                  tipoDocumento,
+                  dadosReceita?.email || '',
+                  dadosReceita?.logradouro || '',
+                  dadosReceita?.numero || '',
+                  dadosReceita?.complemento || '',
+                  dadosReceita?.bairro || '',
+                  dadosReceita?.municipio || '',
+                  dadosReceita?.uf || '',
+                  dadosReceita?.cep || '',
+                  dadosReceita?.codigoMunicipio || ''
                 );
 
-                console.log(`[WhatsApp] NF criada para emissão: ID ${result.lastInsertRowid}, R$ ${valor} para ${tomador.razao_social}`);
+                tomador = {
+                  id: insertResult.lastInsertRowid,
+                  razao_social: razaoFinal,
+                  documento: documentoTomador
+                };
+                console.log(`[WhatsApp] Tomador cadastrado: ID ${tomador.id} ${dadosReceita ? '(com dados da Receita)' : '(dados básicos)'}`);
+              }
 
-                // Tenta emitir automaticamente
-                try {
-                  const nfseService = require('./nfseNacionalService');
-                  const notaCompleta = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(result.lastInsertRowid);
-                  const clienteCompleto = db.prepare('SELECT * FROM clientes WHERE id = ?').get(contato.cliente_id);
-                  const tomadorCompleto = db.prepare('SELECT * FROM tomadores WHERE id = ?').get(tomador.id);
+              if (!tomador) {
+                console.log(`[WhatsApp] NF não criada: impossível identificar tomador`);
+                acao.feedback = { sucesso: false, erro: 'Não foi possível identificar o tomador' };
+                break;
+              }
 
-                  if (process.env.NFSE_SIMULACAO === 'true') {
-                    // Modo simulação
-                    db.prepare('UPDATE notas_fiscais SET status = ?, numero_nfse = ?, data_emissao = datetime(?) WHERE id = ?')
-                      .run('emitida', `SIM-${Date.now()}`, new Date().toISOString(), result.lastInsertRowid);
-                    console.log(`[WhatsApp] NF ${result.lastInsertRowid} emitida em modo simulação`);
+              // Busca dados do cliente para alíquota e código de serviço
+              const clienteData = db.prepare('SELECT codigo_servico, aliquota_iss FROM clientes WHERE id = ?').get(contato.cliente_id);
+
+              // Calcula valores fiscais
+              const aliquotaIss = clienteData?.aliquota_iss || 0;
+              const valorIss = valor * aliquotaIss;
+              const baseCalculo = valor;
+              const valorLiquido = valor - valorIss;
+
+              // Cria NF com status pendente_emissao
+              const result = db.prepare(`
+                INSERT INTO notas_fiscais (
+                  cliente_id, tomador_id, valor_servico, descricao_servico,
+                  data_competencia, status, codigo_servico, aliquota_iss,
+                  valor_iss, base_calculo, valor_liquido, origem,
+                  created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'pendente_emissao', ?, ?, ?, ?, ?, 'whatsapp', datetime('now'), datetime('now'))
+              `).run(
+                contato.cliente_id,
+                tomador.id,
+                valor,
+                descricao,
+                competencia,
+                clienteData?.codigo_servico || '',
+                aliquotaIss,
+                valorIss,
+                baseCalculo,
+                valorLiquido
+              );
+
+              const nfId = result.lastInsertRowid;
+              console.log(`[WhatsApp] NF criada: ID ${nfId}, R$ ${valor} para ${tomador.razao_social} (${tomador.documento})`);
+
+              // Tenta emitir automaticamente
+              let emissaoStatus = 'pendente_emissao';
+              let emissaoInfo = '';
+
+              try {
+                const nfseService = require('./nfseNacionalService');
+                const notaCompleta = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(nfId);
+                const clienteCompleto = db.prepare('SELECT * FROM clientes WHERE id = ?').get(contato.cliente_id);
+                const tomadorCompleto = db.prepare('SELECT * FROM tomadores WHERE id = ?').get(tomador.id);
+
+                if (process.env.NFSE_SIMULACAO === 'true') {
+                  // Modo simulação
+                  const numSim = `SIM-${Date.now()}`;
+                  db.prepare('UPDATE notas_fiscais SET status = ?, numero_nfse = ?, data_emissao = datetime(?) WHERE id = ?')
+                    .run('emitida', numSim, new Date().toISOString(), nfId);
+                  emissaoStatus = 'emitida';
+                  emissaoInfo = numSim;
+                  console.log(`[WhatsApp] NF ${nfId} emitida em modo simulação: ${numSim}`);
+                } else {
+                  // Verifica se o cliente tem certificado digital
+                  if (!clienteCompleto.certificado_a1_path) {
+                    db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
+                      .run('erro_emissao', 'Cliente sem certificado digital A1 configurado', nfId);
+                    emissaoStatus = 'erro_emissao';
+                    emissaoInfo = 'Cliente sem certificado digital A1. A NF foi criada mas precisa do certificado pra emitir.';
+                    console.log(`[WhatsApp] NF ${nfId}: cliente sem certificado A1`);
                   } else {
                     // Emissão real via Portal Nacional
                     const resultado = await nfseService.emitirNFSe(notaCompleta, clienteCompleto, tomadorCompleto);
                     if (resultado.sucesso) {
                       db.prepare('UPDATE notas_fiscais SET status = ?, numero_nfse = ?, chave_acesso = ?, data_emissao = datetime(?) WHERE id = ?')
-                        .run('emitida', resultado.numeroNfse, resultado.chaveAcesso, new Date().toISOString(), result.lastInsertRowid);
-                      console.log(`[WhatsApp] NF ${result.lastInsertRowid} emitida com sucesso: ${resultado.numeroNfse}`);
+                        .run('emitida', resultado.numeroNfse, resultado.chaveAcesso, new Date().toISOString(), nfId);
+                      emissaoStatus = 'emitida';
+                      emissaoInfo = resultado.numeroNfse;
+                      console.log(`[WhatsApp] NF ${nfId} emitida com sucesso: ${resultado.numeroNfse}`);
                     } else {
                       db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
-                        .run('erro_emissao', resultado.erro, result.lastInsertRowid);
-                      console.error(`[WhatsApp] Erro na emissão NF ${result.lastInsertRowid}: ${resultado.erro}`);
+                        .run('erro_emissao', resultado.erro, nfId);
+                      emissaoStatus = 'erro_emissao';
+                      emissaoInfo = resultado.erro;
+                      console.error(`[WhatsApp] Erro na emissão NF ${nfId}: ${resultado.erro}`);
                     }
                   }
-                } catch (emissaoErr) {
-                  console.error(`[WhatsApp] Erro ao tentar emitir NF ${result.lastInsertRowid}:`, emissaoErr);
-                  db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
-                    .run('erro_emissao', emissaoErr.message, result.lastInsertRowid);
                 }
-              } else {
-                console.log(`[WhatsApp] NF não criada: tomador não encontrado (${tomadorNome}) ou valor inválido (${valor})`);
+              } catch (emissaoErr) {
+                console.error(`[WhatsApp] Erro ao tentar emitir NF ${nfId}:`, emissaoErr);
+                db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
+                  .run('erro_emissao', emissaoErr.message, nfId);
+                emissaoStatus = 'erro_emissao';
+                emissaoInfo = emissaoErr.message;
               }
+
+              // Armazena feedback para a resposta
+              acao.feedback = {
+                sucesso: emissaoStatus === 'emitida',
+                nfId,
+                status: emissaoStatus,
+                numero: emissaoInfo,
+                tomador: tomador.razao_social,
+                valor
+              };
+
             } catch (err) {
               console.error('[WhatsApp] Erro ao criar NF:', err);
+              acao.feedback = { sucesso: false, erro: err.message };
             }
           }
           break;
