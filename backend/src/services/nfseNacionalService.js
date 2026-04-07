@@ -148,21 +148,24 @@ class NfseNacionalService {
   }
 
   /**
-   * Gera endereço nacional no formato correto do schema
+   * Gera endereço no formato correto do schema XSD (TCEndereco)
+   * Estrutura: end > { endNac{cMun, CEP} | endExt }, xLgr, nro, xCpl?, xBairro
+   * IMPORTANTE: xLgr, nro, xBairro são filhos de <end>, NÃO de <endNac>
+   * <endNac> contém APENAS cMun e CEP
    */
   _gerarEnderecoXml(dados) {
     if (!dados.logradouro && !dados.cep) return '';
+    const cep = dados.cep ? dados.cep.replace(/\D/g, '') : '';
     return `<end>
-        <endNac>
+          ${(dados.codigo_municipio || cep) ? `<endNac>
+            ${dados.codigo_municipio ? `<cMun>${dados.codigo_municipio}</cMun>` : ''}
+            ${cep ? `<CEP>${cep}</CEP>` : ''}
+          </endNac>` : ''}
           ${dados.logradouro ? `<xLgr>${this._escapeXml(dados.logradouro)}</xLgr>` : ''}
           ${dados.numero ? `<nro>${this._escapeXml(dados.numero)}</nro>` : ''}
           ${dados.complemento ? `<xCpl>${this._escapeXml(dados.complemento)}</xCpl>` : ''}
           ${dados.bairro ? `<xBairro>${this._escapeXml(dados.bairro)}</xBairro>` : ''}
-          ${dados.codigo_municipio ? `<cMun>${dados.codigo_municipio}</cMun>` : ''}
-          ${dados.uf ? `<UF>${dados.uf}</UF>` : ''}
-          ${dados.cep ? `<CEP>${dados.cep.replace(/\\D/g, '')}</CEP>` : ''}
-        </endNac>
-      </end>`;
+        </end>`;
   }
 
   /**
@@ -200,6 +203,12 @@ class NfseNacionalService {
         </tribFed>`;
     }
 
+    // Regime tributário do prestador (obrigatório no XSD)
+    // opSimpNac: 1=Não Optante, 2=MEI, 3=ME/EPP
+    const opSimpNac = cliente.regime_simples_nacional || '1';
+    // regEspTrib: 0=Nenhum, 1=Cooperativa, 2=Estimativa, 3=Microempresa, 4=Notário, 5=Autônomo, 6=Sociedade
+    const regEspTrib = cliente.regime_especial_tributacao || '0';
+
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${nfseConfig.versaoLayout}">
   <infDPS Id="${idDPS}">
@@ -217,6 +226,10 @@ class NfseNacionalService {
       ${cliente.inscricao_municipal ? `<IM>${cliente.inscricao_municipal}</IM>` : ''}
       <xNome>${this._escapeXml(cliente.razao_social)}</xNome>
       ${this._gerarEnderecoXml(cliente)}
+      <regTrib>
+        <opSimpNac>${opSimpNac}</opSimpNac>
+        <regEspTrib>${regEspTrib}</regEspTrib>
+      </regTrib>
     </prest>
 
     <toma>
@@ -225,19 +238,19 @@ class NfseNacionalService {
         : `<CPF>${documentoTomador}</CPF>`
       }
       <xNome>${this._escapeXml(tomador.razao_social)}</xNome>
-      ${tomador.email ? `<email>${this._escapeXml(tomador.email)}</email>` : ''}
       ${this._gerarEnderecoXml(tomador)}
+      ${tomador.email ? `<email>${this._escapeXml(tomador.email)}</email>` : ''}
     </toma>
 
     <serv>
       <locPrest>
         <cLocPrestacao>${codMunicipio}</cLocPrestacao>
-        <cPaisPrestacao>1058</cPaisPrestacao>
       </locPrest>
       <cServ>
         <cTribNac>${nota.codigo_servico}</cTribNac>
         <xDescServ>${this._escapeXml(nota.descricao_servico)}</xDescServ>
       </cServ>
+      ${nota.observacoes ? `<infoCompl><xInfComp>${this._escapeXml(nota.observacoes)}</xInfComp></infoCompl>` : ''}
     </serv>
 
     <valores>
@@ -247,11 +260,8 @@ class NfseNacionalService {
       <trib>
         <tribMun>
           <tribISSQN>1</tribISSQN>
-          <cLocIncid>${codMunicipio}</cLocIncid>
-          <vBC>${fmt(baseCalculo)}</vBC>
           <pAliq>${fmt(aliquotaPercent)}</pAliq>
-          <vISSQN>${fmt(nota.valor_iss)}</vISSQN>
-          <tpRetISSQN>${nota.iss_retido ? '1' : '2'}</tpRetISSQN>
+          <tpRetISSQN>${nota.iss_retido ? '2' : '1'}</tpRetISSQN>
         </tribMun>
         ${tribFedXml}
         <totTrib>
@@ -259,8 +269,6 @@ class NfseNacionalService {
         </totTrib>
       </trib>
     </valores>
-
-    ${nota.observacoes ? `<infCompl><xInfComp>${this._escapeXml(nota.observacoes)}</xInfComp></infCompl>` : ''}
   </infDPS>
 </DPS>`;
 
