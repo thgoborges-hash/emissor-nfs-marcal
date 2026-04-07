@@ -21,14 +21,18 @@ class NfseNacionalService {
    * @returns {object} Resultado da emissão
    */
   async emitirNFSe(nota, cliente, tomador) {
+    console.log(`[NFS-e] Iniciando emissão para NF ${nota.id}, cliente ${cliente.razao_social}`);
+
     // 1. Carrega o certificado do cliente
     const cert = certificadoService.carregarCertificado(
       cliente.id,
       cliente.certificado_a1_senha_encrypted
     );
+    console.log(`[NFS-e] Certificado carregado: ${cert.info.titular}, valido ate ${cert.info.validade?.fim}`);
 
     // 2. Gera o XML da DPS
     const dpsXml = this._gerarDpsXml(nota, cliente, tomador);
+    console.log(`[NFS-e] XML DPS gerado (${dpsXml.length} chars)`);
 
     // 3. Assina o XML
     const dpsXmlAssinado = xmlSignerService.assinarXml(
@@ -37,6 +41,7 @@ class NfseNacionalService {
       cert.senha,
       `DPS_${nota.numero_dps}`
     );
+    console.log(`[NFS-e] XML assinado (${dpsXmlAssinado.length} chars)`);
 
     // 4. Comprime com GZip e codifica em Base64
     const xmlGzipBase64 = await this._comprimirECodificar(dpsXmlAssinado);
@@ -48,16 +53,24 @@ class NfseNacionalService {
 
     // 6. Envia para a API via mTLS
     const endpoint = `${nfseConfig.ambiente.sefin}${nfseConfig.endpoints.enviarDPS}`;
+    console.log(`[NFS-e] Enviando para: ${endpoint}`);
     const resultado = await this._requisicaoMTLS(endpoint, 'POST', payload, cert.pfxBuffer, cert.senha);
+    console.log(`[NFS-e] Resposta recebida:`, JSON.stringify(resultado).substring(0, 500));
+
+    // A API retorna nfseXmlGZipB64 com o XML da NFS-e quando sucesso (status 201)
+    // Extrai dados do resultado
+    const chaveAcesso = resultado.chaveAcesso || resultado.chave_acesso || resultado.chaveNFSe;
+    const numeroNfse = resultado.nfseNumero || resultado.numero || resultado.numeroNfse;
 
     return {
       sucesso: true,
-      numeroNfse: resultado.nfseNumero || resultado.numero,
-      chaveAcesso: resultado.chaveAcesso,
-      dataEmissao: resultado.dataEmissao || new Date().toISOString(),
-      protocolo: resultado.protocolo || resultado.idDPS,
+      numeroNfse: numeroNfse,
+      chaveAcesso: chaveAcesso,
+      dataEmissao: resultado.dataEmissao || resultado.data_emissao || new Date().toISOString(),
+      protocolo: resultado.protocolo || resultado.idDPS || resultado.id,
       xmlEnvio: dpsXmlAssinado,
       xmlRetorno: JSON.stringify(resultado),
+      nfseXmlGZipB64: resultado.nfseXmlGZipB64,
     };
   }
 
@@ -259,6 +272,7 @@ class NfseNacionalService {
   _requisicaoMTLS(url, method, body, pfxBuffer, senha, isBinary = false) {
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
+      console.log(`[NFS-e mTLS] ${method} ${url}`);
 
       const options = {
         hostname: urlObj.hostname,
@@ -303,12 +317,14 @@ class NfseNacionalService {
             }
           } else {
             let errorMsg = `API retornou status ${res.statusCode}`;
+            console.error(`[NFS-e mTLS] Erro HTTP ${res.statusCode} de ${url}`);
+            console.error(`[NFS-e mTLS] Resposta: ${responseText.substring(0, 500)}`);
             try {
               const errorBody = JSON.parse(responseText);
               errorMsg = errorBody.mensagem || errorBody.message || errorBody.erro || errorMsg;
               reject({ statusCode: res.statusCode, mensagem: errorMsg, detalhes: errorBody });
             } catch {
-              reject({ statusCode: res.statusCode, mensagem: errorMsg, detalhes: responseText });
+              reject({ statusCode: res.statusCode, mensagem: errorMsg, detalhes: responseText.substring(0, 500) });
             }
           }
         });

@@ -6,13 +6,13 @@ const AMBIENTES = {
   homologacao: {
     nome: 'Produção Restrita (Homologação)',
     baseUrl: 'https://sefin.producaorestrita.nfse.gov.br',
-    sefin: 'https://sefin.producaorestrita.nfse.gov.br/sefin',
+    sefin: 'https://sefin.producaorestrita.nfse.gov.br/SefinNacional',
     danfse: 'https://sefin.producaorestrita.nfse.gov.br/danfse',
   },
   producao: {
     nome: 'Produção',
     baseUrl: 'https://sefin.nfse.gov.br',
-    sefin: 'https://sefin.nfse.gov.br/sefin',
+    sefin: 'https://sefin.nfse.gov.br/SefinNacional',
     danfse: 'https://sefin.nfse.gov.br/danfse',
   }
 };
@@ -24,25 +24,29 @@ const config = {
   ambiente: AMBIENTES[AMBIENTE_ATIVO],
   ambienteNome: AMBIENTE_ATIVO,
 
-  // Endpoints da API (relativos ao sefin)
+  // Endpoints da API NFS-e Nacional (relativos ao sefin/SefinNacional)
+  // Ref: https://sefin.producaorestrita.nfse.gov.br/API/SefinNacional/docs/index
   endpoints: {
-    // DPS - Declaração de Prestação de Serviço
-    enviarDPS: '/contribuinte/nfse/DPS',
-    consultarDPS: '/contribuinte/nfse/DPS', // GET com query params
-    verificarDPS: '/contribuinte/nfse/DPS', // HEAD
+    // POST /nfse - Recepciona a DPS e Gera a NFS-e de forma síncrona
+    enviarDPS: '/nfse',
+    // GET /dps/{id} - Consulta DPS (retorna chave de acesso)
+    consultarDPS: '/dps',
+    // HEAD /dps/{id} - Verifica se DPS já virou NFS-e
+    verificarDPS: '/dps',
 
-    // NFS-e
-    consultarNFSe: '/contribuinte/nfse', // GET /{chaveAcesso}
+    // GET /nfse/{chaveAcesso} - Consulta NFS-e
+    consultarNFSe: '/nfse',
 
-    // Eventos (cancelamento, substituição)
-    enviarEvento: '/contribuinte/nfse', // POST /{chaveAcesso}/eventos
-    consultarEventos: '/contribuinte/nfse', // GET /{chaveAcesso}/eventos
+    // POST /nfse/{chaveAcesso}/eventos - Registra evento (cancelamento, substituição)
+    enviarEvento: '/nfse',
+    // GET /nfse/{chaveAcesso}/eventos - Consulta eventos
+    consultarEventos: '/nfse',
 
-    // DANFSe (PDF)
-    danfse: '/danfse', // GET /{chaveAcesso}
+    // DANFSe (PDF) - GET /danfse/{chaveAcesso}
+    danfse: '/danfse',
 
     // Parâmetros municipais
-    parametrosMunicipais: '/contribuinte/nfse/parametros-municipais',
+    parametrosMunicipais: '/parametros-municipais',
   },
 
   // Configurações de assinatura XML
