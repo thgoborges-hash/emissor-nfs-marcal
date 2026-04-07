@@ -172,10 +172,6 @@ class NfseNacionalService {
     <tpEmit>1</tpEmit>
     <cLocEmi>${cliente.codigo_municipio || '0000000'}</cLocEmi>
 
-    <subst>
-      <cMotivo>0</cMotivo>
-    </subst>
-
     <prest>
       <CNPJ>${cnpjPrestador}</CNPJ>
       ${cliente.inscricao_municipal ? `<IM>${cliente.inscricao_municipal}</IM>` : ''}
