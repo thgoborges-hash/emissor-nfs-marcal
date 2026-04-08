@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS notas_fiscais (
 
   -- Número e controle
   numero_dps TEXT, -- número da DPS (gerado pelo sistema)
-  serie_dps TEXT DEFAULT '1',
+  serie_dps TEXT DEFAULT '70000',
   numero_nfse TEXT, -- número da NFS-e (retornado pela SEFIN)
   chave_acesso TEXT, -- chave de acesso de 50 caracteres
 
