@@ -312,6 +312,45 @@ router.put('/:id/emitir', autenticado, async (req, res) => {
       return res.status(400).json({ erro: 'Tomador é obrigatório para emissão' });
     }
 
+    // === PRÉ-VALIDAÇÃO E ENRIQUECIMENTO AUTOMÁTICO ===
+    const preValidacaoService = require('../services/preValidacaoNfseService');
+    const validacao = await preValidacaoService.validarEEnriquecer(nota, cliente, tomador);
+
+    if (!validacao.valido) {
+      // Registra os erros e volta status
+      const msgErros = validacao.erros.join('; ');
+      db.prepare(`
+        INSERT INTO log_atividades (tipo, descricao, usuario_tipo, usuario_id, cliente_id, nota_fiscal_id)
+        VALUES ('nf_validacao', ?, ?, ?, ?, ?)
+      `).run(
+        `Pré-validação falhou para NF #${nota.numero_dps}: ${msgErros}`,
+        req.usuario.tipo,
+        req.usuario.tipo === 'escritorio' ? req.usuario.id : null,
+        nota.cliente_id,
+        notaId
+      );
+      return res.status(400).json({
+        erro: 'Dados incompletos para emissão',
+        errosValidacao: validacao.erros,
+        correcoes: validacao.correcoes,
+        avisos: validacao.avisos,
+      });
+    }
+
+    // Log das correções automáticas (se houve)
+    if (validacao.correcoes.length > 0) {
+      db.prepare(`
+        INSERT INTO log_atividades (tipo, descricao, usuario_tipo, usuario_id, cliente_id, nota_fiscal_id)
+        VALUES ('nf_autocorrecao', ?, ?, ?, ?, ?)
+      `).run(
+        `Correções automáticas na NF #${nota.numero_dps}: ${validacao.correcoes.join('; ')}`,
+        req.usuario.tipo,
+        req.usuario.tipo === 'escritorio' ? req.usuario.id : null,
+        nota.cliente_id,
+        notaId
+      );
+    }
+
     // Marca como processando
     db.prepare(`
       UPDATE notas_fiscais SET status = 'processando', updated_at = CURRENT_TIMESTAMP WHERE id = ?

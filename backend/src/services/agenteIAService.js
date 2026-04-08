@@ -563,7 +563,18 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 const clienteCompleto = db.prepare('SELECT * FROM clientes WHERE id = ?').get(contato.cliente_id);
                 const tomadorCompleto = db.prepare('SELECT * FROM tomadores WHERE id = ?').get(tomador.id);
 
-                if (process.env.NFSE_SIMULACAO === 'true') {
+                // Pré-validação e enriquecimento automático
+                const preValidacaoService = require('./preValidacaoNfseService');
+                const validacao = await preValidacaoService.validarEEnriquecer(notaCompleta, clienteCompleto, tomadorCompleto);
+
+                if (!validacao.valido) {
+                  const msgErros = validacao.erros.join('; ');
+                  db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
+                    .run('erro_emissao', `Pré-validação: ${msgErros}`, nfId);
+                  emissaoStatus = 'erro_emissao';
+                  emissaoInfo = `Dados incompletos: ${msgErros}`;
+                  console.log(`[WhatsApp] NF ${nfId}: pré-validação falhou - ${msgErros}`);
+                } else if (process.env.NFSE_SIMULACAO === 'true') {
                   // Modo simulação
                   const numSim = `SIM-${Date.now()}`;
                   db.prepare('UPDATE notas_fiscais SET status = ?, numero_nfse = ?, data_emissao = datetime(?) WHERE id = ?')
@@ -580,7 +591,7 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                     emissaoInfo = 'Cliente sem certificado digital A1. A NF foi criada mas precisa do certificado pra emitir.';
                     console.log(`[WhatsApp] NF ${nfId}: cliente sem certificado A1`);
                   } else {
-                    // Emissão real via Portal Nacional
+                    // Emissão real via Portal Nacional (dados já validados e enriquecidos)
                     const resultado = await nfseService.emitirNFSe(notaCompleta, clienteCompleto, tomadorCompleto);
                     if (resultado.sucesso) {
                       db.prepare('UPDATE notas_fiscais SET status = ?, numero_nfse = ?, chave_acesso = ?, data_emissao = datetime(?) WHERE id = ?')
