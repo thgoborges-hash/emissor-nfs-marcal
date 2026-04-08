@@ -541,7 +541,7 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                   valor_iss, base_calculo, valor_liquido, origem,
                   numero_dps, serie_dps,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'pendente_emissao', ?, ?, ?, ?, ?, 'whatsapp', ?, '70000', datetime('now'), datetime('now'))
+                ) VALUES (?, ?, ?, ?, ?, 'pendente_emissao', ?, ?, ?, ?, ?, 'whatsapp', ?, '1', datetime('now'), datetime('now'))
               `).run(
                 contato.cliente_id,
                 tomador.id,

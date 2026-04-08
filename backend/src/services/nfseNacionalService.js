@@ -187,7 +187,7 @@ class NfseNacionalService {
     const cnpj = (cliente.cnpj || '').replace(/\D/g, '');
     const tipoInscricao = cnpj.length <= 11 ? '1' : '2'; // 1=CPF, 2=CNPJ
     const inscricaoFederal = cnpj.padStart(14, '0');
-    const serie = (nota.serie_dps || '70000').padStart(5, '0');
+    const serie = (nota.serie_dps || '1').padStart(5, '0');
     const numero = String(nota.numero_dps || '0').padStart(15, '0');
     return `DPS${codigoMunicipio}${tipoInscricao}${inscricaoFederal}${serie}${numero}`;
   }
@@ -292,7 +292,7 @@ class NfseNacionalService {
     <tpAmb>${nfseConfig.ambienteNome === 'producao' ? '1' : '2'}</tpAmb>
     <dhEmi>${this._formatarDataUTC(new Date())}</dhEmi>
     <verAplic>EmissorMarcal_1.0</verAplic>
-    <serie>${nota.serie_dps || '70000'}</serie>
+    <serie>${nota.serie_dps || '1'}</serie>
     <nDPS>${nota.numero_dps}</nDPS>
     <dCompet>${dCompet}</dCompet>
     <tpEmit>1</tpEmit>
