@@ -63,14 +63,19 @@ class CnpjService {
       // Tenta obter o código IBGE (7 dígitos) a partir do município e UF
       if (resultado.municipio && resultado.uf) {
         try {
+          console.log(`[CNPJ] Buscando código IBGE para ${resultado.municipio}/${resultado.uf}...`);
           const codigoIBGE = await this._buscarCodigoIBGE(resultado.municipio, resultado.uf);
           if (codigoIBGE) {
             resultado.codigoMunicipio = codigoIBGE;
             console.log(`[CNPJ] Código IBGE obtido: ${codigoIBGE} (${resultado.municipio}/${resultado.uf})`);
+          } else {
+            console.log(`[CNPJ] IBGE lookup retornou null para ${resultado.municipio}/${resultado.uf}`);
           }
         } catch (ibgeErr) {
-          console.error(`[CNPJ] Erro ao buscar código IBGE:`, ibgeErr.message);
+          console.error(`[CNPJ] Erro ao buscar código IBGE para ${resultado.municipio}/${resultado.uf}:`, ibgeErr.message);
         }
+      } else {
+        console.log(`[CNPJ] Município ou UF ausentes na resposta BrasilAPI - não é possível buscar IBGE`);
       }
 
       console.log(`[CNPJ] Consulta OK: ${resultado.razaoSocial} (${resultado.cnpjFormatado}) - ${resultado.situacaoCadastral}`);

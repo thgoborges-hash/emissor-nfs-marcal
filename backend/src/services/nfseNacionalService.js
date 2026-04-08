@@ -156,7 +156,9 @@ class NfseNacionalService {
   _gerarEnderecoXml(dados, codMunicipioFallback) {
     if (!dados.logradouro && !dados.cep) return '';
     const cep = dados.cep ? dados.cep.replace(/\D/g, '') : '';
-    const cMun = dados.codigo_municipio || codMunicipioFallback || '';
+    // Só usa codigo_municipio se for IBGE válido (7 dígitos) — nunca SIAFI (4 dígitos)
+    const rawCMun = dados.codigo_municipio || codMunicipioFallback || '';
+    const cMun = /^\d{7}$/.test(String(rawCMun)) ? String(rawCMun) : '';
     // endNac é obrigatório quando há endereço nacional; cMun e CEP são obrigatórios dentro dele
     return `<end>
           ${cMun ? `<endNac>

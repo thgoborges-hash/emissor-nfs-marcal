@@ -141,14 +141,16 @@ class PreValidacaoNfseService {
 
     // codigo_municipio do tomador - tentar enriquecer se inválido
     if (!this._isCodigoIBGEValido(tomador.codigo_municipio)) {
+      let corrigido = false;
+
       if (tomador.tipo_documento === 'CNPJ' && documento.length === 14) {
         console.log(`[PreValidacao] Tomador sem codigo_municipio válido (atual: "${tomador.codigo_municipio}"). Buscando via CNPJ...`);
         const dadosReceita = await cnpjService.consultarCNPJ(documento);
         if (dadosReceita && this._isCodigoIBGEValido(dadosReceita.codigoMunicipio)) {
           const codigoAnterior = tomador.codigo_municipio;
-          // Atualiza o objeto em memória
           tomador.codigo_municipio = dadosReceita.codigoMunicipio;
           correcoes.push(`Tomador: codigo_municipio atualizado de "${codigoAnterior || 'vazio'}" para "${dadosReceita.codigoMunicipio}" (${dadosReceita.municipio}/${dadosReceita.uf})`);
+          corrigido = true;
           // Persiste no banco
           const updateFields = { codigo_municipio: dadosReceita.codigoMunicipio };
           // Aproveita pra preencher dados faltantes do tomador
@@ -188,14 +190,45 @@ class PreValidacaoNfseService {
           if (Object.keys(updateFields).length > 1) {
             correcoes.push(`Tomador: endereço e dados complementares preenchidos via Receita`);
           }
-        } else {
-          // Tenta usar o município do prestador como fallback se forem da mesma cidade
-          avisos.push(`Tomador: codigo_municipio inválido ("${tomador.codigo_municipio || 'vazio'}") e não foi possível obter via CNPJ. O endereço no XML pode ficar incompleto.`);
+        } else if (dadosReceita && dadosReceita.municipio && dadosReceita.uf) {
+          // CNPJ retornou o nome da cidade mas o IBGE lookup falhou no cnpjService
+          // Tenta buscar direto pela API do IBGE como fallback
+          console.log(`[PreValidacao] CNPJ retornou município ${dadosReceita.municipio}/${dadosReceita.uf} mas sem IBGE. Tentando fallback direto...`);
+          try {
+            const codigoIBGE = await cnpjService._buscarCodigoIBGE(dadosReceita.municipio, dadosReceita.uf);
+            if (codigoIBGE) {
+              const codigoAnterior = tomador.codigo_municipio;
+              tomador.codigo_municipio = codigoIBGE;
+              correcoes.push(`Tomador: codigo_municipio corrigido de "${codigoAnterior || 'vazio'}" para "${codigoIBGE}" (${dadosReceita.municipio}/${dadosReceita.uf}) via fallback IBGE`);
+              corrigido = true;
+              // Persiste
+              const updateFields = { codigo_municipio: codigoIBGE };
+              if (!tomador.municipio && dadosReceita.municipio) {
+                tomador.municipio = dadosReceita.municipio;
+                updateFields.municipio = dadosReceita.municipio;
+              }
+              if (!tomador.uf && dadosReceita.uf) {
+                tomador.uf = dadosReceita.uf;
+                updateFields.uf = dadosReceita.uf;
+              }
+              this._atualizarTomadorNoBanco(tomador.id, updateFields, correcoes);
+            }
+          } catch (fbErr) {
+            console.error(`[PreValidacao] Fallback IBGE falhou:`, fbErr.message);
+          }
         }
-      } else if (tomador.tipo_documento === 'CPF') {
-        // CPF não tem consulta na Receita - avisar mas não bloquear
-        if (tomador.cep || tomador.logradouro) {
-          avisos.push(`Tomador (CPF): codigo_municipio ausente. O endereço será omitido do XML se não houver código IBGE válido.`);
+      }
+
+      // Se não corrigiu E não é CPF sem endereço → BLOQUEIA emissão
+      if (!corrigido) {
+        if (tomador.tipo_documento === 'CPF') {
+          // CPF: limpa o código inválido pra não enviar lixo no XML
+          if (tomador.codigo_municipio && !this._isCodigoIBGEValido(tomador.codigo_municipio)) {
+            tomador.codigo_municipio = null;
+            avisos.push(`Tomador (CPF): codigo_municipio inválido removido. Endereço será omitido do XML.`);
+          }
+        } else {
+          erros.push(`Tomador: codigo_municipio inválido ("${tomador.codigo_municipio || 'vazio'}") e não foi possível corrigir automaticamente. Cadastre o código IBGE (7 dígitos) do tomador.`);
         }
       }
     }
