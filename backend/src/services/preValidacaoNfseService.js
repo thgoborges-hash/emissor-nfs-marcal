@@ -37,7 +37,7 @@ class PreValidacaoNfseService {
     // =========================================================
     // 3. VALIDAÇÃO DA NOTA FISCAL
     // =========================================================
-    this._validarNota(nota, cliente, erros, avisos);
+    this._validarNota(nota, cliente, erros, correcoes, avisos);
 
     // =========================================================
     // 4. VALIDAÇÃO DE REGIME TRIBUTÁRIO E TRIBUTOS
@@ -112,7 +112,7 @@ class PreValidacaoNfseService {
     }
 
     // Regime tributário - avisar se não configurado
-    if (!cliente.regime_simples_nacional && !cliente.optante_simples) {
+    if (!cliente.optante_simples && !cliente.regime_simples_nacional) {
       avisos.push('Prestador: regime do Simples Nacional não configurado (usando padrão: Não Optante)');
     }
   }
@@ -205,13 +205,33 @@ class PreValidacaoNfseService {
   // VALIDAÇÃO DA NOTA FISCAL
   // ===========================================================================
 
-  _validarNota(nota, cliente, erros, avisos) {
-    // Campos obrigatórios
+  _validarNota(nota, cliente, erros, correcoes, avisos) {
+    // Código de serviço — tentar pegar do cliente se ausente na nota
     if (!nota.codigo_servico) {
-      erros.push('Nota: código de serviço (cTribNac) ausente');
+      if (cliente.codigo_servico) {
+        nota.codigo_servico = cliente.codigo_servico;
+        // Persiste na nota
+        try {
+          const db = getDb();
+          db.prepare('UPDATE notas_fiscais SET codigo_servico = ? WHERE id = ?').run(cliente.codigo_servico, nota.id);
+          correcoes.push(`Nota: código de serviço preenchido do cadastro do cliente (${cliente.codigo_servico})`);
+        } catch (e) { /* ok */ }
+      } else {
+        erros.push('Nota: código de serviço (cTribNac) ausente. Configure o código padrão no cadastro do cliente.');
+      }
     }
+    // Descrição do serviço — tentar do cliente
     if (!nota.descricao_servico || nota.descricao_servico.trim() === '') {
-      erros.push('Nota: descrição do serviço ausente');
+      if (cliente.descricao_servico_padrao) {
+        nota.descricao_servico = cliente.descricao_servico_padrao;
+        try {
+          const db = getDb();
+          db.prepare('UPDATE notas_fiscais SET descricao_servico = ? WHERE id = ?').run(cliente.descricao_servico_padrao, nota.id);
+          correcoes.push(`Nota: descrição do serviço preenchida do cadastro do cliente`);
+        } catch (e) { /* ok */ }
+      } else {
+        erros.push('Nota: descrição do serviço ausente');
+      }
     }
     if (!nota.valor_servico || nota.valor_servico <= 0) {
       erros.push('Nota: valor do serviço inválido ou zero');
@@ -238,7 +258,7 @@ class PreValidacaoNfseService {
   // ===========================================================================
 
   _validarRegimeTributario(nota, cliente, erros, avisos) {
-    const opSimpNac = String(cliente.regime_simples_nacional || cliente.optante_simples || '1');
+    const opSimpNac = String(cliente.optante_simples || cliente.regime_simples_nacional || '1');
     const isSimplesNacional = opSimpNac === '2' || opSimpNac === '3';
 
     if (isSimplesNacional) {

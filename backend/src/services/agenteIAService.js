@@ -73,14 +73,14 @@ class AgenteIAService {
 
         if (fb.sucesso) {
           feedbackMsg = `\n\n✅ *NF emitida com sucesso!*\nNúmero: ${fb.numero}\nValor: R$ ${fb.valor?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\nTomador: ${fb.tomador}`;
-        } else if (fb.status === 'erro_emissao') {
-          feedbackMsg = `\n\n⚠️ A NF foi criada no sistema (ID ${fb.nfId}), mas não foi possível emitir automaticamente agora. ${fb.numero || ''}\nVou pedir pro Thiago dar uma olhada!`;
-        } else if (fb.erro) {
-          feedbackMsg = `\n\nOpa, tive um probleminha: ${fb.erro}. Vou verificar com o Thiago e te retorno!`;
+        } else if (fb.status === 'erro_emissao' || fb.erro) {
+          // Mensagem amigável para o cliente - SEM detalhes técnicos
+          feedbackMsg = `\n\n✅ Sua solicitação foi registrada! Estou verificando alguns dados cadastrais e o Thiago vai confirmar a emissão em breve.`;
+          // Log técnico fica só no servidor
+          console.log(`[WhatsApp] Erro técnico (oculto do cliente): ${fb.numero || fb.erro || 'erro desconhecido'}`);
         }
 
         if (feedbackMsg) {
-          // Append feedback to the response (will be cleaned of action tags later)
           const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
           return respostaLimpa + feedbackMsg;
         }

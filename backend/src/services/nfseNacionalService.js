@@ -196,7 +196,7 @@ class NfseNacionalService {
 
     // Regime tributário do prestador (obrigatório no XSD)
     // opSimpNac: 1=Não Optante, 2=MEI, 3=ME/EPP
-    const opSimpNac = String(cliente.regime_simples_nacional || '1');
+    const opSimpNac = String(cliente.optante_simples || cliente.regime_simples_nacional || '1');
     const isSimplesNacional = opSimpNac === '2' || opSimpNac === '3';
     // regEspTrib: 0=Nenhum, 1=Cooperativa, 2=Estimativa, 3=Microempresa, 4=Notário, 5=Autônomo, 6=Sociedade
     const regEspTrib = cliente.regime_especial_tributacao || '0';

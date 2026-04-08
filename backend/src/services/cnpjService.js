@@ -45,7 +45,8 @@ class CnpjService {
         municipio: dados.municipio || '',
         uf: dados.uf || '',
         cep: (dados.cep || '').replace(/\D/g, ''),
-        codigoMunicipio: dados.codigo_municipio ? String(dados.codigo_municipio) : '',
+        codigoMunicipioSIAFI: dados.codigo_municipio ? String(dados.codigo_municipio) : '',
+        codigoMunicipio: '', // Será preenchido com código IBGE de 7 dígitos
         // Contato
         email: dados.email || '',
         telefone: dados.ddd_telefone_1 || '',
@@ -58,6 +59,19 @@ class CnpjService {
         // Dados originais completos (caso precise de algo extra)
         _raw: dados
       };
+
+      // Tenta obter o código IBGE (7 dígitos) a partir do município e UF
+      if (resultado.municipio && resultado.uf) {
+        try {
+          const codigoIBGE = await this._buscarCodigoIBGE(resultado.municipio, resultado.uf);
+          if (codigoIBGE) {
+            resultado.codigoMunicipio = codigoIBGE;
+            console.log(`[CNPJ] Código IBGE obtido: ${codigoIBGE} (${resultado.municipio}/${resultado.uf})`);
+          }
+        } catch (ibgeErr) {
+          console.error(`[CNPJ] Erro ao buscar código IBGE:`, ibgeErr.message);
+        }
+      }
 
       console.log(`[CNPJ] Consulta OK: ${resultado.razaoSocial} (${resultado.cnpjFormatado}) - ${resultado.situacaoCadastral}`);
       return resultado;
@@ -102,6 +116,50 @@ class CnpjService {
         reject(new Error('Timeout na consulta CNPJ'));
       });
     });
+  }
+
+  /**
+   * Busca código IBGE de 7 dígitos a partir do nome do município e UF
+   * Usa a API do IBGE: https://servicodados.ibge.gov.br
+   */
+  async _buscarCodigoIBGE(municipio, uf) {
+    // Cache em memória para evitar consultas repetidas
+    if (!this._cacheIBGE) this._cacheIBGE = {};
+    const cacheKey = `${uf}_${municipio}`.toUpperCase();
+    if (this._cacheIBGE[cacheKey]) return this._cacheIBGE[cacheKey];
+
+    try {
+      const url = `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`;
+      const municipios = await this._fazerRequisicao(url);
+
+      if (!municipios || !Array.isArray(municipios)) return null;
+
+      // Normaliza o nome para comparação (remove acentos, maiúsculas)
+      const normalizar = (str) =>
+        str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+
+      const nomeNormalizado = normalizar(municipio);
+
+      // Busca exata primeiro
+      let encontrado = municipios.find(m => normalizar(m.nome) === nomeNormalizado);
+
+      // Se não achou, tenta busca parcial
+      if (!encontrado) {
+        encontrado = municipios.find(m => normalizar(m.nome).includes(nomeNormalizado) || nomeNormalizado.includes(normalizar(m.nome)));
+      }
+
+      if (encontrado) {
+        const codigo = String(encontrado.id);
+        this._cacheIBGE[cacheKey] = codigo;
+        return codigo;
+      }
+
+      console.log(`[IBGE] Município não encontrado: ${municipio}/${uf}`);
+      return null;
+    } catch (err) {
+      console.error(`[IBGE] Erro na consulta: ${err.message}`);
+      return null;
+    }
   }
 
   /**

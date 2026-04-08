@@ -410,10 +410,10 @@ router.post('/agente/testar', autenticado, apenasEscritorio, async (req, res) =>
           let feedbackMsg = '';
           if (fb.sucesso) {
             feedbackMsg = `\n\n✅ *NF emitida com sucesso!*\nNúmero: ${fb.numero}\nValor: R$ ${fb.valor?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\nTomador: ${fb.tomador}`;
-          } else if (fb.status === 'erro_emissao') {
-            feedbackMsg = `\n\n⚠️ A NF foi criada no sistema (ID ${fb.nfId}), mas não foi possível emitir automaticamente agora. ${fb.numero || ''}\nVou pedir pro Thiago dar uma olhada!`;
-          } else if (fb.erro) {
-            feedbackMsg = `\n\nOpa, tive um probleminha: ${fb.erro}. Vou verificar com o Thiago e te retorno!`;
+          } else if (fb.status === 'erro_emissao' || fb.erro) {
+            // Mensagem amigável - detalhes técnicos só no log
+            feedbackMsg = `\n\n✅ Sua solicitação foi registrada! Estou verificando alguns dados cadastrais e o Thiago vai confirmar a emissão em breve.`;
+            console.log(`[Teste] Erro técnico (oculto do cliente): ${fb.numero || fb.erro || 'erro desconhecido'}`);
           }
           if (feedbackMsg) {
             respostaFinal = respostaRaw.replace(/\[ACAO:[^\]]+\]/g, '').trim() + feedbackMsg;
