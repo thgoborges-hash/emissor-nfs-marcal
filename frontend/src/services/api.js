@@ -87,4 +87,9 @@ export const certificadosApi = {
   remover: (clienteId) => api.delete(`/certificados/${clienteId}`),
 };
 
+// === IA / AGENTE ===
+export const iaApi = {
+  creditos: () => api.get('/whatsapp/agente/creditos'),
+};
+
 export default api;

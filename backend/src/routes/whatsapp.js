@@ -442,4 +442,147 @@ router.post('/agente/testar', autenticado, apenasEscritorio, async (req, res) =>
   }
 });
 
+// =====================================================
+// CRÉDITOS / USO DA API ANTHROPIC
+// =====================================================
+
+// GET /api/whatsapp/agente/creditos - Consulta uso e custos da API Anthropic
+router.get('/agente/creditos', autenticado, apenasEscritorio, async (req, res) => {
+  const adminKey = process.env.ANTHROPIC_ADMIN_API_KEY;
+  if (!adminKey) {
+    return res.json({
+      configurado: false,
+      mensagem: 'Configure ANTHROPIC_ADMIN_API_KEY nas variáveis de ambiente do Render para ver os créditos.',
+      instrucoes: 'Acesse console.anthropic.com → Settings → Admin Keys → Create Admin Key'
+    });
+  }
+
+  try {
+    const https = require('https');
+
+    // Período: últimos 30 dias
+    const agora = new Date();
+    const inicio = new Date(agora);
+    inicio.setDate(inicio.getDate() - 30);
+
+    const startingAt = inicio.toISOString().split('.')[0] + 'Z';
+    const endingAt = agora.toISOString().split('.')[0] + 'Z';
+
+    // Consulta custos agrupados por dia
+    const custoUrl = `https://api.anthropic.com/v1/organizations/cost_report?starting_at=${startingAt}&ending_at=${endingAt}&bucket_width=1d`;
+
+    const dadosCusto = await new Promise((resolve, reject) => {
+      const req = https.get(custoUrl, {
+        headers: {
+          'anthropic-version': '2023-06-01',
+          'x-api-key': adminKey,
+          'User-Agent': 'EmissorMarcal/1.0',
+        }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            if (res.statusCode === 200) {
+              resolve(JSON.parse(data));
+            } else {
+              console.error(`[Anthropic] Cost API retornou ${res.statusCode}: ${data.substring(0, 300)}`);
+              reject(new Error(`API retornou status ${res.statusCode}`));
+            }
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      req.on('error', reject);
+      req.setTimeout(10000, () => { req.destroy(); reject(new Error('Timeout')); });
+    });
+
+    // Consulta uso por modelo (últimos 30 dias)
+    const usoUrl = `https://api.anthropic.com/v1/organizations/usage_report/messages?starting_at=${startingAt}&ending_at=${endingAt}&group_by[]=model&bucket_width=1d`;
+
+    const dadosUso = await new Promise((resolve, reject) => {
+      const req = https.get(usoUrl, {
+        headers: {
+          'anthropic-version': '2023-06-01',
+          'x-api-key': adminKey,
+          'User-Agent': 'EmissorMarcal/1.0',
+        }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            if (res.statusCode === 200) {
+              resolve(JSON.parse(data));
+            } else {
+              resolve(null); // Não bloqueia se uso falhar
+            }
+          } catch (e) {
+            resolve(null);
+          }
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.setTimeout(10000, () => { req.destroy(); resolve(null); });
+    });
+
+    // Calcula total gasto nos últimos 30 dias
+    let totalGasto30d = 0;
+    let gastoHoje = 0;
+    let gastoPorDia = [];
+
+    if (dadosCusto && dadosCusto.data) {
+      for (const bucket of dadosCusto.data) {
+        const custoTotal = parseFloat(bucket.cost_cents || 0) / 100; // cents to dollars
+        totalGasto30d += custoTotal;
+        gastoPorDia.push({
+          data: bucket.bucket_start_time,
+          custo_usd: custoTotal,
+        });
+      }
+      // Último dia = hoje
+      if (gastoPorDia.length > 0) {
+        gastoHoje = gastoPorDia[gastoPorDia.length - 1].custo_usd;
+      }
+    }
+
+    // Calcula tokens por modelo
+    let tokensPorModelo = {};
+    if (dadosUso && dadosUso.data) {
+      for (const bucket of dadosUso.data) {
+        const modelo = bucket.model || 'desconhecido';
+        if (!tokensPorModelo[modelo]) {
+          tokensPorModelo[modelo] = { input: 0, output: 0, cached: 0 };
+        }
+        tokensPorModelo[modelo].input += bucket.input_tokens || 0;
+        tokensPorModelo[modelo].output += bucket.output_tokens || 0;
+        tokensPorModelo[modelo].cached += bucket.input_cached_tokens || 0;
+      }
+    }
+
+    res.json({
+      configurado: true,
+      periodo: { inicio: startingAt, fim: endingAt },
+      custos: {
+        total_30d_usd: totalGasto30d.toFixed(2),
+        hoje_usd: gastoHoje.toFixed(2),
+        por_dia: gastoPorDia.slice(-7), // Últimos 7 dias
+      },
+      uso: {
+        por_modelo: tokensPorModelo,
+      },
+      link_console: 'https://console.anthropic.com/settings/billing',
+    });
+
+  } catch (err) {
+    console.error('[Anthropic] Erro ao consultar créditos:', err.message);
+    res.status(500).json({
+      configurado: true,
+      erro: 'Não foi possível consultar a API Anthropic. Verifique a Admin API Key.',
+      detalhes: err.message,
+    });
+  }
+});
+
 module.exports = router;

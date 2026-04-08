@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { notasFiscaisApi, clientesApi } from '../../services/api';
+import { notasFiscaisApi, clientesApi, iaApi } from '../../services/api';
 
 const STATUS_LABELS = {
   rascunho: 'Rascunho', pendente_aprovacao: 'Pendente', aprovada: 'Aprovada',
@@ -10,16 +10,19 @@ const STATUS_LABELS = {
 export default function DashboardEscritorio() {
   const [resumo, setResumo] = useState(null);
   const [clientes, setClientes] = useState([]);
+  const [creditos, setCreditos] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     Promise.all([
       notasFiscaisApi.resumo(),
-      clientesApi.listar()
-    ]).then(([resResumo, resClientes]) => {
+      clientesApi.listar(),
+      iaApi.creditos().catch(() => ({ data: null }))
+    ]).then(([resResumo, resClientes, resCreditos]) => {
       setResumo(resResumo.data);
       setClientes(resClientes.data);
+      setCreditos(resCreditos.data);
     }).catch(console.error)
       .finally(() => setCarregando(false));
   }, []);
@@ -72,6 +75,70 @@ export default function DashboardEscritorio() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Créditos IA */}
+      {creditos && (
+        <div className="card" style={{ borderLeft: '4px solid #7c3aed' }}>
+          <h3 className="card-title" style={{ marginBottom: 12 }}>
+            Uso da IA (Anthropic API)
+          </h3>
+          {!creditos.configurado ? (
+            <div style={{ padding: '8px 0', color: 'var(--text-light)' }}>
+              <p>{creditos.mensagem}</p>
+              {creditos.instrucoes && (
+                <p style={{ fontSize: 13, marginTop: 8 }}>{creditos.instrucoes}</p>
+              )}
+            </div>
+          ) : creditos.erro ? (
+            <p style={{ color: 'var(--danger)' }}>{creditos.erro}</p>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--text-light)' }}>Gasto hoje</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: '#7c3aed' }}>
+                    US$ {creditos.custos?.hoje_usd || '0.00'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--text-light)' }}>Gasto 30 dias</div>
+                  <div style={{ fontSize: 22, fontWeight: 700 }}>
+                    US$ {creditos.custos?.total_30d_usd || '0.00'}
+                  </div>
+                </div>
+              </div>
+              {creditos.custos?.por_dia?.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-light)', marginBottom: 6 }}>Últimos 7 dias</div>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 50 }}>
+                    {creditos.custos.por_dia.map((d, i) => {
+                      const max = Math.max(...creditos.custos.por_dia.map(x => x.custo_usd), 0.01);
+                      const h = Math.max((d.custo_usd / max) * 40, 2);
+                      return (
+                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <div style={{
+                            width: '100%', height: h, background: '#7c3aed',
+                            borderRadius: 2, minWidth: 8
+                          }} title={`US$ ${d.custo_usd.toFixed(2)}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {creditos.uso?.por_modelo && Object.keys(creditos.uso.por_modelo).length > 0 && (
+                <div style={{ fontSize: 13, color: 'var(--text-light)' }}>
+                  Modelos usados: {Object.keys(creditos.uso.por_modelo).join(', ')}
+                </div>
+              )}
+              <a href={creditos.link_console} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 13, color: '#7c3aed', marginTop: 8, display: 'inline-block' }}>
+                Ver detalhes no Console Anthropic
+              </a>
+            </div>
+          )}
         </div>
       )}
 
