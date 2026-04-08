@@ -1,5 +1,6 @@
 /**
  * Rotas do WhatsApp - Webhook e Gerenciamento
+ * Suporta Meta Cloud API e Blip (BSP)
  */
 
 const express = require('express');
@@ -7,6 +8,21 @@ const { getDb } = require('../database/init');
 const { autenticado, apenasEscritorio } = require('../middleware/auth');
 const whatsappService = require('../services/whatsappService');
 const agenteIA = require('../services/agenteIAService');
+
+// Detecta qual provider usar: 'blip' ou 'meta' (padrão)
+const WHATSAPP_PROVIDER = process.env.WHATSAPP_PROVIDER || 'meta';
+let blipService = null;
+if (WHATSAPP_PROVIDER === 'blip') {
+  blipService = require('../services/blipService');
+  console.log('[WhatsApp] Provider: Blip (BSP)');
+} else {
+  console.log('[WhatsApp] Provider: Meta Cloud API');
+}
+
+// Helper: retorna o serviço ativo (Blip ou Meta)
+function getActiveService() {
+  return WHATSAPP_PROVIDER === 'blip' ? blipService : whatsappService;
+}
 
 const router = express.Router();
 
@@ -68,8 +84,121 @@ router.post('/webhook', async (req, res) => {
   }
 });
 
+// =====================================================
+// WEBHOOK - Blip (BSP)
+// =====================================================
+
+// POST /api/whatsapp/webhook/blip - Receber mensagens da Blip
+router.post('/webhook/blip', async (req, res) => {
+  // Responde 200 imediatamente (Blip exige resposta rápida)
+  res.sendStatus(200);
+
+  try {
+    const body = req.body;
+
+    // Blip envia mensagens no formato LIME
+    // type: "text/plain" para texto, content: "mensagem"
+    // from: "5541999999999@wa.gw.msging.net"
+    if (!body || !body.type || !body.content || !body.from) {
+      // Pode ser uma notificação (evento) — ignora
+      if (body?.event) {
+        console.log(`[Blip] Notificação recebida: ${body.event} de ${body.from}`);
+        return;
+      }
+      console.log('[Blip] Mensagem sem campos obrigatórios, ignorando');
+      return;
+    }
+
+    console.log(`[Blip] Mensagem recebida: type=${body.type}, from=${body.from}`);
+
+    // Extrai telefone do endereço LIME
+    const telefone = body.from.split('@')[0].replace(/\D/g, '');
+    const messageId = body.id || '';
+
+    // Extrai texto baseado no tipo LIME
+    let texto = '';
+    switch (body.type) {
+      case 'text/plain':
+        texto = body.content || '';
+        break;
+      case 'application/vnd.lime.media-link+json':
+        texto = body.content?.text || body.content?.title || '[Mídia recebida]';
+        break;
+      case 'application/vnd.lime.document-select+json':
+      case 'application/vnd.lime.select+json':
+        texto = body.content?.text || body.content?.header?.value || '[Seleção]';
+        break;
+      case 'application/vnd.lime.reply+json':
+        texto = body.content?.replied?.value || body.content?.inReplyTo?.value || '[Resposta]';
+        break;
+      default:
+        texto = typeof body.content === 'string' ? body.content : `[${body.type}]`;
+    }
+
+    if (!texto) return;
+
+    // Atualiza contato
+    const db = getDb();
+    const nome = body.metadata?.['#contactName'] || body.metadata?.contactName || '';
+    if (nome) {
+      db.prepare(`
+        INSERT INTO whatsapp_contatos (telefone, nome)
+        VALUES (?, ?)
+        ON CONFLICT(telefone) DO UPDATE SET nome = ?, updated_at = CURRENT_TIMESTAMP
+      `).run(telefone, nome, nome);
+    }
+
+    // Salva mensagem de entrada
+    const service = getActiveService();
+    const conversaId = service.salvarMensagem(telefone, 'entrada', 'texto', texto, messageId, 'cliente');
+
+    // Marca como lida
+    if (blipService) {
+      try {
+        await blipService.marcarComoLida(messageId, body.from);
+      } catch (err) {
+        console.error('[Blip] Erro ao marcar como lida:', err);
+      }
+    }
+
+    // Verifica se a conversa está aguardando humano
+    const conversa = db.prepare('SELECT status FROM whatsapp_conversas WHERE id = ?').get(conversaId);
+    if (conversa?.status === 'aguardando_humano') {
+      console.log(`[Blip] Conversa ${conversaId} aguardando atendimento humano, ignorando bot`);
+      return;
+    }
+
+    // Gera resposta com IA
+    try {
+      const respostaCompleta = await agenteIA.processarMensagem(telefone, texto, conversaId);
+      const respostaLimpa = agenteIA.limparResposta(respostaCompleta);
+
+      if (respostaLimpa && blipService) {
+        await blipService.enviarTexto(telefone, respostaLimpa);
+      }
+    } catch (err) {
+      console.error('[Blip] Erro ao gerar resposta IA:', err);
+      try {
+        if (blipService) {
+          await blipService.enviarTexto(telefone,
+            'Desculpe, estou com dificuldades técnicas. O escritório foi notificado e retornará em breve. 🙏'
+          );
+        }
+      } catch (e) {
+        console.error('[Blip] Erro ao enviar mensagem de erro:', e);
+      }
+    }
+  } catch (err) {
+    console.error('[Blip] Erro ao processar webhook:', err);
+  }
+});
+
+// =====================================================
+// PROCESSAMENTO COMUM
+// =====================================================
+
 /**
- * Processa uma mensagem recebida
+ * Processa uma mensagem recebida (Meta Cloud API)
  */
 async function processarMensagemRecebida(message, contatoWhatsapp) {
   const telefone = message.from;
@@ -136,12 +265,12 @@ async function processarMensagemRecebida(message, contatoWhatsapp) {
     const respostaLimpa = agenteIA.limparResposta(respostaCompleta);
 
     if (respostaLimpa) {
-      await whatsappService.enviarTexto(telefone, respostaLimpa);
+      await getActiveService().enviarTexto(telefone, respostaLimpa);
     }
   } catch (err) {
     console.error('[WhatsApp] Erro ao gerar resposta IA:', err);
     try {
-      await whatsappService.enviarTexto(telefone,
+      await getActiveService().enviarTexto(telefone,
         'Desculpe, estou com dificuldades técnicas. O escritório foi notificado e retornará em breve. 🙏'
       );
     } catch (e) {
@@ -251,7 +380,7 @@ router.post('/conversas/:id/responder', autenticado, apenasEscritorio, async (re
     }
 
     // Envia mensagem via WhatsApp
-    await whatsappService.enviarTexto(conversa.telefone, mensagem);
+    await getActiveService().enviarTexto(conversa.telefone, mensagem);
 
     // Salva como mensagem do humano
     db.prepare(`
@@ -298,10 +427,15 @@ router.put('/conversas/:id/devolver-bot', autenticado, apenasEscritorio, (req, r
 
 // GET /api/whatsapp/status - Status do serviço
 router.get('/status', autenticado, apenasEscritorio, (req, res) => {
+  const provider = WHATSAPP_PROVIDER;
+  const service = getActiveService();
   res.json({
-    whatsapp_configurado: whatsappService.isConfigured(),
+    provider,
+    whatsapp_configurado: service.isConfigured(),
     ia_configurada: agenteIA.isConfigured(),
-    webhook_url: `${req.protocol}://${req.get('host')}/api/whatsapp/webhook`
+    webhook_url: provider === 'blip'
+      ? `${req.protocol}://${req.get('host')}/api/whatsapp/webhook/blip`
+      : `${req.protocol}://${req.get('host')}/api/whatsapp/webhook`
   });
 });
 
@@ -314,11 +448,15 @@ router.post('/enviar', autenticado, apenasEscritorio, async (req, res) => {
       return res.status(400).json({ erro: 'Telefone e mensagem são obrigatórios' });
     }
 
-    if (!whatsappService.isConfigured()) {
-      return res.status(503).json({ erro: 'WhatsApp não configurado. Configure WHATSAPP_PHONE_ID e WHATSAPP_TOKEN nas variáveis de ambiente.' });
+    const service = getActiveService();
+    if (!service.isConfigured()) {
+      return res.status(503).json({ erro: WHATSAPP_PROVIDER === 'blip'
+        ? 'Blip não configurado. Configure BLIP_API_KEY nas variáveis de ambiente.'
+        : 'WhatsApp não configurado. Configure WHATSAPP_PHONE_ID e WHATSAPP_TOKEN nas variáveis de ambiente.'
+      });
     }
 
-    await whatsappService.enviarTexto(telefone, mensagem);
+    await getActiveService().enviarTexto(telefone, mensagem);
     res.json({ mensagem: 'Mensagem enviada com sucesso' });
   } catch (err) {
     console.error('Erro ao enviar mensagem:', err);
@@ -338,9 +476,11 @@ router.get('/agente/status', autenticado, (req, res) => {
       modelo: agenteIA.modelo || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
     },
     whatsapp: {
-      configurado: whatsappService.isConfigured(),
-      verify_token_configurado: !!whatsappService.verifyToken,
-      webhook_url: `${req.protocol}://${req.get('host')}/api/whatsapp/webhook`,
+      provider: WHATSAPP_PROVIDER,
+      configurado: getActiveService().isConfigured(),
+      webhook_url: WHATSAPP_PROVIDER === 'blip'
+        ? `${req.protocol}://${req.get('host')}/api/whatsapp/webhook/blip`
+        : `${req.protocol}://${req.get('host')}/api/whatsapp/webhook`,
     },
   });
 });
