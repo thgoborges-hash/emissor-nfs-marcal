@@ -153,12 +153,14 @@ class NfseNacionalService {
    * IMPORTANTE: xLgr, nro, xBairro são filhos de <end>, NÃO de <endNac>
    * <endNac> contém APENAS cMun e CEP
    */
-  _gerarEnderecoXml(dados) {
+  _gerarEnderecoXml(dados, codMunicipioFallback) {
     if (!dados.logradouro && !dados.cep) return '';
     const cep = dados.cep ? dados.cep.replace(/\D/g, '') : '';
+    const cMun = dados.codigo_municipio || codMunicipioFallback || '';
+    // endNac é obrigatório quando há endereço nacional; cMun e CEP são obrigatórios dentro dele
     return `<end>
-          ${(dados.codigo_municipio || cep) ? `<endNac>
-            ${dados.codigo_municipio ? `<cMun>${dados.codigo_municipio}</cMun>` : ''}
+          ${cMun ? `<endNac>
+            <cMun>${cMun}</cMun>
             ${cep ? `<CEP>${cep}</CEP>` : ''}
           </endNac>` : ''}
           ${dados.logradouro ? `<xLgr>${this._escapeXml(dados.logradouro)}</xLgr>` : ''}
@@ -225,7 +227,7 @@ class NfseNacionalService {
       <CNPJ>${cnpjPrestador}</CNPJ>
       ${cliente.inscricao_municipal ? `<IM>${cliente.inscricao_municipal}</IM>` : ''}
       <xNome>${this._escapeXml(cliente.razao_social)}</xNome>
-      ${this._gerarEnderecoXml(cliente)}
+      ${this._gerarEnderecoXml(cliente, codMunicipio)}
       <regTrib>
         <opSimpNac>${opSimpNac}</opSimpNac>
         <regEspTrib>${regEspTrib}</regEspTrib>
@@ -238,7 +240,7 @@ class NfseNacionalService {
         : `<CPF>${documentoTomador}</CPF>`
       }
       <xNome>${this._escapeXml(tomador.razao_social)}</xNome>
-      ${this._gerarEnderecoXml(tomador)}
+      ${this._gerarEnderecoXml(tomador, codMunicipio)}
       ${tomador.email ? `<email>${this._escapeXml(tomador.email)}</email>` : ''}
     </toma>
 
