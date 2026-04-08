@@ -80,10 +80,24 @@ class AgenteIAService {
             `\nValor: R$ ${valorFormatado}` +
             `\nTomador: ${fb.tomador}`;
         } else if (fb.status === 'erro_emissao' || fb.erro) {
-          // Mensagem amigável para o cliente - SEM detalhes técnicos
-          feedbackMsg = `\n\n✅ Sua solicitação foi registrada! Estou verificando alguns dados cadastrais e o Thiago vai confirmar a emissão em breve.`;
-          // Log técnico fica só no servidor
-          console.log(`[WhatsApp] Erro técnico (oculto do cliente): ${fb.numero || fb.erro || 'erro desconhecido'}`);
+          // Mensagem específica baseada no tipo de erro
+          const erroStr = (fb.numero || fb.erro || '').toLowerCase();
+          console.log(`[WhatsApp] Erro na emissão (detalhes): ${fb.numero || fb.erro || 'erro desconhecido'}`);
+
+          if (erroStr.includes('certificado')) {
+            feedbackMsg = `\n\n⚠️ Não consegui emitir a NF porque o certificado digital A1 não está configurado ou está vencido. Vou avisar o Thiago pra resolver isso rapidinho! A NF ficou salva e será emitida assim que o certificado estiver ok.`;
+          } else if (erroStr.includes('pré-validação') || erroStr.includes('dados incompletos')) {
+            // Extrai os erros específicos da pré-validação
+            const detalhes = (fb.numero || fb.erro || '').replace(/^(Pré-validação: |Dados incompletos: )/i, '');
+            feedbackMsg = `\n\n⚠️ Quase lá! Faltam alguns dados pra emitir:\n${detalhes}\n\nMe passa essas informações que eu emito na hora! 😉`;
+          } else if (erroStr.includes('e0') || erroStr.includes('rejeição') || erroStr.includes('rejeicao') || erroStr.includes('sefin')) {
+            // Erros da SEFIN (códigos E0xxx)
+            feedbackMsg = `\n\n⚠️ A prefeitura rejeitou a emissão. O Thiago já foi notificado e vai verificar o que precisa ser ajustado. Assim que resolver, a NF será emitida! 🔧`;
+          } else if (erroStr.includes('timeout') || erroStr.includes('econnrefused') || erroStr.includes('network') || erroStr.includes('socket')) {
+            feedbackMsg = `\n\n⚠️ O sistema da prefeitura está instável no momento. Sua NF foi salva e vou tentar emitir novamente em breve! ⏳`;
+          } else {
+            feedbackMsg = `\n\n⚠️ Tive um probleminha técnico ao emitir a NF. Já notifiquei o Thiago e ele vai resolver o mais rápido possível. A NF ficou salva no sistema! 🔧`;
+          }
         }
 
         if (feedbackMsg) {
@@ -232,6 +246,13 @@ O QUE A ANA FAZ:
    "Deixa eu puxar aqui a guia pra você!"
    E inclua [ACAO:ENVIAR_GUIA:tipo|referencia]
 
+SOBRE EMISSÃO E ERROS:
+- Quando você emitir uma NF (usando [ACAO:EMITIR_NF:...]), o sistema vai tentar emitir automaticamente na hora
+- Se der certo, o sistema vai adicionar a mensagem de sucesso automaticamente — NÃO adicione você mesma nenhuma mensagem de sucesso tipo "emitida!" antes da ação
+- Se der erro, o sistema também vai adicionar a mensagem de erro automaticamente — NÃO diga "vou verificar com o Thiago" ou "o Thiago vai confirmar" por conta própria
+- Sua mensagem antes da [ACAO:EMITIR_NF:...] deve ser só a confirmação dos dados, tipo "Vou emitir agora!" ou "Emitindo pra você!"
+- O feedback real (sucesso ou erro) será adicionado AUTOMATICAMENTE pelo sistema no final da sua resposta
+
 O QUE A ANA NUNCA FAZ:
 - NUNCA inventa dados — se não tem a informação, diz que vai verificar
 - NUNCA promete prazos específicos ("fica pronto amanhã", "até sexta tá feito")
@@ -239,6 +260,7 @@ O QUE A ANA NUNCA FAZ:
 - NUNCA dá conselho tributário complexo — se for algo além do básico, transfere: "Isso é melhor o Thiago te orientar, vou passar pra ele"
 - NUNCA se identifica como IA, robô ou assistente virtual — ela é a Ana, da equipe
 - NUNCA responde em formato de chatbot (menus, opções numeradas, "selecione uma opção")
+- NUNCA diz "o Thiago vai confirmar a emissão" quando o sistema tem emissão automática — o sistema emite na hora
 
 QUANDO TRANSFERIR PRO THIAGO:
 - Assuntos complexos de planejamento tributário

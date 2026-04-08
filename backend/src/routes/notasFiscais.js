@@ -63,7 +63,7 @@ router.get('/', autenticado, (req, res) => {
              nf.status, nf.codigo_servico, nf.descricao_servico,
              nf.valor_servico, nf.valor_iss, nf.aliquota_iss, nf.valor_liquido,
              nf.iss_retido, nf.data_competencia, nf.data_emissao,
-             nf.criado_por, nf.origem, nf.created_at,
+             nf.criado_por, nf.origem, nf.observacoes, nf.created_at,
              c.razao_social as cliente_razao_social, c.cnpj as cliente_cnpj,
              t.razao_social as tomador_razao_social, t.documento as tomador_documento
       FROM notas_fiscais nf
@@ -298,8 +298,9 @@ router.put('/:id/emitir', autenticado, async (req, res) => {
     if (!nota) {
       return res.status(404).json({ erro: 'Nota fiscal não encontrada' });
     }
-    if (nota.status !== 'aprovada') {
-      return res.status(400).json({ erro: `Nota precisa estar aprovada para ser emitida (status atual: ${nota.status})` });
+    const statusPermitidos = ['aprovada', 'erro_emissao', 'pendente_emissao'];
+    if (!statusPermitidos.includes(nota.status)) {
+      return res.status(400).json({ erro: `Nota precisa estar aprovada ou com erro para ser (re-)emitida (status atual: ${nota.status})` });
     }
 
     // Busca dados do cliente e tomador

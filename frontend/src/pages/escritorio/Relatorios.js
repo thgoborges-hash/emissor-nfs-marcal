@@ -114,11 +114,13 @@ export default function Relatorios() {
 
   const STATUS_CORES = {
     emitida: '#27ae60', pendente_aprovacao: '#f39c12', rascunho: '#95a5a6',
-    aprovada: '#3498db', processando: '#9b59b6', rejeitada: '#e74c3c', cancelada: '#c0392b'
+    aprovada: '#3498db', processando: '#9b59b6', rejeitada: '#e74c3c', cancelada: '#c0392b',
+    pendente_emissao: '#0ea5e9', erro_emissao: '#dc2626'
   };
   const STATUS_LABELS = {
     rascunho: 'Rascunho', pendente_aprovacao: 'Pendente', aprovada: 'Aprovada',
-    processando: 'Processando', emitida: 'Emitida', rejeitada: 'Rejeitada', cancelada: 'Cancelada'
+    processando: 'Processando', emitida: 'Emitida', rejeitada: 'Rejeitada', cancelada: 'Cancelada',
+    pendente_emissao: 'Aguardando Emissão', erro_emissao: 'Erro na Emissão'
   };
 
   const totais = dadosFaturamento?.totais || {};

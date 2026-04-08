@@ -8,7 +8,9 @@ const STATUS_LABELS = {
   processando: 'Processando',
   emitida: 'Emitida',
   rejeitada: 'Rejeitada',
-  cancelada: 'Cancelada'
+  cancelada: 'Cancelada',
+  pendente_emissao: 'Aguardando Emissão',
+  erro_emissao: 'Erro na Emissão'
 };
 
 export default function Historico() {

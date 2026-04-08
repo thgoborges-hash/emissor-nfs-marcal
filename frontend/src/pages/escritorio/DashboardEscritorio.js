@@ -4,28 +4,47 @@ import { notasFiscaisApi, clientesApi, iaApi } from '../../services/api';
 
 const STATUS_LABELS = {
   rascunho: 'Rascunho', pendente_aprovacao: 'Pendente', aprovada: 'Aprovada',
-  processando: 'Processando', emitida: 'Emitida', rejeitada: 'Rejeitada', cancelada: 'Cancelada'
+  processando: 'Processando', emitida: 'Emitida', rejeitada: 'Rejeitada', cancelada: 'Cancelada',
+  pendente_emissao: 'Aguardando Emissão', erro_emissao: 'Erro na Emissão'
 };
 
 export default function DashboardEscritorio() {
   const [resumo, setResumo] = useState(null);
   const [clientes, setClientes] = useState([]);
   const [creditos, setCreditos] = useState(null);
+  const [nfsComErro, setNfsComErro] = useState([]);
+  const [reemitindo, setReemitindo] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const carregarDados = () => {
     Promise.all([
       notasFiscaisApi.resumo(),
       clientesApi.listar(),
-      iaApi.creditos().catch(() => ({ data: null }))
-    ]).then(([resResumo, resClientes, resCreditos]) => {
+      iaApi.creditos().catch(() => ({ data: null })),
+      notasFiscaisApi.listar({ status: 'erro_emissao', limit: 20 }).catch(() => ({ data: { dados: [] } }))
+    ]).then(([resResumo, resClientes, resCreditos, resErros]) => {
       setResumo(resResumo.data);
       setClientes(resClientes.data);
       setCreditos(resCreditos.data);
+      setNfsComErro(resErros.data.dados || []);
     }).catch(console.error)
       .finally(() => setCarregando(false));
-  }, []);
+  };
+
+  useEffect(() => { carregarDados(); }, []);
+
+  const handleReemitir = async (id) => {
+    setReemitindo(id);
+    try {
+      await notasFiscaisApi.emitir(id);
+      carregarDados();
+    } catch (err) {
+      alert(err.response?.data?.erro || 'Erro ao re-emitir');
+    } finally {
+      setReemitindo(null);
+    }
+  };
 
   if (carregando) return <p>Carregando...</p>;
 
@@ -55,6 +74,12 @@ export default function DashboardEscritorio() {
           <div className="label">Pendentes de aprovação</div>
           <div className="valor warning">{totalPendentes}</div>
         </div>
+        {nfsComErro.length > 0 && (
+          <div className="kpi-card" style={{ cursor: 'default', borderTop: '3px solid var(--danger)' }}>
+            <div className="label">Erros de emissão</div>
+            <div className="valor" style={{ color: 'var(--danger)' }}>{nfsComErro.length}</div>
+          </div>
+        )}
       </div>
 
       {/* Clientes com pendências */}
@@ -72,6 +97,52 @@ export default function DashboardEscritorio() {
                 <button className="btn btn-primary btn-sm" onClick={() => navigate('/escritorio/aprovacoes')}>
                   Revisar
                 </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* NFs com erro de emissão */}
+      {nfsComErro.length > 0 && (
+        <div className="card" style={{ borderLeft: '4px solid var(--danger)' }}>
+          <h3 className="card-title" style={{ marginBottom: 12, color: 'var(--danger)' }}>
+            Notas com erro de emissão ({nfsComErro.length})
+          </h3>
+          {nfsComErro.map(nf => (
+            <div key={nf.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--text-light)' }}>
+                    DPS #{nf.numero_dps} &middot; {nf.cliente_razao_social}
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 600 }}>
+                    {formatarMoeda(nf.valor_servico)} — {nf.tomador_razao_social || 'Sem tomador'}
+                  </div>
+                  {nf.observacoes && (
+                    <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4, background: '#fef2f2', padding: '4px 8px', borderRadius: 4 }}>
+                      {nf.observacoes}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 12, color: 'var(--text-light)', marginTop: 2 }}>
+                    Origem: {nf.origem} &middot; {new Date(nf.created_at).toLocaleString('pt-BR')}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button
+                    className="btn btn-success btn-sm"
+                    onClick={() => handleReemitir(nf.id)}
+                    disabled={reemitindo === nf.id}
+                  >
+                    {reemitindo === nf.id ? 'Emitindo...' : 'Re-emitir'}
+                  </button>
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => navigate('/escritorio/notas')}
+                  >
+                    Detalhes
+                  </button>
+                </div>
               </div>
             </div>
           ))}

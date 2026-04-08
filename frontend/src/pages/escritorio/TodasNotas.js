@@ -3,7 +3,8 @@ import { notasFiscaisApi } from '../../services/api';
 
 const STATUS_LABELS = {
   rascunho: 'Rascunho', pendente_aprovacao: 'Pendente', aprovada: 'Aprovada',
-  processando: 'Processando', emitida: 'Emitida', rejeitada: 'Rejeitada', cancelada: 'Cancelada'
+  processando: 'Processando', emitida: 'Emitida', rejeitada: 'Rejeitada', cancelada: 'Cancelada',
+  pendente_emissao: 'Aguardando Emissão', erro_emissao: 'Erro na Emissão'
 };
 
 export default function TodasNotas() {
@@ -106,9 +107,17 @@ export default function TodasNotas() {
                       <td>{nf.data_competencia}</td>
                       <td style={{ fontSize: 12 }}>{nf.origem}</td>
                       <td><span className={`badge badge-${nf.status}`}>{STATUS_LABELS[nf.status]}</span></td>
-                      <td style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {nf.status === 'aprovada' && (
+                      <td style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {(nf.status === 'aprovada' || nf.status === 'pendente_emissao') && (
                           <button className="btn btn-success btn-sm" onClick={() => handleEmitir(nf.id)}>Emitir</button>
+                        )}
+                        {nf.status === 'erro_emissao' && (
+                          <>
+                            <button className="btn btn-success btn-sm" onClick={() => handleEmitir(nf.id)}>Re-emitir</button>
+                            {nf.observacoes && (
+                              <span title={nf.observacoes} style={{ cursor: 'help', fontSize: 16 }}>⚠️</span>
+                            )}
+                          </>
                         )}
                         {nf.status === 'emitida' && (
                           <>
