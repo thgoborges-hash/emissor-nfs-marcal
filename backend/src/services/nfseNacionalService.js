@@ -65,39 +65,41 @@ class NfseNacionalService {
     const chaveAcesso = resultado.chaveAcesso || resultado.chave_acesso || '';
     console.log(`[NFS-e] chaveAcesso: ${chaveAcesso}`);
 
-    // Extrai número da NFS-e do chaveAcesso (50 dígitos)
-    // Estrutura: TipoInscr(1) + InscricaoFederal(14) + nNFSe(13) + AnoMesEmissao(4) + CodigoMun(7) + ...
+    // Prioridade 1: Extrair número da NFS-e do XML descomprimido (fonte mais confiável)
     let numeroNfse = '';
-    if (chaveAcesso && chaveAcesso.length >= 28) {
-      const nNFSeRaw = chaveAcesso.substring(15, 28); // 13 dígitos do nNFSe
-      numeroNfse = nNFSeRaw.replace(/^0+/, '') || '0'; // Remove zeros à esquerda
-      console.log(`[NFS-e] Número NFS-e extraído do chaveAcesso: ${numeroNfse} (raw: ${nNFSeRaw})`);
-    }
-
-    // Se tem nfseXmlGZipB64, descomprime para extrair dados adicionais e confirmar
     let nfseXmlDescomprimido = '';
     if (resultado.nfseXmlGZipB64) {
       try {
         nfseXmlDescomprimido = await this._descomprimirBase64(resultado.nfseXmlGZipB64);
-        console.log(`[NFS-e] XML NFS-e descomprimido (${nfseXmlDescomprimido.length} chars):`, nfseXmlDescomprimido.substring(0, 1000));
+        console.log(`[NFS-e] XML NFS-e descomprimido (${nfseXmlDescomprimido.length} chars):`, nfseXmlDescomprimido.substring(0, 1500));
 
-        // Tenta extrair número do XML parseado
-        const parsed = await xml2js.parseStringPromise(nfseXmlDescomprimido, { explicitArray: false, ignoreAttrs: false });
-        const nfseData = this._buscarCampoRecursivo(parsed, 'nNFSe') || this._buscarCampoRecursivo(parsed, 'nNFS');
-        if (nfseData && !numeroNfse) {
-          numeroNfse = String(nfseData).replace(/^0+/, '') || '0';
-          console.log(`[NFS-e] Número NFS-e extraído do XML: ${numeroNfse}`);
+        // Extrai nNFSe do XML (tag <nNFSe>111</nNFSe>)
+        const matchNNFSe = nfseXmlDescomprimido.match(/<nNFSe>(\d+)<\/nNFSe>/);
+        if (matchNNFSe) {
+          numeroNfse = matchNNFSe[1];
+          console.log(`[NFS-e] Número NFS-e extraído do XML (regex): ${numeroNfse}`);
+        } else {
+          // Fallback: tenta xml2js parsing
+          const parsed = await xml2js.parseStringPromise(nfseXmlDescomprimido, { explicitArray: false, ignoreAttrs: false });
+          const nfseData = this._buscarCampoRecursivo(parsed, 'nNFSe') || this._buscarCampoRecursivo(parsed, 'nNFS');
+          if (nfseData) {
+            numeroNfse = String(nfseData).replace(/^0+/, '') || '0';
+            console.log(`[NFS-e] Número NFS-e extraído do XML (xml2js): ${numeroNfse}`);
+          }
         }
       } catch (xmlErr) {
         console.error(`[NFS-e] Erro ao descomprimir nfseXmlGZipB64:`, xmlErr.message);
       }
     }
 
-    // Fallback: tenta campos diretos da resposta
+    // Prioridade 2: campos diretos da resposta JSON
     if (!numeroNfse) {
       numeroNfse = resultado.nfseNumero || resultado.numero || resultado.numeroNfse || resultado.nNFSe || '';
       if (numeroNfse) console.log(`[NFS-e] Número NFS-e de campo direto: ${numeroNfse}`);
     }
+
+    // Prioridade 3 (último recurso): NÃO usar chaveAcesso pois a posição do nNFSe varia
+    // O chaveAcesso é guardado inteiro para consultas futuras
 
     const dataEmissao = resultado.dataHoraProcessamento || resultado.dataEmissao || resultado.data_emissao || new Date().toISOString();
 
