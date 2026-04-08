@@ -58,7 +58,7 @@ const config = {
   },
 
   // Versão do layout
-  versaoLayout: '1.00',
+  versaoLayout: '1.01',
 
   // Timeout das requisições (ms)
   timeout: 30000,

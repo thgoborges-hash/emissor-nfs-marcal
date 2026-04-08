@@ -140,7 +140,7 @@ class NfseNacionalService {
   _gerarIdDPS(cliente, nota) {
     const codigoMunicipio = (cliente.codigo_municipio || '0000000').padStart(7, '0');
     const cnpj = (cliente.cnpj || '').replace(/\D/g, '');
-    const tipoInscricao = cnpj.length <= 11 ? '2' : '1'; // 1=CNPJ, 2=CPF
+    const tipoInscricao = cnpj.length <= 11 ? '1' : '2'; // 1=CPF, 2=CNPJ
     const inscricaoFederal = cnpj.padStart(14, '0');
     const serie = (nota.serie_dps || '1').padStart(5, '0');
     const numero = String(nota.numero_dps || '0').padStart(15, '0');
@@ -194,22 +194,50 @@ class NfseNacionalService {
     const baseCalculo = nota.base_calculo || (nota.valor_servico - (nota.valor_deducoes || 0));
     const aliquotaPercent = nota.aliquota_iss ? (nota.aliquota_iss * 100) : 0;
 
-    // Tributos federais (só inclui se valor > 0)
-    let tribFedXml = '';
-    const temTribFed = (nota.valor_ir > 0) || (nota.valor_csll > 0) || (nota.valor_inss > 0);
-    if (temTribFed) {
-      tribFedXml = `<tribFed>
-          ${nota.valor_inss > 0 ? `<vRetCP>${fmt(nota.valor_inss)}</vRetCP>` : ''}
-          ${nota.valor_ir > 0 ? `<vRetIRRF>${fmt(nota.valor_ir)}</vRetIRRF>` : ''}
-          ${nota.valor_csll > 0 ? `<vRetCSLL>${fmt(nota.valor_csll)}</vRetCSLL>` : ''}
-        </tribFed>`;
-    }
-
     // Regime tributário do prestador (obrigatório no XSD)
     // opSimpNac: 1=Não Optante, 2=MEI, 3=ME/EPP
-    const opSimpNac = cliente.regime_simples_nacional || '1';
+    const opSimpNac = String(cliente.regime_simples_nacional || '1');
+    const isSimplesNacional = opSimpNac === '2' || opSimpNac === '3';
     // regEspTrib: 0=Nenhum, 1=Cooperativa, 2=Estimativa, 3=Microempresa, 4=Notário, 5=Autônomo, 6=Sociedade
     const regEspTrib = cliente.regime_especial_tributacao || '0';
+    // regApTribSN: obrigatório quando Simples Nacional (opSimpNac 2 ou 3)
+    // 1=Receita bruta (regime normal SN), 2=Fixo, etc.
+    const regApTribSN = cliente.reg_ap_trib_sn || '1';
+
+    // Tributos federais
+    let tribFedXml = '';
+    if (isSimplesNacional) {
+      // Simples Nacional: piscofins com CST
+      tribFedXml = `<tribFed>
+          <piscofins>
+            <CST>${nota.cst_piscofins || '00'}</CST>
+          </piscofins>
+        </tribFed>`;
+    } else {
+      // Regime normal: retenções federais se houver
+      const temTribFed = (nota.valor_ir > 0) || (nota.valor_csll > 0) || (nota.valor_inss > 0);
+      if (temTribFed) {
+        tribFedXml = `<tribFed>
+            ${nota.valor_inss > 0 ? `<vRetCP>${fmt(nota.valor_inss)}</vRetCP>` : ''}
+            ${nota.valor_ir > 0 ? `<vRetIRRF>${fmt(nota.valor_ir)}</vRetIRRF>` : ''}
+            ${nota.valor_csll > 0 ? `<vRetCSLL>${fmt(nota.valor_csll)}</vRetCSLL>` : ''}
+          </tribFed>`;
+      }
+    }
+
+    // Total de tributos
+    let totTribXml = '';
+    if (isSimplesNacional) {
+      // Simples Nacional: percentual total do SN (ex: 6.00%)
+      const pTotTribSN = nota.percentual_total_tributos_sn || cliente.percentual_tributos_sn || '6.00';
+      totTribXml = `<totTrib>
+            <pTotTribSN>${fmt(parseFloat(pTotTribSN))}</pTotTribSN>
+          </totTrib>`;
+    } else {
+      totTribXml = `<totTrib>
+            <indTotTrib>0</indTotTrib>
+          </totTrib>`;
+    }
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${nfseConfig.versaoLayout}">
@@ -226,10 +254,11 @@ class NfseNacionalService {
     <prest>
       <CNPJ>${cnpjPrestador}</CNPJ>
       ${cliente.inscricao_municipal ? `<IM>${cliente.inscricao_municipal}</IM>` : ''}
-      <xNome>${this._escapeXml(cliente.razao_social)}</xNome>
-      ${this._gerarEnderecoXml(cliente, codMunicipio)}
+      ${cliente.telefone ? `<fone>${cliente.telefone.replace(/\D/g, '')}</fone>` : ''}
+      ${cliente.email ? `<email>${this._escapeXml(cliente.email)}</email>` : ''}
       <regTrib>
         <opSimpNac>${opSimpNac}</opSimpNac>
+        ${isSimplesNacional ? `<regApTribSN>${regApTribSN}</regApTribSN>` : ''}
         <regEspTrib>${regEspTrib}</regEspTrib>
       </regTrib>
     </prest>
@@ -262,13 +291,11 @@ class NfseNacionalService {
       <trib>
         <tribMun>
           <tribISSQN>1</tribISSQN>
-          <pAliq>${fmt(aliquotaPercent)}</pAliq>
+          ${!isSimplesNacional && aliquotaPercent > 0 ? `<pAliq>${fmt(aliquotaPercent)}</pAliq>` : ''}
           <tpRetISSQN>${nota.iss_retido ? '2' : '1'}</tpRetISSQN>
         </tribMun>
         ${tribFedXml}
-        <totTrib>
-          <indTotTrib>0</indTotTrib>
-        </totTrib>
+        ${totTribXml}
       </trib>
     </valores>
   </infDPS>
