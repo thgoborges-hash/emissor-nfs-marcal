@@ -14,9 +14,9 @@ services:
       - key: CERTIFICADOS_DIR
         value: /app/data/certificados
       - key: NFSE_AMBIENTE
-        value: homologacao
+        value: producao
       - key: NFSE_SIMULACAO
-        value: "true"
+        value: "false"
       - key: CERT_ENCRYPTION_KEY
         generateValue: true
     disk:

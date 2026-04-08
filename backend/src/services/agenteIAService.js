@@ -72,7 +72,13 @@ class AgenteIAService {
         let feedbackMsg = '';
 
         if (fb.sucesso) {
-          feedbackMsg = `\n\n✅ *NF emitida com sucesso!*\nNúmero: ${fb.numero}\nValor: R$ ${fb.valor?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\nTomador: ${fb.tomador}`;
+          const numDisplay = fb.numero && fb.numero !== 'undefined' && fb.numero !== '(emitida)' ? fb.numero : '';
+          const valorFormatado = fb.valor ? Number(fb.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00';
+          feedbackMsg = `\n\n✅ *NF emitida com sucesso!*` +
+            (numDisplay ? `\nNúmero: ${numDisplay}` : '') +
+            (fb.chaveAcesso ? `\nChave: ${fb.chaveAcesso}` : '') +
+            `\nValor: R$ ${valorFormatado}` +
+            `\nTomador: ${fb.tomador}`;
         } else if (fb.status === 'erro_emissao' || fb.erro) {
           // Mensagem amigável para o cliente - SEM detalhes técnicos
           feedbackMsg = `\n\n✅ Sua solicitação foi registrada! Estou verificando alguns dados cadastrais e o Thiago vai confirmar a emissão em breve.`;
@@ -556,6 +562,7 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
               // Tenta emitir automaticamente
               let emissaoStatus = 'pendente_emissao';
               let emissaoInfo = '';
+              let emissaoChaveAcesso = '';
 
               try {
                 const nfseService = require('./nfseNacionalService');
@@ -598,7 +605,8 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                         .run('emitida', resultado.numeroNfse, resultado.chaveAcesso, new Date().toISOString(), nfId);
                       emissaoStatus = 'emitida';
                       emissaoInfo = resultado.numeroNfse;
-                      console.log(`[WhatsApp] NF ${nfId} emitida com sucesso: ${resultado.numeroNfse}`);
+                      emissaoChaveAcesso = resultado.chaveAcesso;
+                      console.log(`[WhatsApp] NF ${nfId} emitida com sucesso: numero=${resultado.numeroNfse}, chave=${resultado.chaveAcesso}`);
                     } else {
                       db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
                         .run('erro_emissao', resultado.erro, nfId);
@@ -622,6 +630,7 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 nfId,
                 status: emissaoStatus,
                 numero: emissaoInfo,
+                chaveAcesso: emissaoChaveAcesso,
                 tomador: tomador.razao_social,
                 valor
               };

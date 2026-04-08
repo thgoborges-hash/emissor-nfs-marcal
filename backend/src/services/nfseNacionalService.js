@@ -7,6 +7,7 @@ const https = require('https');
 const zlib = require('zlib');
 const { URL } = require('url');
 const forge = require('node-forge');
+const xml2js = require('xml2js');
 const nfseConfig = require('../config/nfse');
 const certificadoService = require('./certificadoService');
 const xmlSignerService = require('./xmlSignerService');
@@ -55,22 +56,64 @@ class NfseNacionalService {
     const endpoint = `${nfseConfig.ambiente.sefin}${nfseConfig.endpoints.enviarDPS}`;
     console.log(`[NFS-e] Enviando para: ${endpoint}`);
     const resultado = await this._requisicaoMTLS(endpoint, 'POST', payload, cert.pfxBuffer, cert.senha);
-    console.log(`[NFS-e] Resposta recebida:`, JSON.stringify(resultado).substring(0, 500));
+    console.log(`[NFS-e] Resposta COMPLETA recebida:`, JSON.stringify(resultado).substring(0, 2000));
+    console.log(`[NFS-e] Campos da resposta:`, Object.keys(resultado).join(', '));
 
-    // A API retorna nfseXmlGZipB64 com o XML da NFS-e quando sucesso (status 201)
-    // Extrai dados do resultado
-    const chaveAcesso = resultado.chaveAcesso || resultado.chave_acesso || resultado.chaveNFSe;
-    const numeroNfse = resultado.nfseNumero || resultado.numero || resultado.numeroNfse;
+    // A API SEFIN Nacional retorna (status 201):
+    // { chaveAcesso, nfseXmlGZipB64, tipoAmbiente, versaoAplicativo, dataHoraProcessamento, idDPS }
+    // O número da NFS-e está DENTRO do chaveAcesso (posições 15-27, 13 dígitos) e no XML comprimido
+    const chaveAcesso = resultado.chaveAcesso || resultado.chave_acesso || '';
+    console.log(`[NFS-e] chaveAcesso: ${chaveAcesso}`);
+
+    // Extrai número da NFS-e do chaveAcesso (50 dígitos)
+    // Estrutura: TipoInscr(1) + InscricaoFederal(14) + nNFSe(13) + AnoMesEmissao(4) + CodigoMun(7) + ...
+    let numeroNfse = '';
+    if (chaveAcesso && chaveAcesso.length >= 28) {
+      const nNFSeRaw = chaveAcesso.substring(15, 28); // 13 dígitos do nNFSe
+      numeroNfse = nNFSeRaw.replace(/^0+/, '') || '0'; // Remove zeros à esquerda
+      console.log(`[NFS-e] Número NFS-e extraído do chaveAcesso: ${numeroNfse} (raw: ${nNFSeRaw})`);
+    }
+
+    // Se tem nfseXmlGZipB64, descomprime para extrair dados adicionais e confirmar
+    let nfseXmlDescomprimido = '';
+    if (resultado.nfseXmlGZipB64) {
+      try {
+        nfseXmlDescomprimido = await this._descomprimirBase64(resultado.nfseXmlGZipB64);
+        console.log(`[NFS-e] XML NFS-e descomprimido (${nfseXmlDescomprimido.length} chars):`, nfseXmlDescomprimido.substring(0, 1000));
+
+        // Tenta extrair número do XML parseado
+        const parsed = await xml2js.parseStringPromise(nfseXmlDescomprimido, { explicitArray: false, ignoreAttrs: false });
+        const nfseData = this._buscarCampoRecursivo(parsed, 'nNFSe') || this._buscarCampoRecursivo(parsed, 'nNFS');
+        if (nfseData && !numeroNfse) {
+          numeroNfse = String(nfseData).replace(/^0+/, '') || '0';
+          console.log(`[NFS-e] Número NFS-e extraído do XML: ${numeroNfse}`);
+        }
+      } catch (xmlErr) {
+        console.error(`[NFS-e] Erro ao descomprimir nfseXmlGZipB64:`, xmlErr.message);
+      }
+    }
+
+    // Fallback: tenta campos diretos da resposta
+    if (!numeroNfse) {
+      numeroNfse = resultado.nfseNumero || resultado.numero || resultado.numeroNfse || resultado.nNFSe || '';
+      if (numeroNfse) console.log(`[NFS-e] Número NFS-e de campo direto: ${numeroNfse}`);
+    }
+
+    const dataEmissao = resultado.dataHoraProcessamento || resultado.dataEmissao || resultado.data_emissao || new Date().toISOString();
+
+    console.log(`[NFS-e] === RESULTADO FINAL: chaveAcesso=${chaveAcesso}, numeroNfse=${numeroNfse}, dataEmissao=${dataEmissao} ===`);
 
     return {
       sucesso: true,
-      numeroNfse: numeroNfse,
+      numeroNfse: numeroNfse || '(emitida)',
       chaveAcesso: chaveAcesso,
-      dataEmissao: resultado.dataEmissao || resultado.data_emissao || new Date().toISOString(),
-      protocolo: resultado.protocolo || resultado.idDPS || resultado.id,
+      dataEmissao: dataEmissao,
+      protocolo: resultado.idDPS || resultado.protocolo || resultado.id,
       xmlEnvio: dpsXmlAssinado,
       xmlRetorno: JSON.stringify(resultado),
       nfseXmlGZipB64: resultado.nfseXmlGZipB64,
+      nfseXmlDescomprimido: nfseXmlDescomprimido,
+      tipoAmbiente: resultado.tipoAmbiente,
     };
   }
 
@@ -326,6 +369,37 @@ class NfseNacionalService {
     </infEvento>
   </infPedReg>
 </pedRegEvento>`;
+  }
+
+  /**
+   * Descomprime base64+gzip para string XML
+   */
+  _descomprimirBase64(base64Str) {
+    return new Promise((resolve, reject) => {
+      const buffer = Buffer.from(base64Str, 'base64');
+      zlib.gunzip(buffer, (err, decompressed) => {
+        if (err) reject(err);
+        else resolve(decompressed.toString('utf8'));
+      });
+    });
+  }
+
+  /**
+   * Busca recursivamente um campo em objeto parseado pelo xml2js
+   */
+  _buscarCampoRecursivo(obj, campo) {
+    if (!obj || typeof obj !== 'object') return null;
+    for (const key of Object.keys(obj)) {
+      // Remove namespace prefix para comparação (ex: ns1:nNFSe → nNFSe)
+      const keyClean = key.includes(':') ? key.split(':').pop() : key;
+      if (keyClean === campo) {
+        const val = obj[key];
+        return typeof val === 'object' && val._ ? val._ : val;
+      }
+      const found = this._buscarCampoRecursivo(obj[key], campo);
+      if (found) return found;
+    }
+    return null;
   }
 
   /**
