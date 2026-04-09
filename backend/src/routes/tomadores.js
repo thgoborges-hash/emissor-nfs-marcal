@@ -1,11 +1,11 @@
 const express = require('express');
 const { getDb } = require('../database/init');
-const { autenticado, clienteOuEscritorio } = require('../middleware/auth');
+const { autenticado, apenasEscritorio } = require('../middleware/auth');
 
 const router = express.Router();
 
 // GET /api/clientes/:clienteId/tomadores - Lista tomadores de um cliente
-router.get('/clientes/:clienteId/tomadores', autenticado, clienteOuEscritorio, (req, res) => {
+router.get('/clientes/:clienteId/tomadores', autenticado, apenasEscritorio, (req, res) => {
   try {
     const db = getDb();
     const clienteId = parseInt(req.params.clienteId);
@@ -48,7 +48,7 @@ router.get('/tomadores/:id', autenticado, (req, res) => {
 });
 
 // POST /api/clientes/:clienteId/tomadores - Cadastra novo tomador
-router.post('/clientes/:clienteId/tomadores', autenticado, clienteOuEscritorio, (req, res) => {
+router.post('/clientes/:clienteId/tomadores', autenticado, apenasEscritorio, (req, res) => {
   try {
     const db = getDb();
     const clienteId = parseInt(req.params.clienteId);

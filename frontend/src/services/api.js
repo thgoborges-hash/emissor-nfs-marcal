@@ -33,8 +33,6 @@ api.interceptors.response.use(
 export const authApi = {
   loginEscritorio: (email, senha) =>
     api.post('/auth/login/escritorio', { email, senha }),
-  loginCliente: (cnpj, senha) =>
-    api.post('/auth/login/cliente', { cnpj, senha }),
 };
 
 // === CLIENTES ===

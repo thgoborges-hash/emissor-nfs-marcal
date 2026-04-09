@@ -28,14 +28,6 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const loginCliente = async (cnpj, senha) => {
-    const { data } = await authApi.loginCliente(cnpj, senha);
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('usuario', JSON.stringify({ ...data.cliente, tipo: 'cliente' }));
-    setUsuario({ ...data.cliente, tipo: 'cliente' });
-    return data;
-  };
-
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
@@ -43,7 +35,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ usuario, carregando, loginEscritorio, loginCliente, logout }}>
+    <AuthContext.Provider value={{ usuario, carregando, loginEscritorio, logout }}>
       {children}
     </AuthContext.Provider>
   );

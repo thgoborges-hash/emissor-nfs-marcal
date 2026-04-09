@@ -351,30 +351,6 @@ table tr:hover {
   font-size: 14px;
 }
 
-.login-tabs {
-  display: flex;
-  border-bottom: 2px solid var(--border);
-  margin-bottom: 24px;
-}
-
-.login-tabs button {
-  flex: 1;
-  padding: 12px;
-  border: none;
-  background: none;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-light);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-}
-
-.login-tabs button.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-}
-
 .erro-msg {
   background: #fef2f2;
   color: var(--danger);

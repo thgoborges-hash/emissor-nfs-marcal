@@ -1,6 +1,6 @@
 const express = require('express');
 const { getDb } = require('../database/init');
-const { autenticado, apenasEscritorio, clienteOuEscritorio } = require('../middleware/auth');
+const { autenticado, apenasEscritorio } = require('../middleware/auth');
 const nfseNacionalService = require('../services/nfseNacionalService');
 
 const router = express.Router();

@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { autenticado, apenasEscritorio, clienteOuEscritorio } = require('../middleware/auth');
+const { autenticado, apenasEscritorio, apenasEscritorio } = require('../middleware/auth');
 const certificadoService = require('../services/certificadoService');
 const { getDb } = require('../database/init');
 
@@ -101,7 +101,7 @@ router.post('/:clienteId/upload', autenticado, apenasEscritorio, upload.single('
 });
 
 // GET /api/certificados/:clienteId - Consulta status do certificado
-router.get('/:clienteId', autenticado, clienteOuEscritorio, (req, res) => {
+router.get('/:clienteId', autenticado, apenasEscritorio, (req, res) => {
   try {
     const db = getDb();
     const clienteId = parseInt(req.params.clienteId);

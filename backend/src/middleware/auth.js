@@ -49,23 +49,10 @@ function apenasAdmin(req, res, next) {
   next();
 }
 
-// Middleware: verifica se é o próprio cliente ou escritório
-function clienteOuEscritorio(req, res, next) {
-  const clienteId = parseInt(req.params.clienteId || req.body.cliente_id);
-  if (req.usuario.tipo === 'escritorio') {
-    return next();
-  }
-  if (req.usuario.tipo === 'cliente' && req.usuario.clienteId === clienteId) {
-    return next();
-  }
-  return res.status(403).json({ erro: 'Acesso não autorizado' });
-}
-
 module.exports = {
   gerarToken,
   autenticado,
   apenasEscritorio,
   apenasAdmin,
-  clienteOuEscritorio,
   JWT_SECRET
 };
