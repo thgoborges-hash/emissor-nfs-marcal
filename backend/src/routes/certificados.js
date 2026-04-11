@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { autenticado, apenasEscritorio, apenasEscritorio } = require('../middleware/auth');
+const { autenticado, apenasEscritorio } = require('../middleware/auth');
 const certificadoService = require('../services/certificadoService');
 const { getDb } = require('../database/init');
 
