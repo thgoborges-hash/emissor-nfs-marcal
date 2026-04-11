@@ -27,6 +27,7 @@ export function LayoutEscritorio() {
           <NavLink to="/escritorio/emitir">📝 Emitir NF</NavLink>
           <NavLink to="/escritorio/certificados">🔐 Certificados</NavLink>
           <NavLink to="/escritorio/whatsapp">💬 WhatsApp</NavLink>
+          <NavLink to="/escritorio/ana">🤖 Painel ANA</NavLink>
           <NavLink to="/escritorio/relatorios">📈 Relatorios</NavLink>
           <NavLink to="/escritorio/testar-agente">🤖 Testar IA</NavLink>
         </nav>

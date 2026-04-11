@@ -1,0 +1,20 @@
+============================================================
+ENV VARS PRO RENDER (backend emissor-nfs-marcal)
+============================================================
+Depois que a Evolution API estiver rodando no Railway, cola
+estas 4 variáveis no Render → Environment do backend principal.
+
+Troque SEU-DOMINIO pelo domínio gerado no Passo 6 do quickstart.
+============================================================
+
+WHATSAPP_PROVIDER=evolution
+EVOLUTION_API_URL=https://SEU-DOMINIO.up.railway.app
+EVOLUTION_API_KEY=1f54bee11f1d5271b35c2e0ed303c006c47ab5d1441fec4ec3e421530ec74c39
+EVOLUTION_INSTANCE=ana-marcal
+
+============================================================
+DEPOIS DE SALVAR: Manual Deploy → aguarda ficar verde.
+Testa:
+  curl https://emissor-nfs-marcal.onrender.com/api/whatsapp/evolution/qrcode \
+    -H "Authorization: Bearer SEU_JWT_DO_LOGIN"
+============================================================

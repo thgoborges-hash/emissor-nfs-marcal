@@ -8,6 +8,7 @@ const { getDb } = require('../database/init');
 const { autenticado, apenasEscritorio } = require('../middleware/auth');
 const whatsappService = require('../services/whatsappService');
 const agenteIA = require('../services/agenteIAService');
+const horarioComercial = require('../services/horarioComercialService');
 
 // Detecta qual provider usar: 'evolution', 'blip' ou 'meta' (padrão)
 const WHATSAPP_PROVIDER = process.env.WHATSAPP_PROVIDER || 'meta';
@@ -172,6 +173,30 @@ router.post('/webhook/blip', async (req, res) => {
     const conversa = db.prepare('SELECT status FROM whatsapp_conversas WHERE id = ?').get(conversaId);
     if (conversa?.status === 'aguardando_humano') {
       console.log(`[Blip] Conversa ${conversaId} aguardando atendimento humano, ignorando bot`);
+      return;
+    }
+
+    // Horário comercial
+    const checkHorario = horarioComercial.podeResponder({ isGroup: false, conversaId });
+    if (!checkHorario.permitido) {
+      console.log(`[Blip] Fora do horário comercial (${checkHorario.motivo}), não chamando IA`);
+      if (checkHorario.mensagemAusencia && blipService) {
+        try {
+          await blipService.enviarTexto(telefone, checkHorario.mensagemAusencia);
+          const ult = db
+            .prepare(
+              `SELECT id FROM whatsapp_mensagens
+               WHERE conversa_id = ? AND direcao = 'saida' AND conteudo = ?
+               ORDER BY id DESC LIMIT 1`
+            )
+            .get(conversaId, checkHorario.mensagemAusencia);
+          if (ult) {
+            db.prepare(`UPDATE whatsapp_mensagens SET remetente='sistema' WHERE id=?`).run(ult.id);
+          }
+        } catch (err) {
+          console.error('[Blip] Erro ao enviar auto-resposta de ausência:', err);
+        }
+      }
       return;
     }
 
@@ -371,6 +396,46 @@ async function processarMensagemEvolution(msg, instance) {
     return;
   }
 
+  // Horário comercial: fora dele, ANA não responde automaticamente
+  // (em grupo = silêncio total; em privado = auto-resposta de ausência 1x a cada 6h)
+  const checkHorario = horarioComercial.podeResponder({ isGroup, conversaId });
+  if (!checkHorario.permitido) {
+    console.log(`[Evolution] Fora do horário comercial (${checkHorario.motivo}), não chamando IA`);
+    if (checkHorario.mensagemAusencia && evolutionService) {
+      try {
+        await evolutionService.enviarTexto(remoteJid, checkHorario.mensagemAusencia);
+        // A enviarTexto já salva a mensagem no banco, mas como 'bot'.
+        // Reclassificamos como 'sistema' pra o rate-limit de autoRespondeuRecentemente funcionar.
+        try {
+          db.prepare(
+            `UPDATE whatsapp_mensagens
+               SET remetente = 'sistema'
+             WHERE conversa_id = ?
+               AND direcao = 'saida'
+               AND conteudo = ?
+             ORDER BY id DESC
+             LIMIT 1`
+          ).run(conversaId, checkHorario.mensagemAusencia);
+        } catch (e) {
+          // SQLite não suporta ORDER BY / LIMIT em UPDATE em versões antigas — fallback:
+          const ult = db
+            .prepare(
+              `SELECT id FROM whatsapp_mensagens
+               WHERE conversa_id = ? AND direcao = 'saida' AND conteudo = ?
+               ORDER BY id DESC LIMIT 1`
+            )
+            .get(conversaId, checkHorario.mensagemAusencia);
+          if (ult) {
+            db.prepare(`UPDATE whatsapp_mensagens SET remetente='sistema' WHERE id=?`).run(ult.id);
+          }
+        }
+      } catch (err) {
+        console.error('[Evolution] Erro ao enviar auto-resposta de ausência:', err);
+      }
+    }
+    return;
+  }
+
   // Gera resposta com IA
   try {
     const respostaCompleta = await agenteIA.processarMensagem(chaveArmazenamento, textoComRemetente, conversaId);
@@ -490,6 +555,31 @@ async function processarMensagemRecebida(message, contatoWhatsapp) {
   const conversa = db.prepare('SELECT status FROM whatsapp_conversas WHERE id = ?').get(conversaId);
   if (conversa?.status === 'aguardando_humano') {
     console.log(`[WhatsApp] Conversa ${conversaId} aguardando atendimento humano, ignorando bot`);
+    return;
+  }
+
+  // Horário comercial: fora dele, ANA manda auto-resposta 1x a cada 6h
+  // (Meta Cloud API não tem grupos, então isGroup é sempre false aqui)
+  const checkHorario = horarioComercial.podeResponder({ isGroup: false, conversaId });
+  if (!checkHorario.permitido) {
+    console.log(`[WhatsApp] Fora do horário comercial (${checkHorario.motivo}), não chamando IA`);
+    if (checkHorario.mensagemAusencia) {
+      try {
+        await getActiveService().enviarTexto(telefone, checkHorario.mensagemAusencia);
+        const ult = db
+          .prepare(
+            `SELECT id FROM whatsapp_mensagens
+             WHERE conversa_id = ? AND direcao = 'saida' AND conteudo = ?
+             ORDER BY id DESC LIMIT 1`
+          )
+          .get(conversaId, checkHorario.mensagemAusencia);
+        if (ult) {
+          db.prepare(`UPDATE whatsapp_mensagens SET remetente='sistema' WHERE id=?`).run(ult.id);
+        }
+      } catch (err) {
+        console.error('[WhatsApp] Erro ao enviar auto-resposta de ausência:', err);
+      }
+    }
     return;
   }
 
@@ -765,6 +855,148 @@ router.get('/evolution/grupos', autenticado, apenasEscritorio, async (req, res) 
   } catch (err) {
     res.status(500).json({ erro: err.message });
   }
+});
+
+// =====================================================
+// CHECKLIST DE GRUPOS ESPERADOS
+// =====================================================
+// Ideia: o Thiago cadastra os 80 nomes de grupos em que a ANA precisa entrar,
+// e depois adiciona a ANA manualmente em cada um (não automatizamos porque:
+//  a) a ANA não pode se auto-adicionar
+//  b) usar o número principal do Thiago via API traria risco de ban).
+// Este endpoint compara o que está cadastrado com os grupos reais em que a
+// ANA já está, retornando um checklist visual pra acompanhar o rollout.
+
+// Inicializa a tabela na primeira chamada (idempotente)
+function ensureTabelaGruposEsperados() {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS grupos_esperados (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT NOT NULL,
+      notas TEXT,
+      cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_grupos_esperados_nome ON grupos_esperados(nome);
+  `);
+}
+
+// GET /api/whatsapp/evolution/grupos/checklist
+// Retorna lista de grupos esperados com status de presença
+router.get('/evolution/grupos/checklist', autenticado, apenasEscritorio, async (req, res) => {
+  try {
+    ensureTabelaGruposEsperados();
+    const db = getDb();
+    const esperados = db
+      .prepare('SELECT * FROM grupos_esperados ORDER BY nome COLLATE NOCASE')
+      .all();
+
+    // Busca grupos reais da Evolution (se disponível)
+    let gruposReais = [];
+    if (WHATSAPP_PROVIDER === 'evolution' && evolutionService) {
+      try {
+        gruposReais = await evolutionService.listarGrupos();
+      } catch (e) {
+        // Evolution pode não estar configurada ainda — devolve esperados sem status
+        console.warn('[Checklist] Evolution indisponível:', e.message);
+      }
+    }
+
+    // Normaliza pra comparação case-insensitive
+    const mapaReais = new Map();
+    for (const g of gruposReais) {
+      const subject = (g.subject || g.name || '').trim().toLowerCase();
+      if (subject) mapaReais.set(subject, g);
+    }
+
+    const checklist = esperados.map(e => {
+      const match = mapaReais.get(e.nome.trim().toLowerCase());
+      return {
+        id: e.id,
+        nome: e.nome,
+        notas: e.notas,
+        cliente_id: e.cliente_id,
+        presente: !!match,
+        group_jid: match?.id || match?.remoteJid || null,
+        participantes: match?.size ?? match?.participants?.length ?? null,
+      };
+    });
+
+    const totalEsperados = checklist.length;
+    const totalPresentes = checklist.filter(c => c.presente).length;
+
+    res.json({
+      total_esperados: totalEsperados,
+      total_presentes: totalPresentes,
+      total_ausentes: totalEsperados - totalPresentes,
+      progresso_pct: totalEsperados > 0 ? Math.round((totalPresentes / totalEsperados) * 100) : 0,
+      checklist,
+    });
+  } catch (err) {
+    console.error('[Checklist] Erro:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// POST /api/whatsapp/evolution/grupos/esperados
+// Body: { nome: "..." } OU { lista: ["nome1", "nome2", ...] }
+router.post('/evolution/grupos/esperados', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    ensureTabelaGruposEsperados();
+    const db = getDb();
+    const { nome, lista, notas, cliente_id } = req.body || {};
+
+    if (Array.isArray(lista) && lista.length > 0) {
+      const stmt = db.prepare(
+        'INSERT INTO grupos_esperados (nome, notas, cliente_id) VALUES (?, ?, ?)'
+      );
+      const insercoes = db.transaction(nomes => {
+        let criados = 0;
+        for (const n of nomes) {
+          if (typeof n === 'string' && n.trim()) {
+            stmt.run(n.trim(), null, null);
+            criados++;
+          }
+        }
+        return criados;
+      });
+      const criados = insercoes(lista);
+      return res.status(201).json({ criados });
+    }
+
+    if (!nome || typeof nome !== 'string') {
+      return res.status(400).json({ erro: 'Campo "nome" é obrigatório' });
+    }
+    const info = db
+      .prepare('INSERT INTO grupos_esperados (nome, notas, cliente_id) VALUES (?, ?, ?)')
+      .run(nome.trim(), notas || null, cliente_id || null);
+    res.status(201).json({ id: info.lastInsertRowid, nome: nome.trim() });
+  } catch (err) {
+    console.error('[Checklist] Erro ao adicionar:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// DELETE /api/whatsapp/evolution/grupos/esperados/:id
+router.delete('/evolution/grupos/esperados/:id', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    ensureTabelaGruposEsperados();
+    const db = getDb();
+    const info = db.prepare('DELETE FROM grupos_esperados WHERE id = ?').run(req.params.id);
+    res.json({ removidos: info.changes });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// =====================================================
+// HORÁRIO COMERCIAL
+// =====================================================
+
+// GET /api/whatsapp/horario-comercial - Config + status atual
+router.get('/horario-comercial', autenticado, apenasEscritorio, (req, res) => {
+  res.json(horarioComercial.getConfig());
 });
 
 // POST /api/whatsapp/agente/testar - Testa o agente IA com uma mensagem simulada

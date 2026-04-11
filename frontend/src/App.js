@@ -12,6 +12,7 @@ import GestaoClientes from './pages/escritorio/GestaoClientes';
 import EmitirNFEscritorio from './pages/escritorio/EmitirNFEscritorio';
 import Certificados from './pages/escritorio/Certificados';
 import WhatsAppPainel from './pages/escritorio/WhatsApp';
+import PainelAna from './pages/escritorio/PainelAna';
 import Relatorios from './pages/escritorio/Relatorios';
 import TestarAgente from './pages/escritorio/TestarAgente';
 
@@ -51,6 +52,7 @@ function App() {
             <Route path="emitir" element={<EmitirNFEscritorio />} />
             <Route path="certificados" element={<Certificados />} />
             <Route path="whatsapp" element={<WhatsAppPainel />} />
+            <Route path="ana" element={<PainelAna />} />
             <Route path="relatorios" element={<Relatorios />} />
             <Route path="testar-agente" element={<TestarAgente />} />
           </Route>
