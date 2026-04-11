@@ -1,6 +1,6 @@
 /**
  * Rotas do WhatsApp - Webhook e Gerenciamento
- * Suporta Meta Cloud API e Blip (BSP)
+ * Suporta Meta Cloud API, Blip (BSP) e Evolution API (não-oficial, com grupos)
  */
 
 const express = require('express');
@@ -9,19 +9,26 @@ const { autenticado, apenasEscritorio } = require('../middleware/auth');
 const whatsappService = require('../services/whatsappService');
 const agenteIA = require('../services/agenteIAService');
 
-// Detecta qual provider usar: 'blip' ou 'meta' (padrão)
+// Detecta qual provider usar: 'evolution', 'blip' ou 'meta' (padrão)
 const WHATSAPP_PROVIDER = process.env.WHATSAPP_PROVIDER || 'meta';
 let blipService = null;
+let evolutionService = null;
+
 if (WHATSAPP_PROVIDER === 'blip') {
   blipService = require('../services/blipService');
   console.log('[WhatsApp] Provider: Blip (BSP)');
+} else if (WHATSAPP_PROVIDER === 'evolution') {
+  evolutionService = require('../services/evolutionService');
+  console.log('[WhatsApp] Provider: Evolution API (suporta grupos)');
 } else {
   console.log('[WhatsApp] Provider: Meta Cloud API');
 }
 
-// Helper: retorna o serviço ativo (Blip ou Meta)
+// Helper: retorna o serviço ativo
 function getActiveService() {
-  return WHATSAPP_PROVIDER === 'blip' ? blipService : whatsappService;
+  if (WHATSAPP_PROVIDER === 'blip') return blipService;
+  if (WHATSAPP_PROVIDER === 'evolution') return evolutionService;
+  return whatsappService;
 }
 
 const router = express.Router();
@@ -192,6 +199,233 @@ router.post('/webhook/blip', async (req, res) => {
     console.error('[Blip] Erro ao processar webhook:', err);
   }
 });
+
+// =====================================================
+// WEBHOOK - Evolution API (não-oficial, com suporte a grupos)
+// =====================================================
+
+// POST /api/whatsapp/webhook/evolution - Recebe eventos da Evolution API
+// Configurar na Evolution: POST https://<evolution>/webhook/set/<instance>
+//   body: { url: "<render_url>/api/whatsapp/webhook/evolution", events: ["MESSAGES_UPSERT"] }
+router.post('/webhook/evolution', async (req, res) => {
+  // Responde 200 imediatamente
+  res.sendStatus(200);
+
+  try {
+    const body = req.body;
+    if (!body) return;
+
+    // Evolution envia vários tipos de eventos. Só tratamos mensagens recebidas.
+    const eventName = body.event || body.eventName;
+    // Aceita 'messages.upsert' (snake) ou 'MESSAGES_UPSERT'
+    const isMessageUpsert = eventName === 'messages.upsert' || eventName === 'MESSAGES_UPSERT';
+    if (!isMessageUpsert) {
+      // Outros eventos (connection.update, presence.update, etc.) — ignora silenciosamente
+      return;
+    }
+
+    // Dados da mensagem podem vir em body.data ou direto em body
+    const data = body.data || body;
+
+    // Evolution pode mandar uma mensagem só (objeto) ou várias (array)
+    const mensagens = Array.isArray(data) ? data : (Array.isArray(data.messages) ? data.messages : [data]);
+
+    for (const msg of mensagens) {
+      await processarMensagemEvolution(msg, body.instance);
+    }
+  } catch (err) {
+    console.error('[Evolution] Erro ao processar webhook:', err);
+  }
+});
+
+/**
+ * Processa uma mensagem individual vinda do webhook da Evolution API
+ */
+async function processarMensagemEvolution(msg, instance) {
+  if (!evolutionService) {
+    console.warn('[Evolution] Recebi webhook mas provider não é evolution. Ignorando.');
+    return;
+  }
+
+  // Estrutura esperada (baileys-style):
+  // {
+  //   key: { remoteJid: "...@s.whatsapp.net" | "...@g.us", fromMe: false, id: "...", participant: "...@s.whatsapp.net" (só grupo) },
+  //   message: { conversation: "texto" } | { extendedTextMessage: { text: "texto" } } | { imageMessage: {...} } | ...
+  //   pushName: "Nome do remetente",
+  //   messageTimestamp: 1234567890
+  // }
+  const key = msg.key || {};
+  const remoteJid = key.remoteJid;
+  if (!remoteJid) {
+    console.log('[Evolution] Mensagem sem remoteJid, ignorando');
+    return;
+  }
+
+  // Ignora mensagens enviadas pelo próprio bot (fromMe = true)
+  if (key.fromMe) {
+    return;
+  }
+
+  // Ignora status broadcast
+  if (remoteJid === 'status@broadcast') return;
+
+  const isGroup = remoteJid.endsWith('@g.us');
+  const messageId = key.id || '';
+  const participant = key.participant || remoteJid; // Quem enviou (em grupo, é diferente do grupo)
+  const pushName = msg.pushName || '';
+
+  // Extrai o texto da mensagem (Baileys suporta vários formatos)
+  const message = msg.message || {};
+  let texto = '';
+  let tipoMsg = 'texto';
+
+  if (message.conversation) {
+    texto = message.conversation;
+  } else if (message.extendedTextMessage?.text) {
+    texto = message.extendedTextMessage.text;
+  } else if (message.imageMessage) {
+    texto = message.imageMessage.caption || '[Imagem recebida]';
+    tipoMsg = 'imagem';
+  } else if (message.videoMessage) {
+    texto = message.videoMessage.caption || '[Vídeo recebido]';
+    tipoMsg = 'video';
+  } else if (message.documentMessage) {
+    texto = message.documentMessage.caption || message.documentMessage.fileName || '[Documento recebido]';
+    tipoMsg = 'documento';
+  } else if (message.audioMessage) {
+    texto = '[Áudio recebido]';
+    tipoMsg = 'audio';
+  } else if (message.stickerMessage) {
+    texto = '[Figurinha]';
+    tipoMsg = 'sticker';
+  } else if (message.reactionMessage) {
+    // Ignora reações — poluição
+    return;
+  } else if (message.buttonsResponseMessage) {
+    texto = message.buttonsResponseMessage.selectedDisplayText || '[Resposta de botão]';
+  } else if (message.listResponseMessage) {
+    texto = message.listResponseMessage.title || message.listResponseMessage.singleSelectReply?.selectedRowId || '[Resposta de lista]';
+  } else {
+    // Tipo desconhecido — ignora ao invés de poluir o banco
+    const tipos = Object.keys(message).join(',');
+    console.log(`[Evolution] Tipo de mensagem não suportado: ${tipos}`);
+    return;
+  }
+
+  if (!texto) return;
+
+  // Chave de armazenamento: em grupo usamos o remoteJid do grupo; em privado usamos o número
+  const chaveArmazenamento = isGroup
+    ? remoteJid
+    : evolutionService.extrairDestinoDoJid(remoteJid);
+
+  // Atualiza nome do contato se disponível
+  const db = getDb();
+  if (pushName && !isGroup) {
+    db.prepare(`
+      INSERT INTO whatsapp_contatos (telefone, nome)
+      VALUES (?, ?)
+      ON CONFLICT(telefone) DO UPDATE SET nome = COALESCE(NULLIF(nome, ''), ?), updated_at = CURRENT_TIMESTAMP
+    `).run(chaveArmazenamento, pushName, pushName);
+  }
+
+  // Em grupo, o "nome" do contato pode ser o nome do grupo (fica pra um futuro aprimoramento)
+  // Por enquanto, registramos o group JID como contato tipo 'grupo'.
+
+  // Salva mensagem de entrada
+  // Prefixamos o texto com o pushName se for grupo, pra IA saber quem falou
+  const textoComRemetente = isGroup && pushName
+    ? `[${pushName}] ${texto}`
+    : texto;
+
+  const conversaId = evolutionService.salvarMensagem(
+    chaveArmazenamento,
+    'entrada',
+    tipoMsg,
+    textoComRemetente,
+    messageId,
+    'cliente'
+  );
+
+  console.log(`[Evolution] Mensagem recebida (${isGroup ? 'GRUPO' : 'privado'}) de ${pushName || chaveArmazenamento}: ${texto.substring(0, 80)}`);
+
+  // Marca como lida (best-effort)
+  try {
+    await evolutionService.marcarComoLida(remoteJid, messageId, false);
+  } catch (err) {
+    // não crítico
+  }
+
+  // Verifica se a conversa está aguardando humano
+  const conversa = db.prepare('SELECT status FROM whatsapp_conversas WHERE id = ?').get(conversaId);
+  if (conversa?.status === 'aguardando_humano') {
+    console.log(`[Evolution] Conversa ${conversaId} aguardando atendimento humano, bot em silêncio`);
+    return;
+  }
+
+  // Heurística extra pra grupos: só responde se for claramente pra ANA
+  // O prompt da ANA já tem [ACAO:IGNORAR] pra mensagens que não são pra ela,
+  // mas adicionamos um filtro barato antes de chamar a API pra não gastar tokens à toa
+  if (isGroup && !mensagemEhParaAna(texto)) {
+    console.log('[Evolution] Mensagem de grupo não parece ser pra ANA, ignorando sem chamar IA');
+    return;
+  }
+
+  // Gera resposta com IA
+  try {
+    const respostaCompleta = await agenteIA.processarMensagem(chaveArmazenamento, textoComRemetente, conversaId);
+
+    // Se a IA decidiu ignorar, respeita
+    if (/\[ACAO:IGNORAR\]/i.test(respostaCompleta)) {
+      console.log('[Evolution] Agente IA marcou mensagem como IGNORAR');
+      return;
+    }
+
+    const respostaLimpa = agenteIA.limparResposta(respostaCompleta);
+
+    if (respostaLimpa && evolutionService) {
+      await evolutionService.enviarTexto(remoteJid, respostaLimpa);
+    }
+  } catch (err) {
+    console.error('[Evolution] Erro ao gerar resposta IA:', err);
+    // Em grupo, evitamos mandar "desculpe, com dificuldades" pra não poluir
+    if (!isGroup) {
+      try {
+        await evolutionService.enviarTexto(remoteJid,
+          'Desculpe, estou com dificuldades técnicas. O escritório foi notificado e retornará em breve. 🙏'
+        );
+      } catch (e) {
+        console.error('[Evolution] Erro ao enviar mensagem de erro:', e);
+      }
+    }
+  }
+}
+
+/**
+ * Heurística barata (sem IA) pra decidir se uma mensagem de grupo PARECE ser pra ANA.
+ * Funciona como filtro antes de chamar a Claude API — economiza tokens em grupos movimentados.
+ * A decisão final ainda é da IA (que pode marcar [ACAO:IGNORAR] mesmo assim).
+ */
+function mensagemEhParaAna(texto) {
+  if (!texto) return false;
+  const t = texto.toLowerCase();
+
+  // Menções diretas
+  if (/@ana\b|\bana\b/.test(t)) return true;
+
+  // Palavras-chave de NF/fiscal/escritório
+  const keywords = [
+    'nota fiscal', 'nota', 'nfs', 'nfse', 'nf-e', 'nfe', 'nf ',
+    'emitir', 'emissão', 'emissao',
+    'fiscal', 'imposto', 'das', 'darf', 'simples nacional',
+    'contabilidade', 'contador', 'escritório', 'escritorio', 'marçal', 'marcal',
+    'certidão', 'certidao', 'alvará', 'alvara',
+    'boleto', 'guia', '2ª via', 'segunda via',
+    'folha', 'pro-labore', 'prolabore', 'inss', 'fgts'
+  ];
+
+  return keywords.some(kw => t.includes(kw));
+}
 
 // =====================================================
 // PROCESSAMENTO COMUM
@@ -425,18 +659,36 @@ router.put('/conversas/:id/devolver-bot', autenticado, apenasEscritorio, (req, r
   }
 });
 
+// Helper: retorna a URL do webhook correto para o provider ativo
+function getWebhookUrl(req) {
+  const base = `${req.protocol}://${req.get('host')}`;
+  if (WHATSAPP_PROVIDER === 'blip') return `${base}/api/whatsapp/webhook/blip`;
+  if (WHATSAPP_PROVIDER === 'evolution') return `${base}/api/whatsapp/webhook/evolution`;
+  return `${base}/api/whatsapp/webhook`;
+}
+
 // GET /api/whatsapp/status - Status do serviço
-router.get('/status', autenticado, apenasEscritorio, (req, res) => {
+router.get('/status', autenticado, apenasEscritorio, async (req, res) => {
   const provider = WHATSAPP_PROVIDER;
   const service = getActiveService();
-  res.json({
+  const resposta = {
     provider,
     whatsapp_configurado: service.isConfigured(),
     ia_configurada: agenteIA.isConfigured(),
-    webhook_url: provider === 'blip'
-      ? `${req.protocol}://${req.get('host')}/api/whatsapp/webhook/blip`
-      : `${req.protocol}://${req.get('host')}/api/whatsapp/webhook`
-  });
+    webhook_url: getWebhookUrl(req)
+  };
+
+  // Pra Evolution, inclui também o status da conexão (connected / qrcode / disconnected)
+  if (provider === 'evolution' && service.isConfigured()) {
+    try {
+      const status = await service.statusConexao();
+      resposta.conexao = status?.state || status?.instance?.state || 'desconhecido';
+    } catch (e) {
+      resposta.conexao = 'erro';
+    }
+  }
+
+  res.json(resposta);
 });
 
 // POST /api/whatsapp/enviar - Enviar mensagem avulsa (escritório)
@@ -450,10 +702,12 @@ router.post('/enviar', autenticado, apenasEscritorio, async (req, res) => {
 
     const service = getActiveService();
     if (!service.isConfigured()) {
-      return res.status(503).json({ erro: WHATSAPP_PROVIDER === 'blip'
+      const msgErro = WHATSAPP_PROVIDER === 'blip'
         ? 'Blip não configurado. Configure BLIP_API_KEY nas variáveis de ambiente.'
-        : 'WhatsApp não configurado. Configure WHATSAPP_PHONE_ID e WHATSAPP_TOKEN nas variáveis de ambiente.'
-      });
+        : WHATSAPP_PROVIDER === 'evolution'
+          ? 'Evolution API não configurada. Configure EVOLUTION_API_URL, EVOLUTION_API_KEY e EVOLUTION_INSTANCE nas variáveis de ambiente.'
+          : 'WhatsApp não configurado. Configure WHATSAPP_PHONE_ID e WHATSAPP_TOKEN nas variáveis de ambiente.';
+      return res.status(503).json({ erro: msgErro });
     }
 
     await getActiveService().enviarTexto(telefone, mensagem);
@@ -478,11 +732,39 @@ router.get('/agente/status', autenticado, (req, res) => {
     whatsapp: {
       provider: WHATSAPP_PROVIDER,
       configurado: getActiveService().isConfigured(),
-      webhook_url: WHATSAPP_PROVIDER === 'blip'
-        ? `${req.protocol}://${req.get('host')}/api/whatsapp/webhook/blip`
-        : `${req.protocol}://${req.get('host')}/api/whatsapp/webhook`,
+      webhook_url: getWebhookUrl(req),
     },
   });
+});
+
+// =====================================================
+// EVOLUTION API — ROTAS ESPECÍFICAS (QR code, grupos, reconexão)
+// =====================================================
+
+// GET /api/whatsapp/evolution/qrcode - Retorna o QR code pra parear o número
+router.get('/evolution/qrcode', autenticado, apenasEscritorio, async (req, res) => {
+  if (WHATSAPP_PROVIDER !== 'evolution' || !evolutionService) {
+    return res.status(400).json({ erro: 'Provider ativo não é Evolution API' });
+  }
+  try {
+    const qr = await evolutionService.obterQRCode();
+    res.json(qr || { erro: 'Não foi possível obter QR code' });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// GET /api/whatsapp/evolution/grupos - Lista grupos em que o número ANA está
+router.get('/evolution/grupos', autenticado, apenasEscritorio, async (req, res) => {
+  if (WHATSAPP_PROVIDER !== 'evolution' || !evolutionService) {
+    return res.status(400).json({ erro: 'Provider ativo não é Evolution API' });
+  }
+  try {
+    const grupos = await evolutionService.listarGrupos();
+    res.json({ total: grupos.length, grupos });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
 });
 
 // POST /api/whatsapp/agente/testar - Testa o agente IA com uma mensagem simulada
