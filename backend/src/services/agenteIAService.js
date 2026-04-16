@@ -468,8 +468,12 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
         case 'EMITIR_NF':
           if (acao.parametro && !contato?.cliente_id) {
             console.log(`[WhatsApp] ⚠️ EMITIR_NF: contato ${contato?.telefone || 'desconhecido'} não tem cliente_id vinculado. Tentando vincular automaticamente...`);
-            // Tenta vincular pelo primeiro cliente cadastrado (escritório com 1 cliente principal)
-            const clientePrincipal = db.prepare('SELECT id, razao_social FROM clientes LIMIT 1').get();
+            // Tenta vincular pelo cliente que tem certificado A1 configurado (prioridade), senão pega o primeiro
+            const clientePrincipal = db.prepare(
+              `SELECT id, razao_social FROM clientes
+               WHERE certificado_a1_path IS NOT NULL AND certificado_a1_senha_encrypted IS NOT NULL
+               ORDER BY id LIMIT 1`
+            ).get() || db.prepare('SELECT id, razao_social FROM clientes LIMIT 1').get();
             if (clientePrincipal && contato) {
               db.prepare('UPDATE whatsapp_contatos SET cliente_id = ?, tipo = ? WHERE id = ?')
                 .run(clientePrincipal.id, 'cliente', contato.id);
