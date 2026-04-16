@@ -466,6 +466,20 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           break;
 
         case 'EMITIR_NF':
+          if (acao.parametro && !contato?.cliente_id) {
+            console.log(`[WhatsApp] ⚠️ EMITIR_NF: contato ${contato?.telefone || 'desconhecido'} não tem cliente_id vinculado. Tentando vincular automaticamente...`);
+            // Tenta vincular pelo primeiro cliente cadastrado (escritório com 1 cliente principal)
+            const clientePrincipal = db.prepare('SELECT id, razao_social FROM clientes LIMIT 1').get();
+            if (clientePrincipal && contato) {
+              db.prepare('UPDATE whatsapp_contatos SET cliente_id = ?, tipo = ? WHERE id = ?')
+                .run(clientePrincipal.id, 'cliente', contato.id);
+              contato.cliente_id = clientePrincipal.id;
+              console.log(`[WhatsApp] ✅ Contato vinculado automaticamente ao cliente ${clientePrincipal.razao_social} (ID ${clientePrincipal.id})`);
+            } else {
+              console.log(`[WhatsApp] ❌ Nenhum cliente cadastrado no sistema. NF não pode ser emitida.`);
+              acao.feedback = { sucesso: false, erro: 'Nenhum cliente cadastrado no sistema' };
+            }
+          }
           if (acao.parametro && contato?.cliente_id) {
             try {
               // Formato: valor|cnpj_cpf|razao_social|descricao (competencia é opcional, default = mês atual)
