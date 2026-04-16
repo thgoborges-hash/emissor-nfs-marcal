@@ -140,52 +140,43 @@ class PreValidacaoNfseService {
       erros.push('Tomador: razão social ausente');
     }
 
-    // codigo_municipio do tomador - tentar enriquecer se inválido
-    if (!this._isCodigoIBGEValido(tomador.codigo_municipio)) {
+    // codigo_municipio do tomador - SEMPRE verificar via CNPJ para garantir que é válido
+    // (um código de 7 dígitos pode parecer válido mas ser rejeitado pela SEFIN)
+    {
       let corrigido = false;
 
       if (tomador.tipo_documento === 'CNPJ' && documento.length === 14) {
-        console.log(`[PreValidacao] Tomador sem codigo_municipio válido (atual: "${tomador.codigo_municipio}"). Buscando via CNPJ...`);
+        // Sempre consulta a Receita pra CNPJ — garante dados atualizados
+        console.log(`[PreValidacao] Tomador CNPJ ${documento}: verificando codigo_municipio (atual: "${tomador.codigo_municipio}")...`);
         const dadosReceita = await cnpjService.consultarCNPJ(documento);
         if (dadosReceita && this._isCodigoIBGEValido(dadosReceita.codigoMunicipio)) {
           const codigoAnterior = tomador.codigo_municipio;
-          tomador.codigo_municipio = dadosReceita.codigoMunicipio;
-          correcoes.push(`Tomador: codigo_municipio atualizado de "${codigoAnterior || 'vazio'}" para "${dadosReceita.codigoMunicipio}" (${dadosReceita.municipio}/${dadosReceita.uf})`);
+          // Atualiza se estava vazio OU se mudou (correção de dado errado)
+          if (!codigoAnterior || codigoAnterior !== dadosReceita.codigoMunicipio) {
+            tomador.codigo_municipio = dadosReceita.codigoMunicipio;
+            correcoes.push(`Tomador: codigo_municipio atualizado de "${codigoAnterior || 'vazio'}" para "${dadosReceita.codigoMunicipio}" (${dadosReceita.municipio}/${dadosReceita.uf})`);
+          }
           corrigido = true;
-          // Persiste no banco
+          // Persiste no banco — SEMPRE atualiza codigo_municipio pra garantir dado correto
           const updateFields = { codigo_municipio: dadosReceita.codigoMunicipio };
-          // Aproveita pra preencher dados faltantes do tomador
-          if (!tomador.logradouro && dadosReceita.logradouro) {
-            tomador.logradouro = dadosReceita.logradouro;
-            updateFields.logradouro = dadosReceita.logradouro;
-          }
-          if (!tomador.numero && dadosReceita.numero) {
-            tomador.numero = dadosReceita.numero;
-            updateFields.numero = dadosReceita.numero;
-          }
-          if (!tomador.bairro && dadosReceita.bairro) {
-            tomador.bairro = dadosReceita.bairro;
-            updateFields.bairro = dadosReceita.bairro;
-          }
-          if (!tomador.cep && dadosReceita.cep) {
-            tomador.cep = dadosReceita.cep;
-            updateFields.cep = dadosReceita.cep;
-          }
-          if (!tomador.municipio && dadosReceita.municipio) {
-            tomador.municipio = dadosReceita.municipio;
-            updateFields.municipio = dadosReceita.municipio;
-          }
-          if (!tomador.uf && dadosReceita.uf) {
-            tomador.uf = dadosReceita.uf;
-            updateFields.uf = dadosReceita.uf;
-          }
-          if (!tomador.email && dadosReceita.email) {
-            tomador.email = dadosReceita.email;
-            updateFields.email = dadosReceita.email;
-          }
-          if (!tomador.razao_social && dadosReceita.razaoSocial) {
-            tomador.razao_social = dadosReceita.razaoSocial;
-            updateFields.razao_social = dadosReceita.razaoSocial;
+          // Aproveita pra preencher/atualizar dados do tomador
+          // Atualiza TODOS os campos do tomador com dados frescos da Receita
+          const camposReceita = {
+            logradouro: dadosReceita.logradouro,
+            numero: dadosReceita.numero,
+            bairro: dadosReceita.bairro,
+            cep: dadosReceita.cep,
+            municipio: dadosReceita.municipio,
+            uf: dadosReceita.uf,
+            email: dadosReceita.email,
+            razao_social: dadosReceita.razaoSocial,
+            complemento: dadosReceita.complemento,
+          };
+          for (const [campo, valor] of Object.entries(camposReceita)) {
+            if (valor && (!tomador[campo] || tomador[campo] !== valor)) {
+              tomador[campo] = valor;
+              updateFields[campo] = valor;
+            }
           }
           this._atualizarTomadorNoBanco(tomador.id, updateFields, correcoes);
           if (Object.keys(updateFields).length > 1) {
