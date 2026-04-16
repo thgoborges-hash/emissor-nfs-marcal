@@ -101,6 +101,7 @@ class AgenteIAService {
           } else if (erroStr.includes('timeout') || erroStr.includes('econnrefused') || erroStr.includes('network') || erroStr.includes('socket')) {
             feedbackMsg = `\n\n⚠️ O sistema da prefeitura está instável no momento. Sua NF foi salva e vou tentar emitir novamente em breve! ⏳`;
           } else {
+            console.log(`[WhatsApp] ⚠️ Erro genérico na emissão — detalhes completos: fb.numero="${fb.numero}", fb.erro="${fb.erro}", fb.status="${fb.status}"`);
             feedbackMsg = `\n\n⚠️ Tive um probleminha técnico ao emitir a NF. Já notifiquei o Thiago e ele vai resolver o mais rápido possível. A NF ficou salva no sistema! 🔧`;
           }
         }
