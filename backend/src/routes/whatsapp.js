@@ -1,6 +1,6 @@
 /**
  * Rotas do WhatsApp - Webhook e Gerenciamento
- * Suporta Meta Cloud API, Blip (BSP) e Evolution API (não-oficial, com grupos)
+ * Suporta Meta Cloud API, Blip (BSP), Evolution API e Z-API (não-oficiais com grupos)
  */
 
 const express = require('express');
@@ -10,10 +10,11 @@ const whatsappService = require('../services/whatsappService');
 const agenteIA = require('../services/agenteIAService');
 const horarioComercial = require('../services/horarioComercialService');
 
-// Detecta qual provider usar: 'evolution', 'blip' ou 'meta' (padrão)
+// Detecta qual provider usar: 'zapi', 'evolution', 'blip' ou 'meta' (padrão)
 const WHATSAPP_PROVIDER = process.env.WHATSAPP_PROVIDER || 'meta';
 let blipService = null;
 let evolutionService = null;
+let zapiService = null;
 
 if (WHATSAPP_PROVIDER === 'blip') {
   blipService = require('../services/blipService');
@@ -21,6 +22,9 @@ if (WHATSAPP_PROVIDER === 'blip') {
 } else if (WHATSAPP_PROVIDER === 'evolution') {
   evolutionService = require('../services/evolutionService');
   console.log('[WhatsApp] Provider: Evolution API (suporta grupos)');
+} else if (WHATSAPP_PROVIDER === 'zapi') {
+  zapiService = require('../services/zapiService');
+  console.log('[WhatsApp] Provider: Z-API (suporta grupos)');
 } else {
   console.log('[WhatsApp] Provider: Meta Cloud API');
 }
@@ -29,6 +33,7 @@ if (WHATSAPP_PROVIDER === 'blip') {
 function getActiveService() {
   if (WHATSAPP_PROVIDER === 'blip') return blipService;
   if (WHATSAPP_PROVIDER === 'evolution') return evolutionService;
+  if (WHATSAPP_PROVIDER === 'zapi') return zapiService;
   return whatsappService;
 }
 
@@ -493,6 +498,241 @@ function mensagemEhParaAna(texto) {
 }
 
 // =====================================================
+// WEBHOOK - Z-API
+// =====================================================
+
+// POST /api/whatsapp/webhook/zapi - Recebe eventos da Z-API
+// Configurar na Z-API: painel → Instância → Webhook "Ao receber"
+//   url: "<render_url>/api/whatsapp/webhook/zapi"
+router.post('/webhook/zapi', async (req, res) => {
+  // Responde 200 imediatamente
+  res.sendStatus(200);
+
+  try {
+    const body = req.body;
+    if (!body) return;
+
+    // Ignora mensagens enviadas pelo próprio bot
+    if (body.fromMe) return;
+
+    // Ignora mensagens de status (broadcast)
+    if (body.isStatusReply) return;
+
+    // Processa mensagem recebida
+    await processarMensagemZapi(body);
+  } catch (err) {
+    console.error('[Z-API] Erro ao processar webhook:', err);
+  }
+});
+
+/**
+ * Processa uma mensagem individual vinda do webhook da Z-API
+ *
+ * Formato do payload (principais campos):
+ *   {
+ *     phone: "5541988888888" | "120363XXX-XXX",  // número OU groupId
+ *     isGroup: true|false,
+ *     participantPhone: "5541..."  // só em grupo
+ *     senderName: "João",
+ *     chatName: "Nome do grupo ou contato",
+ *     messageId: "...",
+ *     fromMe: false,
+ *     text: { message: "..." },
+ *     image: { imageUrl, caption, mimeType },
+ *     document: { documentUrl, fileName, caption, mimeType },
+ *     audio: { audioUrl, mimeType },
+ *     video: { videoUrl, caption, mimeType },
+ *     sticker: { stickerUrl },
+ *     reaction: { value, referencedMessage },
+ *     ...
+ *   }
+ */
+async function processarMensagemZapi(body) {
+  if (!zapiService) {
+    console.warn('[Z-API] Recebi webhook mas provider não é zapi. Ignorando.');
+    return;
+  }
+
+  const isGroup = !!body.isGroup;
+  const phone = body.phone || '';
+  if (!phone) {
+    console.log('[Z-API] Mensagem sem phone, ignorando');
+    return;
+  }
+
+  const messageId = body.messageId || '';
+  const pushName = body.senderName || body.chatName || '';
+
+  // Extrai o texto da mensagem (Z-API tem vários tipos)
+  let texto = '';
+  let tipoMsg = 'texto';
+
+  if (body.text?.message) {
+    texto = body.text.message;
+  } else if (body.image) {
+    texto = body.image.caption || '[Imagem recebida]';
+    tipoMsg = 'imagem';
+  } else if (body.video) {
+    texto = body.video.caption || '[Vídeo recebido]';
+    tipoMsg = 'video';
+  } else if (body.document) {
+    texto = body.document.caption || body.document.fileName || '[Documento recebido]';
+    tipoMsg = 'documento';
+  } else if (body.audio) {
+    texto = '[Áudio recebido]';
+    tipoMsg = 'audio';
+  } else if (body.sticker) {
+    texto = '[Figurinha]';
+    tipoMsg = 'sticker';
+  } else if (body.reaction) {
+    // Ignora reações — poluição
+    return;
+  } else if (body.buttonsResponseMessage) {
+    texto = body.buttonsResponseMessage.buttonId || body.buttonsResponseMessage.message || '[Resposta de botão]';
+  } else if (body.listResponseMessage) {
+    texto = body.listResponseMessage.message || body.listResponseMessage.title || '[Resposta de lista]';
+  } else if (body.contact) {
+    texto = `[Contato: ${body.contact.displayName || body.contact.vCard || '?'}]`;
+    tipoMsg = 'contato';
+  } else if (body.location) {
+    texto = `[Localização: ${body.location.latitude}, ${body.location.longitude}]`;
+    tipoMsg = 'localizacao';
+  } else {
+    const tipos = Object.keys(body).filter(k =>
+      !['phone','isGroup','fromMe','messageId','senderName','chatName','senderPhoto',
+        'photo','momment','status','participantPhone','connectedPhone','instanceId',
+        'type','broadcast','forwarded','waitingMessage','isStatusReply','chatLid',
+        'participantLid','isEdit','isNewsletter','fromApi'].includes(k)
+    ).join(',');
+    console.log(`[Z-API] Tipo de mensagem não suportado: ${tipos}`);
+    return;
+  }
+
+  if (!texto) return;
+
+  // Chave de armazenamento: em grupo usamos o groupId com sufixo @g.us padronizado;
+  // em privado, só dígitos.
+  const chaveArmazenamento = isGroup
+    ? zapiService._garantirSufixoGrupo(phone)
+    : zapiService.formatarTelefone(phone);
+
+  // Destino pra envio de resposta (mesma chave, o normalizarDestino remove @g.us depois)
+  const destinoResposta = chaveArmazenamento;
+
+  // Atualiza nome do contato se disponível
+  const db = getDb();
+  if (pushName && !isGroup) {
+    db.prepare(`
+      INSERT INTO whatsapp_contatos (telefone, nome)
+      VALUES (?, ?)
+      ON CONFLICT(telefone) DO UPDATE SET nome = COALESCE(NULLIF(nome, ''), ?), updated_at = CURRENT_TIMESTAMP
+    `).run(chaveArmazenamento, pushName, pushName);
+  }
+
+  // Salva mensagem de entrada
+  // Prefixamos o texto com o pushName se for grupo, pra IA saber quem falou
+  const textoComRemetente = isGroup && pushName
+    ? `[${pushName}] ${texto}`
+    : texto;
+
+  const conversaId = zapiService.salvarMensagem(
+    chaveArmazenamento,
+    'entrada',
+    tipoMsg,
+    textoComRemetente,
+    messageId,
+    'cliente'
+  );
+
+  console.log(`[Z-API] Mensagem recebida (${isGroup ? 'GRUPO' : 'privado'}) de ${pushName || chaveArmazenamento}: ${texto.substring(0, 80)}`);
+
+  // Marca como lida (best-effort)
+  try {
+    await zapiService.marcarComoLida(destinoResposta, messageId, false);
+  } catch (err) {
+    // não crítico
+  }
+
+  // Verifica se a conversa está aguardando humano
+  const conversa = db.prepare('SELECT status FROM whatsapp_conversas WHERE id = ?').get(conversaId);
+  if (conversa?.status === 'aguardando_humano') {
+    console.log(`[Z-API] Conversa ${conversaId} aguardando atendimento humano, bot em silêncio`);
+    return;
+  }
+
+  // Heurística extra pra grupos: só responde se for claramente pra ANA
+  if (isGroup && !mensagemEhParaAna(texto)) {
+    console.log('[Z-API] Mensagem de grupo não parece ser pra ANA, ignorando sem chamar IA');
+    return;
+  }
+
+  // Horário comercial: fora dele, ANA não responde automaticamente
+  const checkHorario = horarioComercial.podeResponder({ isGroup, conversaId });
+  if (!checkHorario.permitido) {
+    console.log(`[Z-API] Fora do horário comercial (${checkHorario.motivo}), não chamando IA`);
+    if (checkHorario.mensagemAusencia && zapiService) {
+      try {
+        await zapiService.enviarTexto(destinoResposta, checkHorario.mensagemAusencia);
+        // Reclassifica como 'sistema' pra o rate-limit funcionar
+        try {
+          db.prepare(
+            `UPDATE whatsapp_mensagens
+               SET remetente = 'sistema'
+             WHERE conversa_id = ?
+               AND direcao = 'saida'
+               AND conteudo = ?
+             ORDER BY id DESC
+             LIMIT 1`
+          ).run(conversaId, checkHorario.mensagemAusencia);
+        } catch (e) {
+          const ult = db
+            .prepare(
+              `SELECT id FROM whatsapp_mensagens
+               WHERE conversa_id = ? AND direcao = 'saida' AND conteudo = ?
+               ORDER BY id DESC LIMIT 1`
+            )
+            .get(conversaId, checkHorario.mensagemAusencia);
+          if (ult) {
+            db.prepare(`UPDATE whatsapp_mensagens SET remetente='sistema' WHERE id=?`).run(ult.id);
+          }
+        }
+      } catch (err) {
+        console.error('[Z-API] Erro ao enviar auto-resposta de ausência:', err);
+      }
+    }
+    return;
+  }
+
+  // Gera resposta com IA
+  try {
+    const respostaCompleta = await agenteIA.processarMensagem(chaveArmazenamento, textoComRemetente, conversaId);
+
+    // Se a IA decidiu ignorar, respeita
+    if (/\[ACAO:IGNORAR\]/i.test(respostaCompleta)) {
+      console.log('[Z-API] Agente IA marcou mensagem como IGNORAR');
+      return;
+    }
+
+    const respostaLimpa = agenteIA.limparResposta(respostaCompleta);
+
+    if (respostaLimpa && zapiService) {
+      await zapiService.enviarTexto(destinoResposta, respostaLimpa);
+    }
+  } catch (err) {
+    console.error('[Z-API] Erro ao gerar resposta IA:', err);
+    if (!isGroup) {
+      try {
+        await zapiService.enviarTexto(destinoResposta,
+          'Desculpe, estou com dificuldades técnicas. O escritório foi notificado e retornará em breve. 🙏'
+        );
+      } catch (e) {
+        console.error('[Z-API] Erro ao enviar mensagem de erro:', e);
+      }
+    }
+  }
+}
+
+// =====================================================
 // PROCESSAMENTO COMUM
 // =====================================================
 
@@ -754,6 +994,7 @@ function getWebhookUrl(req) {
   const base = `${req.protocol}://${req.get('host')}`;
   if (WHATSAPP_PROVIDER === 'blip') return `${base}/api/whatsapp/webhook/blip`;
   if (WHATSAPP_PROVIDER === 'evolution') return `${base}/api/whatsapp/webhook/evolution`;
+  if (WHATSAPP_PROVIDER === 'zapi') return `${base}/api/whatsapp/webhook/zapi`;
   return `${base}/api/whatsapp/webhook`;
 }
 
@@ -768,11 +1009,17 @@ router.get('/status', autenticado, apenasEscritorio, async (req, res) => {
     webhook_url: getWebhookUrl(req)
   };
 
-  // Pra Evolution, inclui também o status da conexão (connected / qrcode / disconnected)
-  if (provider === 'evolution' && service.isConfigured()) {
+  // Pra Evolution e Z-API, inclui também o status da conexão
+  if ((provider === 'evolution' || provider === 'zapi') && service.isConfigured()) {
     try {
       const status = await service.statusConexao();
-      resposta.conexao = status?.state || status?.instance?.state || 'desconhecido';
+      if (provider === 'zapi') {
+        // Z-API retorna { connected, session, smartphoneConnected }
+        resposta.conexao = status?.connected ? 'open' : 'close';
+        resposta.conexao_raw = status;
+      } else {
+        resposta.conexao = status?.state || status?.instance?.state || 'desconhecido';
+      }
     } catch (e) {
       resposta.conexao = 'erro';
     }
@@ -796,7 +1043,9 @@ router.post('/enviar', autenticado, apenasEscritorio, async (req, res) => {
         ? 'Blip não configurado. Configure BLIP_API_KEY nas variáveis de ambiente.'
         : WHATSAPP_PROVIDER === 'evolution'
           ? 'Evolution API não configurada. Configure EVOLUTION_API_URL, EVOLUTION_API_KEY e EVOLUTION_INSTANCE nas variáveis de ambiente.'
-          : 'WhatsApp não configurado. Configure WHATSAPP_PHONE_ID e WHATSAPP_TOKEN nas variáveis de ambiente.';
+          : WHATSAPP_PROVIDER === 'zapi'
+            ? 'Z-API não configurada. Configure ZAPI_INSTANCE_ID, ZAPI_TOKEN e ZAPI_CLIENT_TOKEN nas variáveis de ambiente.'
+            : 'WhatsApp não configurado. Configure WHATSAPP_PHONE_ID e WHATSAPP_TOKEN nas variáveis de ambiente.';
       return res.status(503).json({ erro: msgErro });
     }
 
@@ -858,6 +1107,36 @@ router.get('/evolution/grupos', autenticado, apenasEscritorio, async (req, res) 
 });
 
 // =====================================================
+// Z-API — ROTAS ESPECÍFICAS (QR code, grupos, status)
+// =====================================================
+
+// GET /api/whatsapp/zapi/qrcode - Retorna o QR code pra parear o número
+router.get('/zapi/qrcode', autenticado, apenasEscritorio, async (req, res) => {
+  if (WHATSAPP_PROVIDER !== 'zapi' || !zapiService) {
+    return res.status(400).json({ erro: 'Provider ativo não é Z-API' });
+  }
+  try {
+    const qr = await zapiService.obterQRCode();
+    res.json(qr || { erro: 'Não foi possível obter QR code' });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// GET /api/whatsapp/zapi/grupos - Lista grupos em que o número ANA está
+router.get('/zapi/grupos', autenticado, apenasEscritorio, async (req, res) => {
+  if (WHATSAPP_PROVIDER !== 'zapi' || !zapiService) {
+    return res.status(400).json({ erro: 'Provider ativo não é Z-API' });
+  }
+  try {
+    const grupos = await zapiService.listarGrupos();
+    res.json({ total: grupos.length, grupos });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// =====================================================
 // CHECKLIST DE GRUPOS ESPERADOS
 // =====================================================
 // Ideia: o Thiago cadastra os 80 nomes de grupos em que a ANA precisa entrar,
@@ -892,14 +1171,19 @@ router.get('/evolution/grupos/checklist', autenticado, apenasEscritorio, async (
       .prepare('SELECT * FROM grupos_esperados ORDER BY nome COLLATE NOCASE')
       .all();
 
-    // Busca grupos reais da Evolution (se disponível)
+    // Busca grupos reais do provider ativo (se suportar grupos)
     let gruposReais = [];
     if (WHATSAPP_PROVIDER === 'evolution' && evolutionService) {
       try {
         gruposReais = await evolutionService.listarGrupos();
       } catch (e) {
-        // Evolution pode não estar configurada ainda — devolve esperados sem status
         console.warn('[Checklist] Evolution indisponível:', e.message);
+      }
+    } else if (WHATSAPP_PROVIDER === 'zapi' && zapiService) {
+      try {
+        gruposReais = await zapiService.listarGrupos();
+      } catch (e) {
+        console.warn('[Checklist] Z-API indisponível:', e.message);
       }
     }
 
