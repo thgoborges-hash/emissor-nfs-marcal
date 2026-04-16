@@ -28,7 +28,7 @@ class HorarioComercialService {
   constructor() {
     this.ativo = (process.env.ANA_HORARIO_COMERCIAL_ATIVO || 'true').toLowerCase() !== 'false';
     this.horaInicio = parseInt(process.env.ANA_HORARIO_INICIO || '8', 10);
-    this.horaFim = parseInt(process.env.ANA_HORARIO_FIM || '19', 10);
+    this.horaFim = parseInt(process.env.ANA_HORARIO_FIM || '22', 10);
     this.diasUteis = (process.env.ANA_DIAS_UTEIS || '1,2,3,4,5')
       .split(',')
       .map(d => parseInt(d.trim(), 10))
