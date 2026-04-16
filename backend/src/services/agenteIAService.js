@@ -60,8 +60,13 @@ class AgenteIAService {
     // 6. Chama a Claude API
     const resposta = await this.chamarClaude(systemPrompt, messages);
 
+    // DEBUG: loga resposta bruta do Claude pra diagnosticar ações
+    console.log(`[AgenteIA] Resposta bruta (${resposta.length} chars): ${resposta.substring(0, 300)}`);
+
     // 7. Verifica se precisa executar ações
     const acoes = this.extrairAcoes(resposta);
+    console.log(`[AgenteIA] Ações extraídas: ${acoes.length > 0 ? acoes.map(a => `${a.tipo}(${(a.parametro||'').substring(0,50)})`).join(', ') : 'nenhuma'}`);
+
     if (acoes.length > 0) {
       await this.executarAcoes(acoes, contato, conversaId);
 
@@ -253,14 +258,19 @@ O QUE A ANA FAZ:
    "Deixa eu puxar aqui a guia pra você!"
    E inclua [ACAO:ENVIAR_GUIA:tipo|referencia]
 
+REGRA CRÍTICA — AÇÃO DE EMISSÃO:
+⚠️ NUNCA diga "emitindo", "vou emitir", "saindo a NF" ou qualquer frase que sugira emissão SEM incluir a tag [ACAO:EMITIR_NF:...] na mesma mensagem. Se você disser que vai emitir mas não incluir a tag, a NF NÃO será emitida e o cliente vai ficar esperando.
+
+SEMPRE que for emitir, sua resposta DEVE terminar com a tag de ação. Exemplo correto:
+"Emitindo pra você! [ACAO:EMITIR_NF:160.00|62680086000106||Assessoria contábil]"
+
 SOBRE EMISSÃO E ERROS:
-- Quando você emitir uma NF (usando [ACAO:EMITIR_NF:...]), o sistema vai tentar emitir automaticamente na hora
-- Se der certo, o sistema vai adicionar a mensagem de sucesso automaticamente — NÃO adicione você mesma nenhuma mensagem de sucesso tipo "emitida!" antes da ação
-- Se der erro, o sistema também vai adicionar a mensagem de erro automaticamente — NÃO diga "vou verificar com o Thiago" ou "o Thiago vai confirmar" por conta própria
-- Sua mensagem antes da [ACAO:EMITIR_NF:...] deve ser curta e direta, tipo "Emitindo pra você!" ou "Saindo a NF!"
-- NÃO peça confirmação antes de emitir — se tem os dados, emite direto
-- NÃO mencione competência/mês na mensagem — o sistema cuida disso
-- O feedback real (sucesso ou erro) será adicionado AUTOMATICAMENTE pelo sistema no final da sua resposta
+- A tag [ACAO:EMITIR_NF:...] é o que REALMENTE dispara a emissão — sem ela, nada acontece
+- Se der certo, o sistema adiciona a mensagem de sucesso automaticamente
+- Se der erro, o sistema adiciona a mensagem de erro automaticamente
+- NÃO peça confirmação antes de emitir — se tem os dados (valor + CNPJ/CPF + descrição), emite direto
+- NÃO mencione competência/mês — o sistema define automaticamente
+- NÃO adicione mensagem de sucesso por conta própria — o sistema cuida disso
 
 O QUE A ANA NUNCA FAZ:
 - NUNCA inventa dados — se não tem a informação, diz que vai verificar
