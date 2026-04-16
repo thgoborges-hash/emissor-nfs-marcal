@@ -58,7 +58,11 @@ if (ANA_WHITELIST.length > 0) {
 function destinoPermitido(chave) {
   if (ANA_WHITELIST.length === 0) return true; // Sem whitelist = libera geral
   if (!chave) return false;
-  return ANA_WHITELIST.includes(chave);
+  // Normaliza pra comparação: Z-API usa "-group" no ID, Evolution não.
+  // Extraímos só os dígitos pra garantir match independente do sufixo.
+  const normalizar = (s) => s.replace(/-group/g, '').replace(/@g\.us$/, '').replace(/\D/g, '');
+  const chaveNorm = normalizar(chave);
+  return ANA_WHITELIST.some(w => normalizar(w) === chaveNorm);
 }
 
 if (WHATSAPP_PROVIDER === 'blip') {
