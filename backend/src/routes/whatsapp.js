@@ -16,6 +16,51 @@ let blipService = null;
 let evolutionService = null;
 let zapiService = null;
 
+// ============================================================
+// WHITELIST DE DESTINOS (modo piloto)
+// ============================================================
+// Quando setada, a ANA SÓ responde pra esses destinos (grupos ou privados).
+// Útil no rollout inicial pra testar comportamento num grupo interno antes
+// de liberar pros 80+ grupos de clientes.
+//
+// Formato: string separada por vírgula, aceita:
+//   - IDs de grupo com ou sem sufixo (ex: "120363025552242228" ou "120363025552242228@g.us")
+//   - Telefones internacionais (ex: "5541999999999")
+//
+// Exemplo:
+//   ANA_WHITELIST=120363025552242228@g.us,5541999999999
+//
+// Se vazio/ausente, não há filtro — ANA responde normalmente em todo lugar.
+const ANA_WHITELIST_RAW = process.env.ANA_WHITELIST || '';
+const ANA_WHITELIST = ANA_WHITELIST_RAW
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean)
+  .map(s => {
+    // Normaliza: remove não-dígitos pra privado, mantém @g.us pra grupo
+    if (s.endsWith('@g.us')) return s;
+    const limpo = s.replace(/\D/g, '');
+    // Grupo: >15 dígitos → adiciona @g.us
+    if (limpo.length > 15) return `${limpo}@g.us`;
+    // Privado: só os dígitos (já normalizado pelos services)
+    return limpo;
+  });
+
+if (ANA_WHITELIST.length > 0) {
+  console.log(`[WhatsApp] ⚠️  Modo PILOTO ativo — ANA só responde para: ${ANA_WHITELIST.join(', ')}`);
+}
+
+/**
+ * Verifica se um destino está na whitelist (ou se whitelist está desativada)
+ * @param {string} chave - Chave de armazenamento (telefone ou JID de grupo com @g.us)
+ * @returns {boolean} true se permitido
+ */
+function destinoPermitido(chave) {
+  if (ANA_WHITELIST.length === 0) return true; // Sem whitelist = libera geral
+  if (!chave) return false;
+  return ANA_WHITELIST.includes(chave);
+}
+
 if (WHATSAPP_PROVIDER === 'blip') {
   blipService = require('../services/blipService');
   console.log('[WhatsApp] Provider: Blip (BSP)');
@@ -300,6 +345,16 @@ async function processarMensagemEvolution(msg, instance) {
   if (remoteJid === 'status@broadcast') return;
 
   const isGroup = remoteJid.endsWith('@g.us');
+
+  // WHITELIST: em modo piloto, ignora tudo que não esteja na lista
+  const chaveTeste = isGroup
+    ? remoteJid
+    : evolutionService.extrairDestinoDoJid(remoteJid);
+  if (!destinoPermitido(chaveTeste)) {
+    console.log(`[Evolution] 🔒 Destino fora da whitelist, ignorando: ${chaveTeste}`);
+    return;
+  }
+
   const messageId = key.id || '';
   const participant = key.participant || remoteJid; // Quem enviou (em grupo, é diferente do grupo)
   const pushName = msg.pushName || '';
@@ -557,6 +612,16 @@ async function processarMensagemZapi(body) {
   const phone = body.phone || '';
   if (!phone) {
     console.log('[Z-API] Mensagem sem phone, ignorando');
+    return;
+  }
+
+  // WHITELIST: em modo piloto, ignora tudo que não esteja na lista
+  // Comparação feita com a chave de armazenamento (grupo: com @g.us; privado: só dígitos)
+  const chaveTeste = isGroup
+    ? zapiService._garantirSufixoGrupo(phone)
+    : zapiService.formatarTelefone(phone);
+  if (!destinoPermitido(chaveTeste)) {
+    console.log(`[Z-API] 🔒 Destino fora da whitelist, ignorando: ${chaveTeste}`);
     return;
   }
 
