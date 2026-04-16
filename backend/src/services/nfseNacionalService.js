@@ -468,9 +468,13 @@ class NfseNacionalService {
           } else {
             let errorMsg = `API retornou status ${res.statusCode}`;
             console.error(`[NFS-e mTLS] Erro HTTP ${res.statusCode} de ${url}`);
-            console.error(`[NFS-e mTLS] Resposta: ${responseText.substring(0, 500)}`);
+            console.error(`[NFS-e mTLS] Resposta COMPLETA: ${responseText.substring(0, 1500)}`);
             try {
               const errorBody = JSON.parse(responseText);
+              // Expande erros aninhados pra log legível
+              if (errorBody.erros && Array.isArray(errorBody.erros)) {
+                console.error(`[NFS-e mTLS] Erros SEFIN detalhados:`, JSON.stringify(errorBody.erros, null, 2));
+              }
               errorMsg = errorBody.mensagem || errorBody.message || errorBody.erro || errorMsg;
               reject({ statusCode: res.statusCode, mensagem: errorMsg, detalhes: errorBody });
             } catch {

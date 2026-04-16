@@ -690,11 +690,15 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                   }
                 }
               } catch (emissaoErr) {
-                console.error(`[WhatsApp] Erro ao tentar emitir NF ${nfId}:`, emissaoErr);
+                // emissaoErr pode ser um Error nativo OU um objeto custom { statusCode, mensagem, detalhes }
+                const errMsg = emissaoErr.mensagem || emissaoErr.message || JSON.stringify(emissaoErr).substring(0, 500);
+                const errDetalhes = emissaoErr.detalhes ? JSON.stringify(emissaoErr.detalhes, null, 2).substring(0, 1000) : '';
+                console.error(`[WhatsApp] Erro ao tentar emitir NF ${nfId}: ${errMsg}`);
+                if (errDetalhes) console.error(`[WhatsApp] Detalhes SEFIN: ${errDetalhes}`);
                 db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
-                  .run('erro_emissao', emissaoErr.message, nfId);
+                  .run('erro_emissao', `${errMsg}${errDetalhes ? ' | ' + errDetalhes : ''}`, nfId);
                 emissaoStatus = 'erro_emissao';
-                emissaoInfo = emissaoErr.message;
+                emissaoInfo = errMsg;
               }
 
               // Armazena feedback para a resposta
