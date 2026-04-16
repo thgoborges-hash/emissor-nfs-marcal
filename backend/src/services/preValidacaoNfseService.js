@@ -23,6 +23,7 @@ class PreValidacaoNfseService {
     const avisos = [];
 
     console.log(`[PreValidacao] Iniciando validação para NF ${nota.id}, cliente ${cliente.razao_social}`);
+    console.log(`[PreValidacao] Tomador: ${tomador?.razao_social}, doc=${tomador?.documento}, codigo_municipio="${tomador?.codigo_municipio}", logradouro="${tomador?.logradouro}", cep="${tomador?.cep}"`);
 
     // =========================================================
     // 1. VALIDAÇÃO E ENRIQUECIMENTO DO PRESTADOR (CLIENTE)
