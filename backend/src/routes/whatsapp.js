@@ -772,20 +772,6 @@ async function processarMensagemZapi(body) {
     return;
   }
 
-  // Delay na primeira resposta: se a ANA nunca respondeu nessa conversa,
-  // espera ~2 min pra parecer mais natural (como se tivesse lendo antes de responder)
-  const jaRespondeu = db.prepare(
-    `SELECT 1 FROM whatsapp_mensagens
-     WHERE conversa_id = ? AND direcao = 'saida' AND remetente = 'bot'
-     LIMIT 1`
-  ).get(conversaId);
-
-  if (!jaRespondeu) {
-    const delayMs = 100_000 + Math.floor(Math.random() * 40_000); // 100–140s (~2 min)
-    console.log(`[Z-API] ⏳ Primeira mensagem na conversa ${conversaId} — aguardando ${Math.round(delayMs / 1000)}s antes de responder`);
-    await new Promise(resolve => setTimeout(resolve, delayMs));
-  }
-
   // Gera resposta com IA
   try {
     const { texto: respostaCompleta, acoes } = await agenteIA.processarMensagem(chaveArmazenamento, textoComRemetente, conversaId);
