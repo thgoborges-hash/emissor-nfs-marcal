@@ -5,7 +5,7 @@
 
 const express = require('express');
 const { getDb } = require('../database/init');
-const { autenticado, apenasEscritorio } = require('../middleware/auth');
+const { autenticado, apenasEscritorio, gerarToken } = require('../middleware/auth');
 const whatsappService = require('../services/whatsappService');
 const agenteIA = require('../services/agenteIAService');
 const horarioComercial = require('../services/horarioComercialService');
@@ -256,7 +256,7 @@ router.post('/webhook/blip', async (req, res) => {
 
     // Gera resposta com IA
     try {
-      const respostaCompleta = await agenteIA.processarMensagem(telefone, texto, conversaId);
+      const { texto: respostaCompleta } = await agenteIA.processarMensagem(telefone, texto, conversaId);
       const respostaLimpa = agenteIA.limparResposta(respostaCompleta);
 
       if (respostaLimpa && blipService) {
@@ -502,7 +502,7 @@ async function processarMensagemEvolution(msg, instance) {
 
   // Gera resposta com IA
   try {
-    const respostaCompleta = await agenteIA.processarMensagem(chaveArmazenamento, textoComRemetente, conversaId);
+    const { texto: respostaCompleta } = await agenteIA.processarMensagem(chaveArmazenamento, textoComRemetente, conversaId);
 
     // Se a IA decidiu ignorar, respeita
     if (/\[ACAO:IGNORAR\]/i.test(respostaCompleta)) {
@@ -774,7 +774,7 @@ async function processarMensagemZapi(body) {
 
   // Gera resposta com IA
   try {
-    const respostaCompleta = await agenteIA.processarMensagem(chaveArmazenamento, textoComRemetente, conversaId);
+    const { texto: respostaCompleta, acoes } = await agenteIA.processarMensagem(chaveArmazenamento, textoComRemetente, conversaId);
 
     // Se a IA decidiu ignorar, respeita
     if (/\[ACAO:IGNORAR\]/i.test(respostaCompleta)) {
@@ -786,6 +786,36 @@ async function processarMensagemZapi(body) {
 
     if (respostaLimpa && zapiService) {
       await zapiService.enviarTexto(destinoResposta, respostaLimpa);
+    }
+
+    // Se emitiu NF com sucesso, envia o DANFSe como documento
+    if (acoes && acoes.length > 0) {
+      const nfEmitida = acoes.find(a => a.tipo === 'EMITIR_NF' && a.feedback?.sucesso);
+      if (nfEmitida && zapiService) {
+        try {
+          const nfId = nfEmitida.feedback.nfId;
+          const numDisplay = nfEmitida.feedback.numero || nfId;
+
+          // Gera token temporário (24h) para acesso ao DANFSe sem login
+          const tokenTemp = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'danfse' });
+          const baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+          const linkDanfse = `${baseUrl}/api/notas-fiscais/${nfId}/danfse?token=${tokenTemp}`;
+
+          console.log(`[Z-API] 📄 Enviando DANFSe da NF ${nfId} para ${destinoResposta}`);
+
+          await zapiService.enviarDocumento(
+            destinoResposta,
+            linkDanfse,
+            `DANFSe_NF_${numDisplay}.html`,
+            '📄 DANFSe — Documento Auxiliar da NFS-e'
+          );
+
+          console.log(`[Z-API] ✅ DANFSe da NF ${nfId} enviado com sucesso`);
+        } catch (danfseErr) {
+          console.error('[Z-API] Erro ao enviar DANFSe:', danfseErr);
+          // Não bloqueia o fluxo — a mensagem de texto já foi enviada
+        }
+      }
     }
   } catch (err) {
     console.error('[Z-API] Erro ao gerar resposta IA:', err);
@@ -894,7 +924,7 @@ async function processarMensagemRecebida(message, contatoWhatsapp) {
 
   // Gera resposta com IA
   try {
-    const respostaCompleta = await agenteIA.processarMensagem(telefone, texto, conversaId);
+    const { texto: respostaCompleta } = await agenteIA.processarMensagem(telefone, texto, conversaId);
     const respostaLimpa = agenteIA.limparResposta(respostaCompleta);
 
     if (respostaLimpa) {

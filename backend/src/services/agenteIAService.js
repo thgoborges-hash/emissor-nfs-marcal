@@ -102,12 +102,12 @@ class AgenteIAService {
 
         if (feedbackMsg) {
           const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
-          return respostaLimpa + feedbackMsg;
+          return { texto: respostaLimpa + feedbackMsg, acoes };
         }
       }
     }
 
-    return resposta;
+    return { texto: resposta, acoes: acoes || [] };
   }
 
   /**
