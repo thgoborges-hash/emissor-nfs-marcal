@@ -730,9 +730,20 @@ async function processarMensagemZapi(body) {
   }
 
   // Heurística extra pra grupos: só responde se for claramente pra ANA
+  // OU se a ANA respondeu recentemente (conversa ativa — ex: esperando confirmação)
   if (isGroup && !mensagemEhParaAna(texto)) {
-    console.log('[Z-API] Mensagem de grupo não parece ser pra ANA, ignorando sem chamar IA');
-    return;
+    const anaRespondeuRecente = db.prepare(
+      `SELECT 1 FROM whatsapp_mensagens
+       WHERE conversa_id = ? AND direcao = 'saida' AND remetente = 'bot'
+         AND created_at > datetime('now', '-5 minutes')
+       LIMIT 1`
+    ).get(conversaId);
+
+    if (!anaRespondeuRecente) {
+      console.log('[Z-API] Mensagem de grupo não parece ser pra ANA, ignorando sem chamar IA');
+      return;
+    }
+    console.log('[Z-API] Mensagem não tem keyword, mas ANA respondeu recentemente — processando como continuação');
   }
 
   // Horário comercial: fora dele, ANA não responde automaticamente
