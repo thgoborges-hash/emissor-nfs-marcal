@@ -111,6 +111,20 @@ class AgenteIAService {
           return { texto: respostaLimpa + feedbackMsg, acoes };
         }
       }
+
+      // Feedback de busca de DANFSe
+      const feedbackDanfse = acoes.find(a => a.tipo === 'BUSCAR_DANFSE' && a.feedback);
+      if (feedbackDanfse?.feedback) {
+        const fb = feedbackDanfse.feedback;
+        let feedbackMsg = '';
+        if (fb.sucesso) {
+          feedbackMsg = `\n\n📄 Encontrei a NF ${fb.numero}! Enviando o PDF pra você...`;
+        } else {
+          feedbackMsg = `\n\n⚠️ ${fb.erro || 'Não encontrei essa NF no sistema.'}`;
+        }
+        const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+        return { texto: respostaLimpa + feedbackMsg, acoes };
+      }
     }
 
     return { texto: resposta, acoes: acoes || [] };
@@ -294,6 +308,7 @@ AÇÕES (inclua no final da resposta — o cliente não vê isso):
 - [ACAO:TRANSFERIR_HUMANO] — passar pro Thiago/equipe
 - [ACAO:CONSULTAR_NF:numero] — consultar NF específica
 - [ACAO:LISTAR_NFS] — listar NFs do cliente
+- [ACAO:BUSCAR_DANFSE:numero_nf] — buscar e enviar o PDF da DANFSe de uma NF já emitida (quando o cliente pedir o PDF, nota, documento)
 - [ACAO:ENVIAR_GUIA:tipo|referencia] — enviar 2ª via de guia/boleto
 - [ACAO:IGNORAR] — mensagem não é pro escritório (grupo)
 - [ACAO:VINCULAR_CLIENTE:cnpj] — vincular contato ao cliente pelo CNPJ`;
@@ -714,6 +729,55 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
 
             } catch (err) {
               console.error('[WhatsApp] Erro ao criar NF:', err);
+              acao.feedback = { sucesso: false, erro: err.message };
+            }
+          }
+          break;
+
+        case 'BUSCAR_DANFSE':
+          if (acao.parametro) {
+            try {
+              // Parametro pode ser número da NF ou ID
+              const busca = acao.parametro.trim();
+              const nfEncontrada = db.prepare(`
+                SELECT id, numero_nfse, numero_dps, chave_acesso, cliente_id, status
+                FROM notas_fiscais
+                WHERE cliente_id = ? AND status = 'emitida'
+                AND (numero_nfse = ? OR CAST(id AS TEXT) = ? OR numero_dps = ?)
+                ORDER BY created_at DESC LIMIT 1
+              `).get(contato.cliente_id, busca, busca, busca);
+
+              if (nfEncontrada && nfEncontrada.chave_acesso) {
+                acao.feedback = {
+                  sucesso: true,
+                  nfId: nfEncontrada.id,
+                  numero: nfEncontrada.numero_nfse || nfEncontrada.numero_dps,
+                  chaveAcesso: nfEncontrada.chave_acesso
+                };
+                console.log(`[WhatsApp] DANFSe encontrado: NF ${nfEncontrada.numero_nfse || nfEncontrada.id}`);
+              } else {
+                // Tenta pegar a última NF emitida
+                const ultimaNf = db.prepare(`
+                  SELECT id, numero_nfse, numero_dps, chave_acesso
+                  FROM notas_fiscais
+                  WHERE cliente_id = ? AND status = 'emitida' AND chave_acesso IS NOT NULL
+                  ORDER BY created_at DESC LIMIT 1
+                `).get(contato.cliente_id);
+
+                if (ultimaNf) {
+                  acao.feedback = {
+                    sucesso: true,
+                    nfId: ultimaNf.id,
+                    numero: ultimaNf.numero_nfse || ultimaNf.numero_dps,
+                    chaveAcesso: ultimaNf.chave_acesso
+                  };
+                  console.log(`[WhatsApp] DANFSe: usando última NF emitida: ${ultimaNf.numero_nfse || ultimaNf.id}`);
+                } else {
+                  acao.feedback = { sucesso: false, erro: 'Nenhuma NF emitida encontrada' };
+                }
+              }
+            } catch (err) {
+              console.error('[WhatsApp] Erro ao buscar DANFSe:', err);
               acao.feedback = { sucesso: false, erro: err.message };
             }
           }

@@ -1152,6 +1152,42 @@ router.get('/:id/danfse', autenticado, (req, res) => {
   }
 });
 
+// GET /api/notas-fiscais/:id/danfse-pdf - Baixa DANFSe em PDF direto da SEFIN Nacional
+router.get('/:id/danfse-pdf', autenticado, async (req, res) => {
+  try {
+    const db = getDb();
+    const notaId = parseInt(req.params.id);
+
+    const nota = db.prepare(`
+      SELECT nf.*, c.id as cid, c.certificado_a1_senha_encrypted
+      FROM notas_fiscais nf
+      JOIN clientes c ON c.id = nf.cliente_id
+      WHERE nf.id = ?
+    `).get(notaId);
+
+    if (!nota) {
+      return res.status(404).json({ erro: 'Nota fiscal não encontrada' });
+    }
+    if (!nota.chave_acesso) {
+      return res.status(400).json({ erro: 'NF não possui chave de acesso (ainda não foi emitida na SEFIN)' });
+    }
+    if (!nota.certificado_a1_senha_encrypted) {
+      return res.status(400).json({ erro: 'Cliente não possui certificado A1 configurado' });
+    }
+
+    const nfseService = require('../services/nfseNacionalService');
+    const resultado = await nfseService.baixarDanfse(nota.chave_acesso, nota.cid, nota.certificado_a1_senha_encrypted);
+
+    const nomeArquivo = `DANFSe_NF_${nota.numero_nfse || nota.numero_dps || nota.id}.pdf`;
+    res.setHeader('Content-Type', resultado.contentType || 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${nomeArquivo}"`);
+    res.send(resultado.pdf);
+  } catch (err) {
+    console.error('Erro ao baixar DANFSe PDF:', err);
+    res.status(500).json({ erro: err.mensagem || err.message || 'Erro ao baixar DANFSe da SEFIN' });
+  }
+});
+
 // =====================================================
 // Rotas de E-mail
 // =====================================================

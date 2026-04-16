@@ -34,7 +34,6 @@ class NfseNacionalService {
     // 2. Gera o XML da DPS
     const { xml: dpsXml, idDPS } = this._gerarDpsXml(nota, cliente, tomador);
     console.log(`[NFS-e] XML DPS gerado (${dpsXml.length} chars), idDPS: ${idDPS}`);
-    console.log(`[NFS-e] XML DPS conteúdo:\n${dpsXml}`);
 
     // 3. Assina o XML (referência aponta para o Id do infDPS)
     const dpsXmlAssinado = xmlSignerService.assinarXml(

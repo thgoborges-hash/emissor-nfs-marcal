@@ -810,21 +810,46 @@ async function processarMensagemZapi(body) {
           // Gera token temporário (24h) para acesso ao DANFSe sem login
           const tokenTemp = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'danfse' });
           const baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
-          const linkDanfse = `${baseUrl}/api/notas-fiscais/${nfId}/danfse?token=${tokenTemp}`;
+          const linkDanfse = `${baseUrl}/api/notas-fiscais/${nfId}/danfse-pdf?token=${tokenTemp}`;
 
-          console.log(`[Z-API] 📄 Enviando DANFSe da NF ${nfId} para ${destinoResposta}`);
+          console.log(`[Z-API] 📄 Enviando DANFSe PDF da NF ${nfId} para ${destinoResposta}`);
 
           await zapiService.enviarDocumento(
             destinoResposta,
             linkDanfse,
-            `DANFSe_NF_${numDisplay}.html`,
+            `DANFSe_NF_${numDisplay}.pdf`,
             '📄 DANFSe — Documento Auxiliar da NFS-e'
           );
 
           console.log(`[Z-API] ✅ DANFSe da NF ${nfId} enviado com sucesso`);
         } catch (danfseErr) {
           console.error('[Z-API] Erro ao enviar DANFSe:', danfseErr);
-          // Não bloqueia o fluxo — a mensagem de texto já foi enviada
+        }
+      }
+
+      // Se buscou DANFSe sob demanda, envia o PDF
+      const danfseBuscado = acoes.find(a => a.tipo === 'BUSCAR_DANFSE' && a.feedback?.sucesso);
+      if (danfseBuscado && zapiService) {
+        try {
+          const nfId = danfseBuscado.feedback.nfId;
+          const numDisplay = danfseBuscado.feedback.numero || nfId;
+
+          const tokenTemp = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'danfse' });
+          const baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+          const linkDanfse = `${baseUrl}/api/notas-fiscais/${nfId}/danfse-pdf?token=${tokenTemp}`;
+
+          console.log(`[Z-API] 📄 Enviando DANFSe PDF sob demanda da NF ${nfId}`);
+
+          await zapiService.enviarDocumento(
+            destinoResposta,
+            linkDanfse,
+            `DANFSe_NF_${numDisplay}.pdf`,
+            '📄 DANFSe — Documento Auxiliar da NFS-e'
+          );
+
+          console.log(`[Z-API] ✅ DANFSe sob demanda enviado`);
+        } catch (danfseErr) {
+          console.error('[Z-API] Erro ao enviar DANFSe sob demanda:', danfseErr);
         }
       }
     }
