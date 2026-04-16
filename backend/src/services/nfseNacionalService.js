@@ -133,7 +133,8 @@ class NfseNacionalService {
    */
   async baixarDanfse(chaveAcesso, clienteId, senhaEncrypted) {
     const cert = certificadoService.carregarCertificado(clienteId, senhaEncrypted);
-    const endpoint = `${nfseConfig.ambiente.danfse}${nfseConfig.endpoints.danfse}/${chaveAcesso}`;
+    // URL: https://sefin.nfse.gov.br/danfse/{chaveAcesso} (sem duplicar /danfse)
+    const endpoint = `${nfseConfig.ambiente.danfse}/${chaveAcesso}`;
     return await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha, true);
   }
 
@@ -452,8 +453,14 @@ class NfseNacionalService {
           const buffer = Buffer.concat(chunks);
 
           if (isBinary) {
-            // Retorna o PDF como buffer
-            resolve({ pdf: buffer, contentType: res.headers['content-type'] });
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              console.log(`[NFS-e mTLS] PDF recebido: ${buffer.length} bytes, content-type: ${res.headers['content-type']}`);
+              resolve({ pdf: buffer, contentType: res.headers['content-type'] });
+            } else {
+              const errorText = buffer.toString('utf8').substring(0, 500);
+              console.error(`[NFS-e mTLS] Erro ao baixar PDF: HTTP ${res.statusCode} - ${errorText}`);
+              reject({ statusCode: res.statusCode, mensagem: `Erro ao baixar DANFSe: HTTP ${res.statusCode}`, detalhes: errorText });
+            }
             return;
           }
 

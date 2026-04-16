@@ -632,6 +632,23 @@ async function processarMensagemZapi(body) {
   const messageId = body.messageId || '';
   const pushName = body.senderName || body.chatName || '';
 
+  // Deduplicação: ignora mensagens já processadas (Z-API pode enviar webhook duplicado)
+  if (messageId) {
+    if (!global._zapiProcessedMessages) global._zapiProcessedMessages = new Map();
+    if (global._zapiProcessedMessages.has(messageId)) {
+      console.log(`[Z-API] Mensagem duplicada ignorada: ${messageId}`);
+      return;
+    }
+    global._zapiProcessedMessages.set(messageId, Date.now());
+    // Limpa mensagens antigas (mais de 10 minutos) pra não vazar memória
+    if (global._zapiProcessedMessages.size > 500) {
+      const agora = Date.now();
+      for (const [id, ts] of global._zapiProcessedMessages) {
+        if (agora - ts > 600000) global._zapiProcessedMessages.delete(id);
+      }
+    }
+  }
+
   // Extrai o texto da mensagem (Z-API tem vários tipos)
   let texto = '';
   let tipoMsg = 'texto';
