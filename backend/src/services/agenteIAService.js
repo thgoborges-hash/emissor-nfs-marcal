@@ -466,22 +466,35 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           break;
 
         case 'EMITIR_NF':
-          if (acao.parametro && !contato?.cliente_id) {
-            console.log(`[WhatsApp] ⚠️ EMITIR_NF: contato ${contato?.telefone || 'desconhecido'} não tem cliente_id vinculado. Tentando vincular automaticamente...`);
-            // Tenta vincular pelo cliente que tem certificado A1 configurado (prioridade), senão pega o primeiro
-            const clientePrincipal = db.prepare(
+          // Garante que o contato está vinculado a um cliente com certificado A1
+          if (acao.parametro) {
+            const clienteComCert = db.prepare(
               `SELECT id, razao_social FROM clientes
                WHERE certificado_a1_path IS NOT NULL AND certificado_a1_senha_encrypted IS NOT NULL
                ORDER BY id LIMIT 1`
-            ).get() || db.prepare('SELECT id, razao_social FROM clientes LIMIT 1').get();
-            if (clientePrincipal && contato) {
-              db.prepare('UPDATE whatsapp_contatos SET cliente_id = ?, tipo = ? WHERE id = ?')
-                .run(clientePrincipal.id, 'cliente', contato.id);
-              contato.cliente_id = clientePrincipal.id;
-              console.log(`[WhatsApp] ✅ Contato vinculado automaticamente ao cliente ${clientePrincipal.razao_social} (ID ${clientePrincipal.id})`);
-            } else {
-              console.log(`[WhatsApp] ❌ Nenhum cliente cadastrado no sistema. NF não pode ser emitida.`);
-              acao.feedback = { sucesso: false, erro: 'Nenhum cliente cadastrado no sistema' };
+            ).get();
+
+            if (!contato?.cliente_id) {
+              console.log(`[WhatsApp] ⚠️ EMITIR_NF: contato ${contato?.telefone || 'desconhecido'} não tem cliente_id vinculado. Tentando vincular automaticamente...`);
+              const clienteAlvo = clienteComCert || db.prepare('SELECT id, razao_social FROM clientes LIMIT 1').get();
+              if (clienteAlvo && contato) {
+                db.prepare('UPDATE whatsapp_contatos SET cliente_id = ?, tipo = ? WHERE id = ?')
+                  .run(clienteAlvo.id, 'cliente', contato.id);
+                contato.cliente_id = clienteAlvo.id;
+                console.log(`[WhatsApp] ✅ Contato vinculado automaticamente ao cliente ${clienteAlvo.razao_social} (ID ${clienteAlvo.id})`);
+              } else {
+                console.log(`[WhatsApp] ❌ Nenhum cliente cadastrado no sistema. NF não pode ser emitida.`);
+                acao.feedback = { sucesso: false, erro: 'Nenhum cliente cadastrado no sistema' };
+              }
+            } else if (clienteComCert && contato.cliente_id !== clienteComCert.id) {
+              // Contato vinculado a cliente SEM certificado — re-vincular ao que tem
+              const clienteAtual = db.prepare('SELECT id, razao_social, certificado_a1_path FROM clientes WHERE id = ?').get(contato.cliente_id);
+              if (!clienteAtual?.certificado_a1_path) {
+                console.log(`[WhatsApp] ⚠️ Cliente atual (ID ${contato.cliente_id}) não tem certificado. Re-vinculando ao cliente ${clienteComCert.razao_social} (ID ${clienteComCert.id})`);
+                db.prepare('UPDATE whatsapp_contatos SET cliente_id = ? WHERE id = ?')
+                  .run(clienteComCert.id, contato.id);
+                contato.cliente_id = clienteComCert.id;
+              }
             }
           }
           if (acao.parametro && contato?.cliente_id) {
