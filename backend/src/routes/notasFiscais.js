@@ -840,9 +840,10 @@ router.get('/:id/danfse', autenticado, (req, res) => {
   }
 });
 
-// GET /api/notas-fiscais/:id/danfse-pdf - Captura DANFSe oficial da SEFIN como PDF
+// GET /api/notas-fiscais/:id/danfse-pdf - Baixa DANFSe oficial (cascata: API ADN → Puppeteer → HTML)
 router.get('/:id/danfse-pdf', autenticado, async (req, res) => {
   try {
+    const db = getDb();
     const notaId = parseInt(req.params.id);
     const nota = buscarDadosNota(notaId);
 
@@ -861,19 +862,48 @@ router.get('/:id/danfse-pdf', autenticado, async (req, res) => {
 
     const numDisplay = nota.numero_nfse || nota.numero_dps || nota.id;
     let pdfBuffer;
+    let fonte = 'desconhecida';
 
+    // === TENTATIVA 1: API ADN/SEFIN (mTLS, mais confiável) ===
     try {
-      // Tenta capturar o DANFSe oficial do portal SEFIN
-      console.log(`[DANFSe-PDF] Capturando DANFSe oficial para NF ${numDisplay} (chave: ${nota.chave_acesso})...`);
-      pdfBuffer = await danfsePdfService.gerarPdfOficial(nota.chave_acesso);
-    } catch (oficialErr) {
-      // Fallback: gera PDF a partir do nosso HTML
-      console.warn(`[DANFSe-PDF] Portal SEFIN indisponível, usando fallback HTML: ${oficialErr.message}`);
-      const html = gerarHtmlDanfse(nota);
-      pdfBuffer = await danfsePdfService.gerarPdfHtml(html);
+      const cliente = db.prepare(
+        'SELECT id, certificado_a1_senha_encrypted FROM clientes WHERE id = ?'
+      ).get(nota.cliente_id);
+
+      if (cliente && cliente.certificado_a1_senha_encrypted) {
+        console.log(`[DANFSe-PDF] Tentativa 1: API ADN/SEFIN para NF ${numDisplay}...`);
+        const resultado = await nfseNacionalService.baixarDanfse(
+          nota.chave_acesso, cliente.id, cliente.certificado_a1_senha_encrypted
+        );
+        if (resultado && resultado.pdf && resultado.pdf.length > 500) {
+          pdfBuffer = resultado.pdf;
+          fonte = 'API ADN/SEFIN';
+        }
+      }
+    } catch (apiErr) {
+      console.warn(`[DANFSe-PDF] API ADN/SEFIN falhou: ${apiErr.mensagem || apiErr.message}`);
     }
 
-    console.log(`[DANFSe-PDF] PDF pronto: ${pdfBuffer.length} bytes`);
+    // === TENTATIVA 2: Consulta Pública via Puppeteer ===
+    if (!pdfBuffer) {
+      try {
+        console.log(`[DANFSe-PDF] Tentativa 2: Consulta Pública via Puppeteer...`);
+        pdfBuffer = await danfsePdfService.gerarPdfOficial(nota.chave_acesso);
+        fonte = 'Consulta Pública SEFIN';
+      } catch (puppeteerErr) {
+        console.warn(`[DANFSe-PDF] Consulta Pública falhou: ${puppeteerErr.message}`);
+      }
+    }
+
+    // === TENTATIVA 3: Fallback HTML interno ===
+    if (!pdfBuffer) {
+      console.warn(`[DANFSe-PDF] Usando fallback: HTML interno convertido para PDF`);
+      const html = gerarHtmlDanfse(nota);
+      pdfBuffer = await danfsePdfService.gerarPdfHtml(html);
+      fonte = 'HTML interno (fallback)';
+    }
+
+    console.log(`[DANFSe-PDF] ✅ PDF pronto via ${fonte}: ${pdfBuffer.length} bytes`);
 
     const nomeArquivo = `DANFSe_NF_${numDisplay}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');

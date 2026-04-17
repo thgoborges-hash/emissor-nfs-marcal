@@ -129,15 +129,46 @@ class NfseNacionalService {
   }
 
   /**
-   * Baixa o DANFSe (PDF) de uma NFS-e
+   * Baixa o DANFSe (PDF) de uma NFS-e.
+   * Tenta múltiplos endpoints em cascata:
+   *   1. ADN API (adn.nfse.gov.br/contribuintes)
+   *   2. SEFIN /SefinNacional/danfse/
+   *   3. SEFIN /danfse/ (legado)
    */
   async baixarDanfse(chaveAcesso, clienteId, senhaEncrypted) {
     const cert = certificadoService.carregarCertificado(clienteId, senhaEncrypted);
-    // Tenta múltiplos endpoints possíveis da SEFIN Nacional
-    // Ref: API pode estar em /SefinNacional/danfse/ ou /danfse/
-    const endpoint = `${nfseConfig.ambiente.sefin}/danfse/${chaveAcesso}`;
-    console.log(`[NFS-e] Baixando DANFSe de: ${endpoint}`);
-    return await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha, true);
+
+    // URLs em ordem de prioridade
+    const isProd = nfseConfig.ambienteNome === 'producao';
+    const adnBase = isProd
+      ? 'https://adn.nfse.gov.br/contribuintes'
+      : 'https://adn.producaorestrita.nfse.gov.br/contribuintes';
+
+    const endpoints = [
+      `${adnBase}/danfse/${chaveAcesso}`,
+      `${adnBase}/NFSe/${chaveAcesso}/DANFSe`,
+      `${nfseConfig.ambiente.sefin}/danfse/${chaveAcesso}`,
+      `${nfseConfig.ambiente.baseUrl}/danfse/${chaveAcesso}`,
+    ];
+
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`[NFS-e] Tentando DANFSe em: ${endpoint}`);
+        const resultado = await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha, true);
+        if (resultado && resultado.pdf && resultado.pdf.length > 500) {
+          console.log(`[NFS-e] ✅ DANFSe baixado de ${endpoint}: ${resultado.pdf.length} bytes`);
+          return resultado;
+        }
+        console.warn(`[NFS-e] Endpoint respondeu mas PDF vazio/pequeno: ${endpoint}`);
+      } catch (err) {
+        const status = err.statusCode || err.status || 'N/A';
+        console.warn(`[NFS-e] Endpoint ${endpoint} falhou (HTTP ${status}): ${err.mensagem || err.message}`);
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('Nenhum endpoint da API retornou o DANFSe PDF');
   }
 
   /**

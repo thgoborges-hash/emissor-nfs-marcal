@@ -118,7 +118,7 @@ async function gerarPdfOficial(chaveAcesso) {
         const id = (input.id || '').toLowerCase();
         if (ph.includes('chave') || label.includes('chave') || name.includes('chave') || id.includes('chave') ||
             ph.includes('acesso') || label.includes('acesso') || name.includes('acesso') || id.includes('acesso')) {
-          return `#${input.id}` || `[name="${input.name}"]`;
+          return input.id ? `#${input.id}` : `[name="${input.name}"]`;
         }
       }
       // Fallback: primeiro input de texto visível
