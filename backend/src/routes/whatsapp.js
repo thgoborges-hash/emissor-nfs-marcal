@@ -827,14 +827,14 @@ async function processarMensagemZapi(body) {
           // Gera token temporário (24h) para acesso ao DANFSe sem login
           const tokenTemp = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'danfse' });
           const baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
-          const linkDanfse = `${baseUrl}/api/notas-fiscais/${nfId}/danfse-pdf?token=${tokenTemp}`;
+          const linkDanfse = `${baseUrl}/api/notas-fiscais/${nfId}/danfse?token=${tokenTemp}&download=1`;
 
-          console.log(`[Z-API] 📄 Enviando DANFSe PDF da NF ${nfId} para ${destinoResposta}`);
+          console.log(`[Z-API] 📄 Enviando DANFSe da NF ${nfId} para ${destinoResposta}`);
 
           await zapiService.enviarDocumento(
             destinoResposta,
             linkDanfse,
-            `DANFSe_NF_${numDisplay}.pdf`,
+            `DANFSe_NF_${numDisplay}.html`,
             '📄 DANFSe — Documento Auxiliar da NFS-e'
           );
 
@@ -853,14 +853,14 @@ async function processarMensagemZapi(body) {
 
           const tokenTemp = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'danfse' });
           const baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
-          const linkDanfse = `${baseUrl}/api/notas-fiscais/${nfId}/danfse-pdf?token=${tokenTemp}`;
+          const linkDanfse = `${baseUrl}/api/notas-fiscais/${nfId}/danfse?token=${tokenTemp}&download=1`;
 
-          console.log(`[Z-API] 📄 Enviando DANFSe PDF sob demanda da NF ${nfId}`);
+          console.log(`[Z-API] 📄 Enviando DANFSe sob demanda da NF ${nfId}`);
 
           await zapiService.enviarDocumento(
             destinoResposta,
             linkDanfse,
-            `DANFSe_NF_${numDisplay}.pdf`,
+            `DANFSe_NF_${numDisplay}.html`,
             '📄 DANFSe — Documento Auxiliar da NFS-e'
           );
 
