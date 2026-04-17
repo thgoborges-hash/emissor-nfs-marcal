@@ -10,6 +10,21 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
+# Instala Chromium e dependências necessárias para Puppeteer
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    font-noto \
+    font-noto-emoji
+
+# Configura Puppeteer para usar o Chromium do sistema (não baixar o próprio)
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Instala dependências do backend
 COPY backend/package*.json ./
 RUN npm install --production
