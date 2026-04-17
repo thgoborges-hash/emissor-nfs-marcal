@@ -840,7 +840,7 @@ router.get('/:id/danfse', autenticado, (req, res) => {
   }
 });
 
-// GET /api/notas-fiscais/:id/danfse-pdf - Gera DANFSe em PDF (HTML→PDF via Puppeteer)
+// GET /api/notas-fiscais/:id/danfse-pdf - Captura DANFSe oficial da SEFIN como PDF
 router.get('/:id/danfse-pdf', autenticado, async (req, res) => {
   try {
     const notaId = parseInt(req.params.id);
@@ -855,14 +855,27 @@ router.get('/:id/danfse-pdf', autenticado, async (req, res) => {
       return res.status(403).json({ erro: 'Acesso não autorizado' });
     }
 
-    console.log(`[DANFSe-PDF] Gerando PDF para NF ${notaId}...`);
-    const html = gerarHtmlDanfse(nota);
-    const pdfBuffer = await danfsePdfService.gerarPdf(html);
-    console.log(`[DANFSe-PDF] PDF gerado: ${pdfBuffer.length} bytes`);
+    if (!nota.chave_acesso) {
+      return res.status(400).json({ erro: 'NF não possui chave de acesso (ainda não foi emitida na SEFIN)' });
+    }
 
     const numDisplay = nota.numero_nfse || nota.numero_dps || nota.id;
-    const nomeArquivo = `DANFSe_NF_${numDisplay}.pdf`;
+    let pdfBuffer;
 
+    try {
+      // Tenta capturar o DANFSe oficial do portal SEFIN
+      console.log(`[DANFSe-PDF] Capturando DANFSe oficial para NF ${numDisplay} (chave: ${nota.chave_acesso})...`);
+      pdfBuffer = await danfsePdfService.gerarPdfOficial(nota.chave_acesso);
+    } catch (oficialErr) {
+      // Fallback: gera PDF a partir do nosso HTML
+      console.warn(`[DANFSe-PDF] Portal SEFIN indisponível, usando fallback HTML: ${oficialErr.message}`);
+      const html = gerarHtmlDanfse(nota);
+      pdfBuffer = await danfsePdfService.gerarPdfHtml(html);
+    }
+
+    console.log(`[DANFSe-PDF] PDF pronto: ${pdfBuffer.length} bytes`);
+
+    const nomeArquivo = `DANFSe_NF_${numDisplay}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     if (req.query.download === '1') {
       res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);

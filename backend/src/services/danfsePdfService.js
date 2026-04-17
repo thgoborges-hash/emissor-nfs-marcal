@@ -1,14 +1,18 @@
 /**
  * DANFSe PDF Service
  *
- * Converte o HTML da DANFSe em PDF usando Puppeteer (headless Chrome).
- * Mantém uma instância única do browser para performance.
+ * Captura o DANFSe OFICIAL do portal do Emissor Nacional (nfse.gov.br)
+ * usando Puppeteer (headless Chrome) e salva como PDF.
  *
- * Uso: const pdf = await danfsePdfService.gerarPdf(htmlString);
+ * URL pública: https://www.nfse.gov.br/EmissorNacional/Danfse?chaveAcesso=XXXXX
+ *
+ * Mantém uma instância única do browser para performance.
  */
 
 let browserInstance = null;
 let browserLaunchPromise = null;
+
+const DANFSE_URL_BASE = 'https://www.nfse.gov.br/EmissorNacional/Danfse';
 
 async function getBrowser() {
   if (browserInstance && browserInstance.connected) {
@@ -46,7 +50,6 @@ async function getBrowser() {
 
       browserInstance = await puppeteer.launch(launchOptions);
 
-      // Reconecta se o browser fechar inesperadamente
       browserInstance.on('disconnected', () => {
         console.log('[DANFSe-PDF] Browser desconectado, será reiniciado no próximo uso.');
         browserInstance = null;
@@ -66,17 +69,83 @@ async function getBrowser() {
 }
 
 /**
- * Gera um PDF a partir de uma string HTML.
+ * Captura o DANFSe oficial do portal SEFIN e retorna como PDF.
  *
- * @param {string} html - HTML completo da DANFSe
+ * @param {string} chaveAcesso - Chave de acesso da NFS-e
  * @returns {Promise<Buffer>} - Buffer do PDF gerado
  */
-async function gerarPdf(html) {
+async function gerarPdfOficial(chaveAcesso) {
   const browser = await getBrowser();
   const page = await browser.newPage();
 
   try {
-    // Remove o botão de imprimir do HTML (classe print-hide)
+    const url = `${DANFSE_URL_BASE}?chaveAcesso=${chaveAcesso}`;
+    console.log(`[DANFSe-PDF] Acessando DANFSe oficial: ${url}`);
+
+    // Navega até a página oficial do DANFSe
+    const response = await page.goto(url, {
+      waitUntil: 'networkidle2',
+      timeout: 30000,
+    });
+
+    if (!response || !response.ok()) {
+      const status = response ? response.status() : 'sem resposta';
+      throw new Error(`Página do DANFSe retornou HTTP ${status}`);
+    }
+
+    // Espera o conteúdo principal carregar (o portal pode ter JS dinâmico)
+    await page.waitForSelector('body', { timeout: 10000 });
+
+    // Aguarda um pouco extra para garantir que tudo renderizou
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Verifica se não caiu em página de erro
+    const pageContent = await page.content();
+    if (pageContent.includes('Chave de Acesso não encontrada') ||
+        pageContent.includes('não encontrada') ||
+        pageContent.includes('Erro')) {
+      // Tenta detectar a mensagem de erro específica
+      const errorText = await page.evaluate(() => {
+        const body = document.body.innerText;
+        return body.substring(0, 500);
+      });
+      console.error(`[DANFSe-PDF] Página retornou erro: ${errorText}`);
+      throw new Error(`DANFSe não encontrado no portal SEFIN. Verifique a chave de acesso.`);
+    }
+
+    console.log('[DANFSe-PDF] Página carregada, gerando PDF...');
+
+    // Gera o PDF
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '5mm',
+        right: '5mm',
+        bottom: '5mm',
+        left: '5mm',
+      },
+      preferCSSPageSize: true,
+    });
+
+    console.log(`[DANFSe-PDF] PDF oficial gerado: ${pdfBuffer.length} bytes`);
+    return Buffer.from(pdfBuffer);
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+/**
+ * Fallback: Gera PDF a partir de HTML customizado (caso o portal esteja fora).
+ *
+ * @param {string} html - HTML completo da DANFSe
+ * @returns {Promise<Buffer>} - Buffer do PDF gerado
+ */
+async function gerarPdfHtml(html) {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+
+  try {
     const htmlSemBotao = html.replace(
       /<div class="print-hide">[\s\S]*?<\/div>/,
       ''
@@ -120,4 +189,4 @@ async function fechar() {
   }
 }
 
-module.exports = { gerarPdf, fechar };
+module.exports = { gerarPdfOficial, gerarPdfHtml, fechar };
