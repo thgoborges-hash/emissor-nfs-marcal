@@ -3,6 +3,8 @@ const { getDb } = require('../database/init');
 const { autenticado, apenasEscritorio } = require('../middleware/auth');
 const nfseNacionalService = require('../services/nfseNacionalService');
 const danfsePdfService = require('../services/danfsePdfService');
+let QRCode;
+try { QRCode = require('qrcode'); } catch (e) { QRCode = null; }
 
 const router = express.Router();
 
@@ -605,7 +607,16 @@ function buscarDadosNota(notaId) {
   `).get(notaId);
 }
 
-function gerarHtmlDanfse(nota) {
+async function gerarHtmlDanfse(nota) {
+    // Gera QR Code como data URL (base64 PNG)
+    let qrDataUrl = '';
+    if (QRCode && nota.chave_acesso) {
+      try {
+        const consultaUrl = `https://www.nfse.gov.br/consultapublica`;
+        qrDataUrl = await QRCode.toDataURL(consultaUrl, { width: 120, margin: 1 });
+      } catch (e) { qrDataUrl = ''; }
+    }
+
     const formatarData = (data) => {
       if (!data) return '-';
       const d = new Date(data);
@@ -638,169 +649,206 @@ function gerarHtmlDanfse(nota) {
 
     const isSimulacao = nota.xml_envio && nota.xml_envio.includes('[SIMULAÇÃO]');
 
+    const chaveFormatada = nota.chave_acesso
+      ? nota.chave_acesso.replace(/(.{4})/g, '$1 ').trim()
+      : 'Não disponível';
+
+    const nfseNum = nota.numero_nfse || 'Pendente';
+    const dpsNum = nota.numero_dps || '-';
+
     return `
-<!DOCTYPE html>
+<\!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DANFSe - DPS ${nota.numero_dps}</title>
+  <title>DANFSe - NFS-e ${nfseNum}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Arial', sans-serif; background: #f5f5f5; padding: 20px; }
-    .print-hide { display: block; margin-bottom: 20px; text-align: center; gap: 10px; }
-    .print-hide button { padding: 10px 20px; margin: 0 5px; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; font-weight: 600; }
-    .print-hide .btn-primary { background: #3498db; color: white; }
-    .print-hide .btn-primary:hover { background: #2980b9; }
-    .danfse-container { max-width: 900px; margin: 0 auto; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    .warning-banner { background: #fff3cd; border: 2px solid #ffc107; color: #856404; padding: 12px 16px; text-align: center; font-weight: bold; font-size: 14px; }
-    .header { background: linear-gradient(135deg, #1a2332 0%, #2c3e50 100%); color: white; padding: 24px; display: flex; align-items: center; gap: 20px; }
-    .header-info { flex: 1; }
-    .header-info h1 { font-size: 28px; margin-bottom: 4px; font-weight: bold; }
-    .header-info p { font-size: 13px; opacity: 0.9; margin: 2px 0; }
-    .header-badge { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5); padding: 12px 16px; border-radius: 4px; text-align: center; min-width: 140px; }
-    .header-badge .label { font-size: 11px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
-    .header-badge .value { font-size: 20px; font-weight: bold; margin-top: 4px; }
-    .section { border: 1px solid #e0e0e0; margin: 20px; border-radius: 4px; overflow: hidden; }
-    .section-title { background: #2c3e50; color: white; padding: 12px 16px; font-weight: bold; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .section-content { padding: 16px; }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
-    .info-grid.full { grid-template-columns: 1fr; }
-    .info-item { display: flex; flex-direction: column; }
-    .info-item label { font-size: 11px; color: #666; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
-    .info-item .value { font-size: 14px; color: #333; word-break: break-word; }
-    .table-section { padding: 0; }
-    .table-section table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .table-section th { background: #3498db; color: white; padding: 12px; text-align: left; font-weight: bold; font-size: 12px; }
-    .table-section td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
-    .table-section tr:last-child td { border-bottom: none; }
-    .table-section tr:nth-child(even) { background: #f9f9f9; }
-    .valores-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .valor-item { display: flex; justify-content: space-between; padding: 8px 0; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
-    .valor-item label { color: #666; font-weight: 500; }
-    .valor-item .value { color: #333; font-weight: bold; }
-    .valor-item.total { border: 2px solid #27ae60; border-radius: 4px; padding: 10px; margin-top: 8px; background: #f0fdf4; }
-    .valor-item.total label { color: #27ae60; font-weight: bold; text-transform: uppercase; }
-    .valor-item.total .value { color: #27ae60; font-size: 16px; }
-    .footer { text-align: center; padding: 20px; border-top: 1px solid #e0e0e0; color: #999; font-size: 12px; }
-    .footer p { margin: 4px 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; background: white; }
+    .page { width: 100%; max-width: 800px; margin: 0 auto; padding: 10px; }
+
+    /* Header */
+    .header { display: flex; align-items: stretch; border: 2px solid #333; margin-bottom: 0; }
+    .header-left { flex: 1; padding: 12px 16px; border-right: 1px solid #333; }
+    .header-left h1 { font-size: 22px; color: #003366; margin-bottom: 2px; }
+    .header-left .subtitle { font-size: 9px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+    .header-left .version { font-size: 8px; color: #888; margin-top: 4px; }
+    .header-center { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 8px 16px; border-right: 1px solid #333; min-width: 140px; }
+    .header-center .label { font-size: 9px; color: #555; text-transform: uppercase; margin-bottom: 4px; }
+    .header-center .nfse-num { font-size: 20px; font-weight: bold; color: #003366; }
+    .header-center .dps-info { font-size: 9px; color: #666; margin-top: 2px; }
+    .header-right { display: flex; align-items: center; justify-content: center; padding: 8px; min-width: 130px; }
+    .header-right img { width: 110px; height: 110px; }
+    .qr-placeholder { width: 110px; height: 110px; border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #999; text-align: center; }
+
+    /* Chave de acesso */
+    .chave-box { border: 2px solid #333; border-top: none; padding: 8px 16px; background: #f8f8f8; text-align: center; margin-bottom: 0; }
+    .chave-box .label { font-size: 8px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+    .chave-box .chave { font-family: 'Courier New', monospace; font-size: 12px; font-weight: bold; letter-spacing: 2px; color: #222; margin-top: 2px; }
+
+    /* Sections */
+    .section { border: 2px solid #333; border-top: none; }
+    .section-title { background: #003366; color: white; padding: 6px 12px; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+    .section-body { padding: 10px 12px; }
+
+    /* Field grid */
+    .fields { display: flex; flex-wrap: wrap; gap: 0; }
+    .field { padding: 4px 8px 6px 0; }
+    .field.w50 { width: 50%; }
+    .field.w33 { width: 33.33%; }
+    .field.w25 { width: 25%; }
+    .field.w100 { width: 100%; }
+    .field .label { font-size: 8px; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 1px; }
+    .field .val { font-size: 11px; color: #222; font-weight: 500; }
+
+    /* Tabela serviço */
+    .svc-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .svc-table th { background: #e8e8e8; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; border-bottom: 1px solid #ccc; }
+    .svc-table td { padding: 6px 8px; border-bottom: 1px solid #eee; }
+    .svc-table .right { text-align: right; }
+
+    /* Valores */
+    .val-grid { display: flex; gap: 0; }
+    .val-col { flex: 1; }
+    .val-row { display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid #f0f0f0; font-size: 10px; }
+    .val-row .label { color: #555; }
+    .val-row .val { font-weight: 600; }
+    .val-total { background: #e6f4ea; border: 2px solid #27ae60; border-radius: 3px; padding: 8px 12px; margin-top: 6px; display: flex; justify-content: space-between; }
+    .val-total .label { color: #27ae60; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+    .val-total .val { color: #27ae60; font-weight: bold; font-size: 14px; }
+
+    /* Situação */
+    .situacao { display: inline-block; padding: 3px 10px; border-radius: 3px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+    .situacao.emitida { background: #e6f4ea; color: #27ae60; border: 1px solid #27ae60; }
+    .situacao.pendente { background: #fff8e1; color: #f39c12; border: 1px solid #f39c12; }
+    .situacao.cancelada { background: #fde8e8; color: #e74c3c; border: 1px solid #e74c3c; }
+
+    /* Footer */
+    .footer { text-align: center; padding: 10px; font-size: 8px; color: #999; border: 2px solid #333; border-top: none; }
+    .footer p { margin: 2px 0; }
+
+    /* Simulação */
+    .sim-banner { background: #fff3cd; border: 2px solid #ffc107; color: #856404; padding: 8px; text-align: center; font-weight: bold; font-size: 12px; }
+
     @media print {
-      body { background: white; padding: 0; }
-      .print-hide { display: none !important; }
-      .danfse-container { box-shadow: none; max-width: 100%; margin: 0; }
-      .section { page-break-inside: avoid; }
+      body { background: white; }
+      .page { padding: 0; max-width: 100%; }
     }
   </style>
 </head>
 <body>
-  <div class="print-hide">
-    <button class="btn-primary" onclick="window.print()">Imprimir / Salvar PDF</button>
-  </div>
-
-  <div class="danfse-container">
-    ${isSimulacao ? '<div class="warning-banner">DOCUMENTO DE SIMULA\u00c7\u00c3O - N\u00c3O POSSUI VALIDADE FISCAL</div>' : ''}
+  <div class="page">
+    ${nota.xml_envio && nota.xml_envio.includes('[SIMULAÇÃO]') ? '<div class="sim-banner">*** DOCUMENTO DE SIMULAÇÃO - SEM VALIDADE FISCAL ***</div>' : ''}
 
     <div class="header">
-      <div class="header-info">
+      <div class="header-left">
         <h1>DANFSe</h1>
-        <p>Documento Auxiliar da Nota Fiscal de Servi\u00e7o Eletr\u00f4nica</p>
-        <p style="margin-top: 8px; font-size: 12px;">DPS n\u00ba <strong>${nota.numero_dps}</strong></p>
+        <div class="subtitle">Documento Auxiliar da Nota Fiscal de Serviço Eletrônica</div>
+        <div class="version">Padrão Nacional NFS-e</div>
+        <div style="margin-top:8px;">
+          <span class="situacao ${nota.status === 'emitida' ? 'emitida' : nota.status === 'cancelada' ? 'cancelada' : 'pendente'}">
+            ${nota.status === 'emitida' ? 'AUTORIZADA' : nota.status.toUpperCase()}
+          </span>
+        </div>
       </div>
-      <div class="header-badge">
-        <div class="label">Situa\u00e7\u00e3o</div>
-        <div class="value" style="color: ${nota.status === 'emitida' ? '#27ae60' : '#f39c12'}">${
-          nota.status === 'emitida' ? 'EMITIDA' : nota.status.toUpperCase()
-        }</div>
+      <div class="header-center">
+        <div class="label">Número NFS-e</div>
+        <div class="nfse-num">${nfseNum}</div>
+        <div class="dps-info">DPS nº ${dpsNum} / Série 1</div>
+        <div class="dps-info">${formatarData(nota.data_emissao)}</div>
+      </div>
+      <div class="header-right">
+        ${qrDataUrl ? '<img src="' + qrDataUrl + '" alt="QR Code" />' : '<div class="qr-placeholder">QR Code<br>Consulta Pública</div>'}
+      </div>
+    </div>
+
+    <div class="chave-box">
+      <div class="label">Chave de Acesso da NFS-e</div>
+      <div class="chave">${chaveFormatada}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Prestador de Serviços</div>
+      <div class="section-body">
+        <div class="fields">
+          <div class="field w50"><div class="label">Razão Social</div><div class="val">${nota.cliente_razao_social || '-'}</div></div>
+          <div class="field w50"><div class="label">Nome Fantasia</div><div class="val">${nota.cliente_nome_fantasia || '-'}</div></div>
+          <div class="field w33"><div class="label">CNPJ</div><div class="val">${formatarCNPJ(nota.cliente_cnpj)}</div></div>
+          <div class="field w33"><div class="label">Município/UF</div><div class="val">${nota.cliente_municipio || '-'}/${nota.cliente_uf || '-'}</div></div>
+          <div class="field w33"><div class="label">Contato</div><div class="val">${nota.cliente_email || '-'}</div></div>
+        </div>
       </div>
     </div>
 
     <div class="section">
-      <div class="section-title">Prestador (Emissor)</div>
-      <div class="section-content">
-        <div class="info-grid">
-          <div class="info-item"><label>Raz\u00e3o Social</label><div class="value">${nota.cliente_razao_social || '-'}</div></div>
-          <div class="info-item"><label>Nome Fantasia</label><div class="value">${nota.cliente_nome_fantasia || '-'}</div></div>
-          <div class="info-item"><label>CNPJ</label><div class="value">${formatarCNPJ(nota.cliente_cnpj)}</div></div>
-          <div class="info-item"><label>Contato</label><div class="value">${nota.cliente_telefone || '-'} | ${nota.cliente_email || '-'}</div></div>
-        </div>
-        <div class="info-grid full">
-          <div class="info-item"><label>Localiza\u00e7\u00e3o</label><div class="value">${nota.cliente_municipio || '-'}, ${nota.cliente_uf || '-'}</div></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Tomador (Cliente)</div>
-      <div class="section-content">
+      <div class="section-title">Tomador de Serviços</div>
+      <div class="section-body">
         ${nota.tomador_razao_social ? `
-          <div class="info-grid">
-            <div class="info-item"><label>Raz\u00e3o Social</label><div class="value">${nota.tomador_razao_social || '-'}</div></div>
-            <div class="info-item"><label>Nome Fantasia</label><div class="value">${nota.tomador_nome_fantasia || '-'}</div></div>
-            <div class="info-item"><label>${nota.tipo_documento === 'CNPJ' ? 'CNPJ' : 'CPF'}</label><div class="value">${nota.tipo_documento === 'CNPJ' ? formatarCNPJ(nota.tomador_documento) : formatarCPF(nota.tomador_documento)}</div></div>
-            <div class="info-item"><label>Contato</label><div class="value">${nota.tomador_telefone || '-'} | ${nota.tomador_email || '-'}</div></div>
-            <div class="info-item full"><label>Endere\u00e7o</label><div class="value">${nota.tomador_endereco || '-'}, ${nota.tomador_numero || '-'} - ${nota.tomador_bairro || '-'}, ${nota.tomador_cep || '-'}</div></div>
-            <div class="info-item"><label>Localiza\u00e7\u00e3o</label><div class="value">${nota.tomador_municipio || '-'}, ${nota.tomador_uf || '-'}</div></div>
-          </div>
-        ` : '<p style="color: #999; font-style: italic;">Tomador n\u00e3o cadastrado</p>'}
+        <div class="fields">
+          <div class="field w50"><div class="label">Razão Social</div><div class="val">${nota.tomador_razao_social}</div></div>
+          <div class="field w25"><div class="label">${nota.tipo_documento === 'CNPJ' ? 'CNPJ' : 'CPF'}</div><div class="val">${nota.tipo_documento === 'CNPJ' ? formatarCNPJ(nota.tomador_documento) : formatarCPF(nota.tomador_documento)}</div></div>
+          <div class="field w25"><div class="label">Telefone</div><div class="val">${nota.tomador_telefone || '-'}</div></div>
+          <div class="field w100"><div class="label">Endereço</div><div class="val">${nota.tomador_endereco || '-'}, ${nota.tomador_numero || 'S/N'} - ${nota.tomador_bairro || '-'} - CEP ${nota.tomador_cep || '-'}</div></div>
+          <div class="field w50"><div class="label">Município/UF</div><div class="val">${nota.tomador_municipio || '-'}/${nota.tomador_uf || '-'}</div></div>
+          <div class="field w50"><div class="label">E-mail</div><div class="val">${nota.tomador_email || '-'}</div></div>
+        </div>
+        ` : '<div style="color:#999;font-style:italic;">Tomador não identificado</div>'}
       </div>
     </div>
 
     <div class="section">
-      <div class="section-title">Servi\u00e7o Prestado</div>
-      <div class="section-content">
-        <div class="table-section">
-          <table>
-            <thead><tr><th style="width: 60px;">C\u00f3digo</th><th style="flex: 1;">Descri\u00e7\u00e3o</th><th style="width: 120px; text-align: right;">Valor</th></tr></thead>
-            <tbody><tr><td>${nota.codigo_servico || '-'}</td><td>${nota.descricao_servico || '-'}</td><td style="text-align: right;">${formatarMoeda(nota.valor_servico)}</td></tr></tbody>
-          </table>
+      <div class="section-title">Descrição dos Serviços</div>
+      <div class="section-body" style="padding:0;">
+        <table class="svc-table">
+          <thead><tr><th style="width:80px;">Código</th><th>Discriminação do Serviço</th><th class="right" style="width:120px;">Valor (R$)</th></tr></thead>
+          <tbody><tr><td>${nota.codigo_servico || '-'}</td><td>${nota.descricao_servico || '-'}</td><td class="right">${formatarMoeda(nota.valor_servico)}</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Valores da NFS-e</div>
+      <div class="section-body">
+        <div class="val-grid">
+          <div class="val-col">
+            <div class="val-row"><span class="label">Valor dos Serviços</span><span class="val">${formatarMoeda(nota.valor_servico)}</span></div>
+            <div class="val-row"><span class="label">Deduções / Descontos</span><span class="val">${formatarMoeda(nota.valor_deducoes)}</span></div>
+            <div class="val-row"><span class="label">Base de Cálculo</span><span class="val">${formatarMoeda(nota.base_calculo)}</span></div>
+            <div class="val-row"><span class="label">Alíquota ISS</span><span class="val">${(parseFloat(nota.aliquota_iss || 0) * 100).toFixed(2)}%</span></div>
+            <div class="val-row"><span class="label">ISS ${nota.iss_retido ? '(Retido)' : ''}</span><span class="val">${formatarMoeda(nota.valor_iss)}</span></div>
+          </div>
+          <div class="val-col">
+            <div class="val-row"><span class="label">PIS</span><span class="val">${formatarMoeda(nota.valor_pis)}</span></div>
+            <div class="val-row"><span class="label">COFINS</span><span class="val">${formatarMoeda(nota.valor_cofins)}</span></div>
+            <div class="val-row"><span class="label">INSS</span><span class="val">${formatarMoeda(nota.valor_inss)}</span></div>
+            <div class="val-row"><span class="label">IR</span><span class="val">${formatarMoeda(nota.valor_ir)}</span></div>
+            <div class="val-row"><span class="label">CSLL</span><span class="val">${formatarMoeda(nota.valor_csll)}</span></div>
+          </div>
+        </div>
+        <div class="val-total">
+          <span class="label">Valor Líquido da NFS-e</span>
+          <span class="val">${formatarMoeda(nota.valor_liquido)}</span>
         </div>
       </div>
     </div>
 
     <div class="section">
-      <div class="section-title">Valores</div>
-      <div class="section-content">
-        <div class="valores-grid">
-          <div>
-            <div class="valor-item"><label>Valor do Servi\u00e7o</label><div class="value">${formatarMoeda(nota.valor_servico)}</div></div>
-            <div class="valor-item"><label>Dedu\u00e7\u00f5es / Descontos</label><div class="value">${formatarMoeda(nota.valor_deducoes)}</div></div>
-            <div class="valor-item"><label>Base de C\u00e1lculo</label><div class="value">${formatarMoeda(nota.base_calculo)}</div></div>
-            <div class="valor-item"><label>Al\u00edquota ISS</label><div class="value">${(parseFloat(nota.aliquota_iss) * 100).toFixed(2)}%</div></div>
-            <div class="valor-item"><label>ISS ${nota.iss_retido ? '(Retido)' : ''}</label><div class="value">${formatarMoeda(nota.valor_iss)}</div></div>
-          </div>
-          <div>
-            <div class="valor-item"><label>PIS</label><div class="value">${formatarMoeda(nota.valor_pis)}</div></div>
-            <div class="valor-item"><label>COFINS</label><div class="value">${formatarMoeda(nota.valor_cofins)}</div></div>
-            <div class="valor-item"><label>INSS</label><div class="value">${formatarMoeda(nota.valor_inss)}</div></div>
-            <div class="valor-item"><label>IR</label><div class="value">${formatarMoeda(nota.valor_ir)}</div></div>
-            <div class="valor-item"><label>CSLL</label><div class="value">${formatarMoeda(nota.valor_csll)}</div></div>
-            <div class="valor-item total"><label>Valor L\u00edquido</label><div class="value">${formatarMoeda(nota.valor_liquido)}</div></div>
-          </div>
+      <div class="section-title">Outras Informações</div>
+      <div class="section-body">
+        <div class="fields">
+          <div class="field w25"><div class="label">Competência</div><div class="val">${formatarData(nota.data_competencia)}</div></div>
+          <div class="field w25"><div class="label">Data Emissão</div><div class="val">${formatarData(nota.data_emissao)}</div></div>
+          <div class="field w25"><div class="label">Nº NFS-e</div><div class="val">${nfseNum}</div></div>
+          <div class="field w25"><div class="label">Nº DPS</div><div class="val">${dpsNum}</div></div>
         </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Informa\u00e7\u00f5es Complementares</div>
-      <div class="section-content">
-        <div class="info-grid">
-          <div class="info-item"><label>Data de Compet\u00eancia</label><div class="value">${formatarData(nota.data_competencia)}</div></div>
-          <div class="info-item"><label>Data de Emiss\u00e3o</label><div class="value">${formatarData(nota.data_emissao)}</div></div>
-          <div class="info-item"><label>NFS-e</label><div class="value">${nota.numero_nfse || 'N\u00e3o emitida'}</div></div>
-          <div class="info-item"><label>Chave de Acesso</label><div class="value" style="word-break: break-all; font-family: monospace; font-size: 11px;">${nota.chave_acesso || 'N\u00e3o dispon\u00edvel'}</div></div>
-        </div>
-        ${nota.observacoes ? `
-          <div class="info-grid full">
-            <div class="info-item"><label>Observa\u00e7\u00f5es</label><div class="value">${nota.observacoes}</div></div>
-          </div>
-        ` : ''}
+        ${nota.observacoes ? '<div class="fields"><div class="field w100"><div class="label">Observações</div><div class="val">' + nota.observacoes + '</div></div></div>' : ''}
       </div>
     </div>
 
     <div class="footer">
-      <p><strong>Este \u00e9 um documento auxiliar da Nota Fiscal de Servi\u00e7o Eletr\u00f4nica</strong></p>
-      <p>Gerado em ${formatarData(new Date().toISOString())} \u00e0s ${new Date().toLocaleTimeString('pt-BR')}</p>
-      <p>Sistema de Emiss\u00e3o de NFS-e</p>
+      <p><strong>Documento Auxiliar da NFS-e - Consulte a autenticidade em www.nfse.gov.br/consultapublica</strong></p>
+      <p>A validade fiscal deste documento depende da verificação junto ao portal nacional da NFS-e.</p>
+      <p>Gerado em ${formatarData(new Date().toISOString())} às ${new Date().toLocaleTimeString('pt-BR')}</p>
     </div>
   </div>
 </body>
@@ -808,7 +856,7 @@ function gerarHtmlDanfse(nota) {
 }
 
 // GET /api/notas-fiscais/:id/danfse - Gera HTML de uma NF-e (DANFSe)
-router.get('/:id/danfse', autenticado, (req, res) => {
+router.get('/:id/danfse', autenticado, async (req, res) => {
   try {
     const notaId = parseInt(req.params.id);
     const nota = buscarDadosNota(notaId);
@@ -822,7 +870,7 @@ router.get('/:id/danfse', autenticado, (req, res) => {
       return res.status(403).json({ erro: 'Acesso não autorizado' });
     }
 
-    const html = gerarHtmlDanfse(nota);
+    const html = await gerarHtmlDanfse(nota);
 
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -840,78 +888,34 @@ router.get('/:id/danfse', autenticado, (req, res) => {
   }
 });
 
-// GET /api/notas-fiscais/:id/danfse-pdf - Baixa DANFSe oficial (cascata: API ADN → Puppeteer → HTML)
+// GET /api/notas-fiscais/:id/danfse-pdf - Gera DANFSe padrão oficial como PDF
 router.get('/:id/danfse-pdf', autenticado, async (req, res) => {
   try {
-    const db = getDb();
     const notaId = parseInt(req.params.id);
     const nota = buscarDadosNota(notaId);
 
     if (!nota) {
       return res.status(404).json({ erro: 'Nota fiscal não encontrada' });
     }
-
-    // Verifica permissão
     if (req.usuario.tipo === 'cliente' && req.usuario.clienteId !== nota.cliente_id) {
       return res.status(403).json({ erro: 'Acesso não autorizado' });
     }
 
-    if (!nota.chave_acesso) {
-      return res.status(400).json({ erro: 'NF não possui chave de acesso (ainda não foi emitida na SEFIN)' });
-    }
-
     const numDisplay = nota.numero_nfse || nota.numero_dps || nota.id;
-    let pdfBuffer;
-    let fonte = 'desconhecida';
+    console.log(`[DANFSe-PDF] Gerando PDF padrão oficial para NF ${numDisplay}...`);
 
-    // === TENTATIVA 1: API ADN/SEFIN (mTLS, mais confiável) ===
-    try {
-      const cliente = db.prepare(
-        'SELECT id, certificado_a1_senha_encrypted FROM clientes WHERE id = ?'
-      ).get(nota.cliente_id);
+    const html = await gerarHtmlDanfse(nota);
+    const pdfBuffer = await danfsePdfService.htmlParaPdf(html);
 
-      if (cliente && cliente.certificado_a1_senha_encrypted) {
-        console.log(`[DANFSe-PDF] Tentativa 1: API ADN/SEFIN para NF ${numDisplay}...`);
-        const resultado = await nfseNacionalService.baixarDanfse(
-          nota.chave_acesso, cliente.id, cliente.certificado_a1_senha_encrypted
-        );
-        if (resultado && resultado.pdf && resultado.pdf.length > 500) {
-          pdfBuffer = resultado.pdf;
-          fonte = 'API ADN/SEFIN';
-        }
-      }
-    } catch (apiErr) {
-      console.warn(`[DANFSe-PDF] API ADN/SEFIN falhou: ${apiErr.mensagem || apiErr.message}`);
-    }
-
-    // === TENTATIVA 2: Consulta Pública via Puppeteer ===
-    if (!pdfBuffer) {
-      try {
-        console.log(`[DANFSe-PDF] Tentativa 2: Consulta Pública via Puppeteer...`);
-        pdfBuffer = await danfsePdfService.gerarPdfOficial(nota.chave_acesso);
-        fonte = 'Consulta Pública SEFIN';
-      } catch (puppeteerErr) {
-        console.warn(`[DANFSe-PDF] Consulta Pública falhou: ${puppeteerErr.message}`);
-      }
-    }
-
-    // === TENTATIVA 3: Fallback HTML interno ===
-    if (!pdfBuffer) {
-      console.warn(`[DANFSe-PDF] Usando fallback: HTML interno convertido para PDF`);
-      const html = gerarHtmlDanfse(nota);
-      pdfBuffer = await danfsePdfService.gerarPdfHtml(html);
-      fonte = 'HTML interno (fallback)';
-    }
-
-    console.log(`[DANFSe-PDF] ✅ PDF pronto via ${fonte}: ${pdfBuffer.length} bytes`);
+    console.log(`[DANFSe-PDF] ✅ PDF gerado: ${pdfBuffer.length} bytes`);
 
     const nomeArquivo = `DANFSe_NF_${numDisplay}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
-    if (req.query.download === '1') {
-      res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);
-    } else {
-      res.setHeader('Content-Disposition', `inline; filename="${nomeArquivo}"`);
-    }
+    res.setHeader('Content-Disposition',
+      req.query.download === '1'
+        ? `attachment; filename="${nomeArquivo}"`
+        : `inline; filename="${nomeArquivo}"`
+    );
     res.send(pdfBuffer);
   } catch (err) {
     console.error('Erro ao gerar DANFSe PDF:', err);

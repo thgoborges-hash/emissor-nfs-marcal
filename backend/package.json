@@ -22,6 +22,7 @@
     "uuid": "^10.0.0",
     "xml2js": "^0.6.2",
     "puppeteer": "^23.0.0",
+    "qrcode": "^1.5.4",
     "xml-crypto": "^6.0.0"
   },
   "devDependencies": {
