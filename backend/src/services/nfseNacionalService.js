@@ -133,8 +133,10 @@ class NfseNacionalService {
    */
   async baixarDanfse(chaveAcesso, clienteId, senhaEncrypted) {
     const cert = certificadoService.carregarCertificado(clienteId, senhaEncrypted);
-    // URL: https://sefin.nfse.gov.br/danfse/{chaveAcesso} (sem duplicar /danfse)
-    const endpoint = `${nfseConfig.ambiente.danfse}/${chaveAcesso}`;
+    // Tenta múltiplos endpoints possíveis da SEFIN Nacional
+    // Ref: API pode estar em /SefinNacional/danfse/ ou /danfse/
+    const endpoint = `${nfseConfig.ambiente.sefin}/danfse/${chaveAcesso}`;
+    console.log(`[NFS-e] Baixando DANFSe de: ${endpoint}`);
     return await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha, true);
   }
 
