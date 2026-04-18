@@ -3,10 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#1e40af" />
-  <meta name="description" content="Emissor de NFS-e - Marçal Contabilidade" />
+  <meta name="theme-color" content="#0A0E1A" />
+  <meta name="description" content="Marçal Contabilidade — cockpit interno + ANA" />
   <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-  <title>Emissor NFS-e | Marçal Contabilidade</title>
+
+  <!-- Inter (tipografia moderna variável) + JetBrains Mono pra code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <title>Marçal Cockpit</title>
+
+  <style>
+    /* Pré-pinta o background pra evitar flash branco antes do CSS carregar */
+    html, body { background: #0A0E1A; margin: 0; }
+  </style>
 </head>
 <body>
   <div id="root"></div>

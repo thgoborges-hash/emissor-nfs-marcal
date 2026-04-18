@@ -14,10 +14,10 @@ export function LayoutEscritorio() {
 
   return (
     <div className="app-layout">
-      <aside className="sidebar" style={{ background: '#1a1a2e' }}>
+      <aside className="sidebar">
         <div className="sidebar-header">
-          <h2>Marçal Contabilidade</h2>
-          <small>Painel Administrativo</small>
+          <h2><span>Marçal Cockpit</span></h2>
+          <small>Painel Interno</small>
         </div>
         <nav className="sidebar-nav">
           <NavLink to="/escritorio" end>📊 Dashboard</NavLink>
