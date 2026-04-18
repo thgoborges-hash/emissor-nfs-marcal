@@ -62,7 +62,9 @@ CREATE TABLE IF NOT EXISTS clientes (
   -- Permissões
   modo_emissao TEXT NOT NULL DEFAULT 'aprovacao', -- 'autonomo' ou 'aprovacao'
 
-  -- Usuário de acesso (portal do cliente)
+  -- DEPRECATED: portal do cliente foi descontinuado em 04/2026.
+  -- Coluna mantida apenas pra compatibilidade com instalações existentes.
+  -- Interação com cliente agora é 100% via ANA no WhatsApp.
   senha_hash TEXT,
 
   ativo INTEGER DEFAULT 1,

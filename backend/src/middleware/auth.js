@@ -26,6 +26,11 @@ function autenticado(req, res, next) {
   }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    // Política atual: sistema é interno (escritório). Portal do cliente foi descontinuado.
+    // Qualquer JWT com tipo != 'escritorio' é rejeitado mesmo se assinado corretamente.
+    if (decoded.tipo && decoded.tipo !== 'escritorio') {
+      return res.status(403).json({ erro: 'Login de cliente foi descontinuado. Acesse via ANA no WhatsApp.' });
+    }
     req.usuario = decoded;
     next();
   } catch (err) {
