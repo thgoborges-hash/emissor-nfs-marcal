@@ -1,20 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// Lista de atalhos disponíveis na paleta de comandos
+// Lista de atalhos organizada por relevância
 const COMMANDS = [
+  // Início
   { icon: '🌅', label: 'Operações Hoje', hint: 'Home operacional', path: '/escritorio/operacoes' },
+  // Apuração (destaque)
+  { icon: '💰', label: 'Apuração tributária', hint: 'Simular regimes e enviar pra fila', path: '/escritorio/apuracao' },
+  // ANA
   { icon: '🤖', label: 'Fila ANA', hint: 'Ações aguardando aprovação', path: '/escritorio/fila-ana' },
-  { icon: '✅', label: 'Aprovações NF', hint: 'NFs pendentes de aprovação', path: '/escritorio/aprovacoes' },
-  { icon: '📋', label: 'Todas as NFs', hint: 'Histórico completo', path: '/escritorio/notas' },
-  { icon: '🏢', label: 'Gestão de clientes', hint: 'Cadastro e dados', path: '/escritorio/clientes' },
+  { icon: '🤖', label: 'Painel ANA', hint: 'Métricas e config do agente', path: '/escritorio/ana' },
+  { icon: '🧪', label: 'Testar IA', hint: 'Sandbox conversacional', path: '/escritorio/testar-agente' },
+  // NFs
   { icon: '📝', label: 'Emitir NF', hint: 'Emissão manual pela equipe', path: '/escritorio/emitir' },
+  { icon: '📋', label: 'Todas as NFs', hint: 'Histórico completo', path: '/escritorio/notas' },
+  { icon: '✅', label: 'Aprovações NF', hint: 'NFs pendentes de aprovação', path: '/escritorio/aprovacoes' },
+  // Clientes
+  { icon: '🏢', label: 'Gestão de clientes', hint: 'Cadastro e dados', path: '/escritorio/clientes' },
   { icon: '🔐', label: 'Certificados A1', hint: 'e-CNPJ por cliente', path: '/escritorio/certificados' },
+  // Config
   { icon: '🏛️', label: 'Certificado SERPRO', hint: 'Status Integra Contador', path: '/escritorio/certificado-serpro' },
   { icon: '💬', label: 'WhatsApp', hint: 'Configurações de envio', path: '/escritorio/whatsapp' },
-  { icon: '🤖', label: 'Painel ANA', hint: 'Métricas e config do agente', path: '/escritorio/ana' },
   { icon: '📈', label: 'Relatórios', hint: 'Faturamento, ranking, status', path: '/escritorio/relatorios' },
-  { icon: '🧪', label: 'Testar IA', hint: 'Sandbox conversacional', path: '/escritorio/testar-agente' },
   { icon: '📊', label: 'Dashboard clássico', hint: 'Visão legada', path: '/escritorio' },
 ];
 

@@ -119,4 +119,11 @@ export const siegApi = {
   saidas: (cnpj, params) => api.get(`/sieg/saidas/${cnpj}`, { params }),
 };
 
+// === APURAÇÃO TRIBUTÁRIA ===
+export const apuracaoApi = {
+  metadados: () => api.get('/apuracao/metadados'),
+  simular: (dados) => api.post('/apuracao/simular', dados),
+  enviarFila: (dados) => api.post('/apuracao/enviar-fila', dados),
+};
+
 export default api;

@@ -18,6 +18,7 @@ import TestarAgente from './pages/escritorio/TestarAgente';
 import OperacoesHoje from './pages/escritorio/OperacoesHoje';
 import FilaAprovacaoAna from './pages/escritorio/FilaAprovacaoAna';
 import CertificadoSerpro from './pages/escritorio/CertificadoSerpro';
+import Apuracao from './pages/escritorio/Apuracao';
 
 import './styles/global.css';
 
@@ -39,8 +40,8 @@ function App() {
           {/* Login */}
           <Route path="/login" element={<Login />} />
 
-          {/* Redireciona raiz para o painel */}
-          <Route path="/" element={<Navigate to="/escritorio" />} />
+          {/* Raiz → home operacional */}
+          <Route path="/" element={<Navigate to="/escritorio/operacoes" />} />
 
           {/* Painel do Escritório */}
           <Route path="/escritorio" element={
@@ -51,6 +52,7 @@ function App() {
             <Route index element={<DashboardEscritorio />} />
             <Route path="operacoes" element={<OperacoesHoje />} />
             <Route path="fila-ana" element={<FilaAprovacaoAna />} />
+            <Route path="apuracao" element={<Apuracao />} />
             <Route path="aprovacoes" element={<Aprovacoes />} />
             <Route path="notas" element={<TodasNotas />} />
             <Route path="clientes" element={<GestaoClientes />} />

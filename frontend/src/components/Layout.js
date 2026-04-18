@@ -1,57 +1,14 @@
 import React from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { Outlet } from 'react-router-dom';
+import Navbar from './Navbar';
 import CommandPalette from './CommandPalette';
 
-// Layout do Painel do Escritório
+// Layout com menu superior (em vez de lateral)
 export function LayoutEscritorio() {
-  const { usuario, logout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
-  const abrirCmdK = () => window.__abrirCommandPalette?.();
-
-  // Detecta sistema pra mostrar ⌘ no Mac / Ctrl em outros
-  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-
   return (
-    <div className="app-layout">
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h2><span>Marçal Cockpit</span></h2>
-          <small>Painel Interno</small>
-        </div>
-
-        <button className="cmdk-hint" onClick={abrirCmdK}>
-          <span>🔎 Buscar…</span>
-          <kbd>{isMac ? '⌘' : 'Ctrl'}K</kbd>
-        </button>
-
-        <nav className="sidebar-nav">
-          <NavLink to="/escritorio" end>📊 Dashboard</NavLink>
-          <NavLink to="/escritorio/operacoes">🌅 Operações Hoje</NavLink>
-          <NavLink to="/escritorio/fila-ana">🤖 Fila ANA</NavLink>
-          <NavLink to="/escritorio/aprovacoes">✅ Aprovações NF</NavLink>
-          <NavLink to="/escritorio/notas">📋 Todas as NFs</NavLink>
-          <NavLink to="/escritorio/clientes">🏢 Clientes</NavLink>
-          <NavLink to="/escritorio/emitir">📝 Emitir NF</NavLink>
-          <NavLink to="/escritorio/certificados">🔐 Certificados</NavLink>
-          <NavLink to="/escritorio/certificado-serpro">🏛️ Cert. SERPRO</NavLink>
-          <NavLink to="/escritorio/whatsapp">💬 WhatsApp</NavLink>
-          <NavLink to="/escritorio/ana">🤖 Painel ANA</NavLink>
-          <NavLink to="/escritorio/relatorios">📈 Relatorios</NavLink>
-          <NavLink to="/escritorio/testar-agente">🧪 Testar IA</NavLink>
-        </nav>
-        <div className="sidebar-footer">
-          <span>{usuario?.nome}</span><br />
-          <button onClick={handleLogout}>Sair da conta</button>
-        </div>
-      </aside>
-      <main className="main-content">
+    <div className="app-layout-top">
+      <Navbar />
+      <main className="main-content-top">
         <Outlet />
       </main>
       <CommandPalette />

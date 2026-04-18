@@ -28,6 +28,7 @@ app.use('/api/whatsapp', require('./routes/whatsapp'));
 app.use('/api/integra-contador', require('./routes/integraContador'));
 app.use('/api/sieg', require('./routes/sieg'));
 app.use('/api/painel', require('./routes/painel'));
+app.use('/api/apuracao', require('./routes/apuracao'));
 
 // Health check
 app.get('/api/health', (req, res) => {
