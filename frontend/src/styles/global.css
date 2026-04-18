@@ -1443,6 +1443,197 @@ tbody tr:hover { background: var(--bg-hover); }
   .kpi-grid { grid-template-columns: 1fr; }
 }
 
+/* ================================================
+   TELA ENTREGAS MENSAIS — dashboard gerencial
+   ================================================ */
+.entregas-painel {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.entregas-donut-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px 0;
+}
+.donut-chart { display: block; }
+
+/* Barras empilhadas */
+.bar-stack-list { display: flex; flex-direction: column; gap: 14px; }
+.bar-stack-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  gap: 16px;
+}
+.bar-stack-label {
+  font-size: 13px;
+  color: var(--text);
+}
+.bar-stack-track {
+  display: flex;
+  height: 26px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+.bar-stack-seg {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.bar-stack-seg.ok { background: linear-gradient(180deg, var(--success), #0EA371); }
+.bar-stack-seg.pend { background: linear-gradient(180deg, var(--warning), #D97706); }
+.bar-stack-seg.atr { background: linear-gradient(180deg, var(--danger), #B91C1C); }
+
+.bar-stack-legend {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+  color: var(--text-light);
+}
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.legend-dot.ok { background: var(--success); }
+.legend-dot.pend { background: var(--warning); }
+.legend-dot.atr { background: var(--danger); }
+
+/* Ranking */
+.ranking-row {
+  display: grid;
+  grid-template-columns: 30px 1fr 120px 40px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ranking-row:last-child { border-bottom: none; }
+.ranking-pos {
+  font-weight: 700;
+  color: var(--primary-hover);
+  font-size: 13px;
+}
+.ranking-nome { font-size: 13.5px; color: var(--text); }
+.ranking-bar {
+  height: 8px;
+  background: var(--bg-elevated);
+  border-radius: 100px;
+  overflow: hidden;
+}
+.ranking-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  border-radius: 100px;
+  transition: width 0.8s;
+}
+.ranking-qtd {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: 13.5px;
+}
+
+/* Matriz cliente × entrega (heatmap) */
+.matriz-entregas {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.matriz-entregas thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elevated);
+  z-index: 2;
+  font-size: 11px;
+  padding: 12px 10px;
+}
+.matriz-entregas thead th:first-child { text-align: left; padding-left: 20px; }
+.matriz-entregas tbody td { padding: 10px; border-bottom: 1px solid var(--border-subtle); }
+.matriz-entregas tbody td:first-child { padding-left: 20px; min-width: 240px; }
+.matriz-entregas tbody tr:hover { background: var(--bg-hover); }
+
+.pct-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.pct-pill.ok { background: var(--success-subtle); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+.pct-pill.pend { background: var(--warning-subtle); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
+.pct-pill.atr { background: var(--danger-subtle); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+
+.cell-status {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cell-status.ok {
+  background: var(--success-subtle);
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+.cell-status.ok:hover { background: rgba(16, 185, 129, 0.25); transform: scale(1.08); }
+.cell-status.pendente {
+  background: var(--warning-subtle);
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+.cell-status.pendente:hover { background: rgba(245, 158, 11, 0.2); transform: scale(1.08); }
+.cell-status.atrasado {
+  background: var(--danger-subtle);
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+  animation: subtle-pulse 2.5s ease-in-out infinite;
+}
+.cell-status.atrasado:hover { background: rgba(239, 68, 68, 0.25); transform: scale(1.08); }
+@keyframes subtle-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.2); }
+  50% { box-shadow: 0 0 18px rgba(239, 68, 68, 0.45); }
+}
+.cell-na {
+  display: inline-block;
+  color: var(--text-muted);
+  font-size: 14px;
+  opacity: 0.4;
+}
+
+@media (max-width: 1200px) {
+  .entregas-painel { grid-template-columns: 1fr 1fr; }
+  .entregas-painel > section:last-child { grid-column: span 2 !important; }
+}
+@media (max-width: 760px) {
+  .entregas-painel { grid-template-columns: 1fr; }
+  .entregas-painel > section { grid-column: span 1 !important; }
+  .bar-stack-row { grid-template-columns: 1fr; gap: 6px; }
+}
+
 /* Legado sidebar — mantido pro caso de algum cache antigo */
 @media (max-width: 900px) {
   .sidebar { width: 64px !important; }

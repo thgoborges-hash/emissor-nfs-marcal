@@ -261,6 +261,33 @@ CREATE TABLE IF NOT EXISTS whatsapp_notificacoes (
 );
 
 -- =====================================================
+-- Entregas Mensais por Cliente (dashboard gerencial)
+-- Status do mês por tipo de obrigação (DCTFWeb, PGDAS-D, DAS, Balancete, etc)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS entregas_mensais (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL,
+  competencia TEXT NOT NULL,         -- 'YYYY-MM'
+  tipo_entrega TEXT NOT NULL,        -- 'DCTFWEB', 'PGDASD', 'DAS', 'DCTF', 'BALANCETE', 'FOLHA', 'ESOCIAL', 'EFDREINF'
+  status TEXT NOT NULL DEFAULT 'pendente', -- 'ok', 'pendente', 'atrasado', 'nao_aplicavel'
+  data_vencimento DATE,
+  data_entrega DATE,
+  responsavel_id INTEGER,            -- usuario_escritorio quem fechou
+  responsavel_nome TEXT,             -- snapshot do nome (pra preservar histórico)
+  observacao TEXT,
+  valor_referencia REAL,             -- se aplicável (ex: valor do DAS)
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(cliente_id, competencia, tipo_entrega),
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id),
+  FOREIGN KEY (responsavel_id) REFERENCES usuarios_escritorio(id)
+);
+CREATE INDEX IF NOT EXISTS idx_entregas_competencia ON entregas_mensais(competencia);
+CREATE INDEX IF NOT EXISTS idx_entregas_cliente ON entregas_mensais(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_entregas_status ON entregas_mensais(status);
+CREATE INDEX IF NOT EXISTS idx_entregas_tipo ON entregas_mensais(tipo_entrega);
+
+-- =====================================================
 -- Fila de Aprovação da ANA
 -- Ações sensíveis que a ANA prepara e precisam de aval humano antes de executar
 -- =====================================================

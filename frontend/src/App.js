@@ -19,6 +19,7 @@ import OperacoesHoje from './pages/escritorio/OperacoesHoje';
 import FilaAprovacaoAna from './pages/escritorio/FilaAprovacaoAna';
 import CertificadoSerpro from './pages/escritorio/CertificadoSerpro';
 import Apuracao from './pages/escritorio/Apuracao';
+import Entregas from './pages/escritorio/Entregas';
 
 import './styles/global.css';
 
@@ -53,6 +54,7 @@ function App() {
             <Route path="operacoes" element={<OperacoesHoje />} />
             <Route path="fila-ana" element={<FilaAprovacaoAna />} />
             <Route path="apuracao" element={<Apuracao />} />
+            <Route path="entregas" element={<Entregas />} />
             <Route path="aprovacoes" element={<Aprovacoes />} />
             <Route path="notas" element={<TodasNotas />} />
             <Route path="clientes" element={<GestaoClientes />} />

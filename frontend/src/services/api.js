@@ -126,4 +126,10 @@ export const apuracaoApi = {
   enviarFila: (dados) => api.post('/apuracao/enviar-fila', dados),
 };
 
+// === ENTREGAS MENSAIS ===
+export const entregasApi = {
+  dashboard: (competencia) => api.get('/entregas/dashboard', { params: competencia ? { competencia } : {} }),
+  atualizarStatus: (dados) => api.post('/entregas/status', dados),
+};
+
 export default api;

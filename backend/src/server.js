@@ -29,6 +29,7 @@ app.use('/api/integra-contador', require('./routes/integraContador'));
 app.use('/api/sieg', require('./routes/sieg'));
 app.use('/api/painel', require('./routes/painel'));
 app.use('/api/apuracao', require('./routes/apuracao'));
+app.use('/api/entregas', require('./routes/entregas'));
 
 // Health check
 app.get('/api/health', (req, res) => {

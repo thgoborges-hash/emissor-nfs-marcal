@@ -7,6 +7,7 @@ const COMMANDS = [
   { icon: '🌅', label: 'Operações Hoje', hint: 'Home operacional', path: '/escritorio/operacoes' },
   // Apuração (destaque)
   { icon: '💰', label: 'Apuração tributária', hint: 'Simular regimes e enviar pra fila', path: '/escritorio/apuracao' },
+  { icon: '📦', label: 'Entregas mensais', hint: 'Matriz de entregas por cliente', path: '/escritorio/entregas' },
   // ANA
   { icon: '🤖', label: 'Fila ANA', hint: 'Ações aguardando aprovação', path: '/escritorio/fila-ana' },
   { icon: '🤖', label: 'Painel ANA', hint: 'Métricas e config do agente', path: '/escritorio/ana' },

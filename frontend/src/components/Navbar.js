@@ -21,6 +21,7 @@ const TABS = [
     ],
   },
   { to: '/escritorio/apuracao', label: 'Apuração', icon: '💰', destaque: true },
+  { to: '/escritorio/entregas', label: 'Entregas', icon: '📦', destaque: true },
   {
     label: 'ANA', icon: '🤖', match: ['/escritorio/fila-ana', '/escritorio/ana', '/escritorio/testar-agente'],
     sub: [
