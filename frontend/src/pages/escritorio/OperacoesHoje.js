@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { painelApi } from '../../services/api';
+import Sparkline from '../../components/Sparkline';
+import { KpiGridSkeleton, ListSkeleton } from '../../components/Skeleton';
 
 export default function OperacoesHoje() {
   const [dados, setDados] = useState(null);
@@ -33,7 +35,20 @@ export default function OperacoesHoje() {
     return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
-  if (carregando && !dados) return <div className="empty-state"><div className="icon">⏳</div>Carregando operações do dia...</div>;
+  // Loading com skeletons — preserva layout em vez de aparição brusca
+  if (carregando && !dados) {
+    return (
+      <div>
+        <h1 className="page-title">Operações Hoje</h1>
+        <p className="page-subtitle">Carregando dados do dia…</p>
+        <KpiGridSkeleton total={4} />
+        <div className="grid-2">
+          <section className="section-card"><h3 className="section-title">📅 Obrigações</h3><ListSkeleton rows={4} /></section>
+          <section className="section-card"><h3 className="section-title">📋 Últimas NFs</h3><ListSkeleton rows={5} /></section>
+        </div>
+      </div>
+    );
+  }
   if (erro) return <div className="alert alert-danger">Erro: {erro}</div>;
 
   const c = dados.cards;
@@ -47,17 +62,19 @@ export default function OperacoesHoje() {
         Atualizado em {formatarData(dados.geradoEm)} · auto-refresh 1min
       </p>
 
-      {/* KPIs */}
+      {/* KPIs com sparklines (14 dias) */}
       <div className="kpi-grid">
         <div className="kpi-card accent-warning">
           <div className="label">NFs aguardando aprovação</div>
           <div className="valor warning">{c.nfs_aprovacao.total}</div>
           <div className="sub">{formatarMoeda(c.nfs_aprovacao.valor_total)}</div>
+          <Sparkline data={c.nfs_aprovacao.serie || []} />
         </div>
         <div className="kpi-card accent-success">
           <div className="label">NFs emitidas hoje</div>
           <div className="valor success">{c.nfs_hoje.total}</div>
           <div className="sub">{formatarMoeda(c.nfs_hoje.valor_total)}</div>
+          <Sparkline data={c.nfs_hoje.serie || []} />
         </div>
         <div className="kpi-card accent-danger">
           <div className="label">WhatsApp aguardando humano</div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import CommandPalette from './CommandPalette';
 
 // Layout do Painel do Escritório
 export function LayoutEscritorio() {
@@ -12,6 +13,11 @@ export function LayoutEscritorio() {
     navigate('/login');
   };
 
+  const abrirCmdK = () => window.__abrirCommandPalette?.();
+
+  // Detecta sistema pra mostrar ⌘ no Mac / Ctrl em outros
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -19,6 +25,12 @@ export function LayoutEscritorio() {
           <h2><span>Marçal Cockpit</span></h2>
           <small>Painel Interno</small>
         </div>
+
+        <button className="cmdk-hint" onClick={abrirCmdK}>
+          <span>🔎 Buscar…</span>
+          <kbd>{isMac ? '⌘' : 'Ctrl'}K</kbd>
+        </button>
+
         <nav className="sidebar-nav">
           <NavLink to="/escritorio" end>📊 Dashboard</NavLink>
           <NavLink to="/escritorio/operacoes">🌅 Operações Hoje</NavLink>
@@ -42,6 +54,7 @@ export function LayoutEscritorio() {
       <main className="main-content">
         <Outlet />
       </main>
+      <CommandPalette />
     </div>
   );
 }

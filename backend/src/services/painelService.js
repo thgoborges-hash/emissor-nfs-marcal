@@ -57,17 +57,61 @@ class PainelService {
     // Obrigações no próximo período (calendário fiscal padrão — sem depender de Integra Contador)
     const obrigacoes = this._calcularObrigacoesProximas();
 
+    // Séries históricas pra alimentar os sparklines dos KPIs (últimos 14 dias)
+    const series = this._seriesUltimos14Dias();
+
     return {
       geradoEm: new Date().toISOString(),
       cards: {
-        nfs_aprovacao: { total: nfsPendentes.total, valor_total: nfsPendentes.valor_total },
-        nfs_hoje: { total: nfsHoje.total, valor_total: nfsHoje.valor_total },
+        nfs_aprovacao: { total: nfsPendentes.total, valor_total: nfsPendentes.valor_total, serie: series.pendentesDiario },
+        nfs_hoje: { total: nfsHoje.total, valor_total: nfsHoje.valor_total, serie: series.emitidasDiario },
         whatsapp_aguardando: conversasAguardando.total,
         ana_fila_pendente: anaFilaPendente.total,
       },
       ana_decisoes_hoje: anaFilaHoje,
       ultimas_nfs: ultimasNfs,
       obrigacoes_proximas: obrigacoes,
+    };
+  }
+
+  /**
+   * Monta séries diárias dos últimos 14 dias — alimenta os sparklines
+   */
+  _seriesUltimos14Dias() {
+    const db = getDb();
+    const dias = 14;
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    // Lista de { dia: 'YYYY-MM-DD' } do mais antigo ao mais recente
+    const datas = [];
+    for (let i = dias - 1; i >= 0; i--) {
+      const d = new Date(hoje);
+      d.setDate(d.getDate() - i);
+      datas.push(d.toISOString().slice(0, 10));
+    }
+
+    // NFs emitidas por dia
+    const emitidasRows = db.prepare(`
+      SELECT DATE(created_at) as dia, COUNT(*) as total
+      FROM notas_fiscais
+      WHERE status = 'emitida' AND DATE(created_at) >= DATE(?)
+      GROUP BY DATE(created_at)
+    `).all(datas[0]);
+    const emitidasMap = Object.fromEntries(emitidasRows.map(r => [r.dia, r.total]));
+
+    // NFs criadas por dia (seja pendente ou emitida) — usamos isso como proxy do volume de pedidos
+    const pendentesRows = db.prepare(`
+      SELECT DATE(created_at) as dia, COUNT(*) as total
+      FROM notas_fiscais
+      WHERE DATE(created_at) >= DATE(?)
+      GROUP BY DATE(created_at)
+    `).all(datas[0]);
+    const pendentesMap = Object.fromEntries(pendentesRows.map(r => [r.dia, r.total]));
+
+    return {
+      emitidasDiario: datas.map(d => emitidasMap[d] || 0),
+      pendentesDiario: datas.map(d => pendentesMap[d] || 0),
     };
   }
 
