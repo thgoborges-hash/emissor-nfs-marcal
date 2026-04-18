@@ -55,21 +55,19 @@ router.post('/certificado/upload', upload.single('certificado'), async (req, res
 // Status / healthcheck do módulo
 // -------------------------------------------------
 router.get('/status', async (req, res) => {
-  const certPath = path.join(nfseConfig.certificadosDir, `${integraConfig.marcal.certSlotId}.pfx`);
-  const certExiste = fs.existsSync(certPath);
+  const fontes = integraContadorService.diagnosticarFontesCertificado();
   const credenciaisConfig = !!(integraConfig.credenciais.consumerKey && integraConfig.credenciais.consumerSecret);
-  const cnpjConfig = !!integraConfig.marcal.cnpj;
-  const senhaConfig = !!process.env.MARCAL_CERT_SENHA_ENCRYPTED;
+  const certificadoDisponivel = fontes.via_cliente_marcal || fontes.via_slot_dedicado;
 
   res.json({
-    pronto: certExiste && credenciaisConfig && cnpjConfig && senhaConfig,
+    pronto: certificadoDisponivel && credenciaisConfig && fontes.marcal_cnpj_configurado,
     checks: {
-      certificado_marcal: certExiste,
+      certificado_marcal_localizado: certificadoDisponivel,
       consumer_key_secret: credenciaisConfig,
-      marcal_cnpj: cnpjConfig,
-      senha_criptografada: senhaConfig,
+      marcal_cnpj: fontes.marcal_cnpj_configurado,
     },
     marcalCnpj: integraConfig.marcal.cnpj,
+    fontes_certificado: fontes,
   });
 });
 

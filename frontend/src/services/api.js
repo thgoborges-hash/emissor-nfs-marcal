@@ -90,4 +90,33 @@ export const iaApi = {
   creditos: () => api.get('/whatsapp/agente/creditos'),
 };
 
+// === PAINEL OPERACIONAL ===
+export const painelApi = {
+  operacoesHoje: () => api.get('/painel/operacoes-hoje'),
+  listarFila: (status = 'pendente', limit = 50) =>
+    api.get('/painel/fila-aprovacao', { params: { status, limit } }),
+  buscarFila: (id) => api.get(`/painel/fila-aprovacao/${id}`),
+  aprovar: (id, observacao) => api.post(`/painel/fila-aprovacao/${id}/aprovar`, { observacao }),
+  rejeitar: (id, motivo) => api.post(`/painel/fila-aprovacao/${id}/rejeitar`, { motivo }),
+  criarPendenciaTeste: (dados) => api.post('/painel/fila-aprovacao', dados),
+};
+
+// === INTEGRA CONTADOR (SERPRO) ===
+export const integraContadorApi = {
+  status: () => api.get('/integra-contador/status'),
+  testarAutenticacao: () => api.post('/integra-contador/autenticar/teste'),
+  consultarUltimaPgdasd: (cnpj) => api.get(`/integra-contador/pgdasd/ultima-declaracao/${cnpj}`),
+  consultarProcuracoes: (cnpj) => api.get(`/integra-contador/procuracoes/${cnpj}`),
+  consultarDctfweb: (cnpj) => api.get(`/integra-contador/dctfweb/${cnpj}`),
+  caixaPostal: (cnpj) => api.get(`/integra-contador/caixa-postal/${cnpj}`),
+};
+
+// === SIEG ===
+export const siegApi = {
+  status: () => api.get('/sieg/status'),
+  testarConexao: () => api.post('/sieg/testar-conexao'),
+  entradas: (cnpj, params) => api.get(`/sieg/entradas/${cnpj}`, { params }),
+  saidas: (cnpj, params) => api.get(`/sieg/saidas/${cnpj}`, { params }),
+};
+
 export default api;

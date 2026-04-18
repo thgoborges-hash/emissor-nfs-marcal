@@ -12,6 +12,7 @@ const { URL } = require('url');
 const config = require('../config/integraContador');
 const certificadoService = require('./certificadoService');
 const nfseConfig = require('../config/nfse');
+const { getDb } = require('../database/init');
 
 class IntegraContadorService {
   constructor() {
@@ -261,26 +262,103 @@ class IntegraContadorService {
   // -------------------------------------------------
 
   /**
-   * Carrega o e-CNPJ A1 da Marçal (pfx + senha descriptografada)
-   * O certificado é salvo em CERTIFICADOS_DIR/escritorio_marcal.pfx
-   * e a senha criptografada fica na tabela configuracoes_escritorio.
+   * Carrega o e-CNPJ A1 da Marçal (pfx + senha descriptografada).
+   *
+   * Estratégia de lookup (em ordem):
+   *   1) Procura cliente na tabela `clientes` cujo CNPJ == MARCAL_CNPJ
+   *      — se tiver cert já cadastrado (pela tela de Certificados), reutiliza.
+   *   2) Fallback: slot dedicado em CERTIFICADOS_DIR/escritorio_marcal.pfx
+   *      com senha em MARCAL_CERT_SENHA_ENCRYPTED (pra quem não quer cadastrar
+   *      a Marçal como cliente).
    */
   _carregarCertificadoMarcal() {
-    const certPath = path.join(nfseConfig.certificadosDir, `${config.marcal.certSlotId}.pfx`);
+    const fontes = this._localizarFontesCertificado();
 
-    if (!fs.existsSync(certPath)) {
-      throw new Error(`Certificado e-CNPJ da Marçal não encontrado em ${certPath}. Faça o upload via painel do escritório (Configurações → Certificado SERPRO).`);
+    // Estratégia 1: cliente Marçal cadastrado no sistema
+    if (fontes.clienteMarcal) {
+      const c = fontes.clienteMarcal;
+      console.log(`[IntegraContador] Carregando cert via cliente Marçal (id=${c.id}): ${c.certificado_a1_path}`);
+      const cert = certificadoService.carregarCertificado(c.id, c.certificado_a1_senha_encrypted);
+      return { pfxBuffer: cert.pfxBuffer, senha: cert.senha, fonte: 'cliente_marcal' };
     }
 
-    const senhaEnc = process.env.MARCAL_CERT_SENHA_ENCRYPTED;
-    if (!senhaEnc) {
-      throw new Error('MARCAL_CERT_SENHA_ENCRYPTED não configurada. Faça o upload do certificado pelo painel pra gerar.');
+    // Estratégia 2: slot dedicado (legado)
+    if (fontes.slotDedicado.existe && fontes.slotDedicado.senhaConfig) {
+      const pfxBuffer = fs.readFileSync(fontes.slotDedicado.path);
+      const senha = certificadoService.decryptPassword(process.env.MARCAL_CERT_SENHA_ENCRYPTED);
+      console.log(`[IntegraContador] Carregando cert via slot dedicado: ${fontes.slotDedicado.path}`);
+      return { pfxBuffer, senha, fonte: 'slot_dedicado' };
     }
 
-    const pfxBuffer = fs.readFileSync(certPath);
-    const senha = certificadoService.decryptPassword(senhaEnc);
+    // Nada encontrado — monta mensagem de erro clara
+    const msgs = [];
+    if (!fontes.marcalCnpjConfigurado) {
+      msgs.push('MARCAL_CNPJ não configurada no .env');
+    } else {
+      msgs.push(`Nenhum cliente encontrado com CNPJ ${config.marcal.cnpj} (ou o cliente existe mas não tem certificado A1 anexado)`);
+    }
+    msgs.push('E o slot dedicado (escritorio_marcal.pfx + MARCAL_CERT_SENHA_ENCRYPTED) também não está configurado');
+    throw new Error(`Certificado Marçal não localizado. ${msgs.join('. ')}.`);
+  }
 
-    return { pfxBuffer, senha };
+  /**
+   * Diagnóstico: mostra as fontes disponíveis de certificado (pra UI de status)
+   */
+  _localizarFontesCertificado() {
+    const marcalCnpjRaw = (config.marcal.cnpj || '').replace(/\D/g, '');
+    const marcalCnpjConfigurado = marcalCnpjRaw.length === 14;
+
+    let clienteMarcal = null;
+    if (marcalCnpjConfigurado) {
+      try {
+        const db = getDb();
+        clienteMarcal = db.prepare(`
+          SELECT id, razao_social, cnpj, certificado_a1_path, certificado_a1_senha_encrypted,
+                 certificado_titular, certificado_validade
+          FROM clientes
+          WHERE REPLACE(REPLACE(REPLACE(cnpj, '.', ''), '/', ''), '-', '') = ?
+            AND certificado_a1_path IS NOT NULL
+            AND certificado_a1_senha_encrypted IS NOT NULL
+            AND ativo = 1
+          LIMIT 1
+        `).get(marcalCnpjRaw);
+      } catch (e) {
+        console.warn('[IntegraContador] Erro buscando cliente Marçal:', e.message);
+      }
+    }
+
+    const slotPath = path.join(nfseConfig.certificadosDir, `${config.marcal.certSlotId}.pfx`);
+    const slotExiste = fs.existsSync(slotPath);
+
+    return {
+      marcalCnpjConfigurado,
+      clienteMarcal,
+      slotDedicado: {
+        path: slotPath,
+        existe: slotExiste,
+        senhaConfig: !!process.env.MARCAL_CERT_SENHA_ENCRYPTED,
+      },
+    };
+  }
+
+  /**
+   * Retorna info de diagnóstico das fontes — usado pelo endpoint /status
+   */
+  diagnosticarFontesCertificado() {
+    const f = this._localizarFontesCertificado();
+    return {
+      marcal_cnpj_configurado: f.marcalCnpjConfigurado,
+      via_cliente_marcal: !!f.clienteMarcal,
+      cliente_marcal: f.clienteMarcal ? {
+        id: f.clienteMarcal.id,
+        razao_social: f.clienteMarcal.razao_social,
+        cnpj: f.clienteMarcal.cnpj,
+        titular: f.clienteMarcal.certificado_titular,
+        validade: f.clienteMarcal.certificado_validade,
+      } : null,
+      via_slot_dedicado: f.slotDedicado.existe && f.slotDedicado.senhaConfig,
+      slot_dedicado: f.slotDedicado,
+    };
   }
 
   /**

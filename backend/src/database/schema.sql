@@ -260,6 +260,32 @@ CREATE TABLE IF NOT EXISTS whatsapp_notificacoes (
   FOREIGN KEY (contato_id) REFERENCES whatsapp_contatos(id)
 );
 
+-- =====================================================
+-- Fila de Aprovação da ANA
+-- Ações sensíveis que a ANA prepara e precisam de aval humano antes de executar
+-- =====================================================
+CREATE TABLE IF NOT EXISTS fila_aprovacao_ana (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo_acao TEXT NOT NULL,               -- ex: EMITIR_DAS_SIMPLES, TRANSMITIR_DCTFWEB, GERAR_DRE_CLIENTE, CANCELAR_NF
+  cliente_id INTEGER,                     -- cliente afetado (pode ser null pra ações globais)
+  descricao TEXT NOT NULL,                -- texto legível pra equipe aprovar ("Emitir DAS de R$ X pro cliente Y referente a abril/2026")
+  payload_json TEXT NOT NULL,             -- JSON com tudo que é preciso pra executar quando aprovado
+  origem TEXT DEFAULT 'ana',              -- 'ana', 'sistema', 'manual'
+  origem_operador TEXT,                   -- nome do operador da equipe que pediu (quando via Messenger Domínio)
+  status TEXT NOT NULL DEFAULT 'pendente', -- 'pendente', 'aprovado', 'rejeitado', 'executado', 'falhou'
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+  decidido_por INTEGER,                   -- id do usuario_escritorio que aprovou/rejeitou
+  decidido_em DATETIME,
+  motivo_decisao TEXT,                    -- observação/motivo (obrigatório pra rejeição)
+  executado_em DATETIME,
+  resultado_execucao TEXT,                -- JSON com retorno da execução (ou mensagem de erro)
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id),
+  FOREIGN KEY (decidido_por) REFERENCES usuarios_escritorio(id)
+);
+CREATE INDEX IF NOT EXISTS idx_fila_ana_status ON fila_aprovacao_ana(status);
+CREATE INDEX IF NOT EXISTS idx_fila_ana_cliente ON fila_aprovacao_ana(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_fila_ana_criado_em ON fila_aprovacao_ana(criado_em);
+
 -- Índices WhatsApp
 CREATE INDEX IF NOT EXISTS idx_whatsapp_contatos_telefone ON whatsapp_contatos(telefone);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_contatos_cliente ON whatsapp_contatos(cliente_id);

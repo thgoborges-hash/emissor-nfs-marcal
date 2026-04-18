@@ -21,15 +21,18 @@ export function LayoutEscritorio() {
         </div>
         <nav className="sidebar-nav">
           <NavLink to="/escritorio" end>📊 Dashboard</NavLink>
-          <NavLink to="/escritorio/aprovacoes">✅ Aprovações</NavLink>
+          <NavLink to="/escritorio/operacoes">🌅 Operações Hoje</NavLink>
+          <NavLink to="/escritorio/fila-ana">🤖 Fila ANA</NavLink>
+          <NavLink to="/escritorio/aprovacoes">✅ Aprovações NF</NavLink>
           <NavLink to="/escritorio/notas">📋 Todas as NFs</NavLink>
           <NavLink to="/escritorio/clientes">🏢 Clientes</NavLink>
           <NavLink to="/escritorio/emitir">📝 Emitir NF</NavLink>
           <NavLink to="/escritorio/certificados">🔐 Certificados</NavLink>
+          <NavLink to="/escritorio/certificado-serpro">🏛️ Cert. SERPRO</NavLink>
           <NavLink to="/escritorio/whatsapp">💬 WhatsApp</NavLink>
           <NavLink to="/escritorio/ana">🤖 Painel ANA</NavLink>
           <NavLink to="/escritorio/relatorios">📈 Relatorios</NavLink>
-          <NavLink to="/escritorio/testar-agente">🤖 Testar IA</NavLink>
+          <NavLink to="/escritorio/testar-agente">🧪 Testar IA</NavLink>
         </nav>
         <div className="sidebar-footer">
           <span>{usuario?.nome}</span><br />

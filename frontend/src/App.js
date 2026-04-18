@@ -15,6 +15,9 @@ import WhatsAppPainel from './pages/escritorio/WhatsApp';
 import PainelAna from './pages/escritorio/PainelAna';
 import Relatorios from './pages/escritorio/Relatorios';
 import TestarAgente from './pages/escritorio/TestarAgente';
+import OperacoesHoje from './pages/escritorio/OperacoesHoje';
+import FilaAprovacaoAna from './pages/escritorio/FilaAprovacaoAna';
+import CertificadoSerpro from './pages/escritorio/CertificadoSerpro';
 
 import './styles/global.css';
 
@@ -46,11 +49,14 @@ function App() {
             </RotaProtegida>
           }>
             <Route index element={<DashboardEscritorio />} />
+            <Route path="operacoes" element={<OperacoesHoje />} />
+            <Route path="fila-ana" element={<FilaAprovacaoAna />} />
             <Route path="aprovacoes" element={<Aprovacoes />} />
             <Route path="notas" element={<TodasNotas />} />
             <Route path="clientes" element={<GestaoClientes />} />
             <Route path="emitir" element={<EmitirNFEscritorio />} />
             <Route path="certificados" element={<Certificados />} />
+            <Route path="certificado-serpro" element={<CertificadoSerpro />} />
             <Route path="whatsapp" element={<WhatsAppPainel />} />
             <Route path="ana" element={<PainelAna />} />
             <Route path="relatorios" element={<Relatorios />} />
