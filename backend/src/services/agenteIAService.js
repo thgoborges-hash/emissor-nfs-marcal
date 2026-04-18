@@ -6,8 +6,13 @@
 const https = require('https');
 const { getDb } = require('../database/init');
 const cnpjService = require('./cnpjService');
+const integraContadorService = require('./integraContadorService');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+
+// Regex pra detectar prefixo de operador vindo do Messenger do Domínio
+// Ex.: "Janaina Alves: Segue a declaração..." → operador = "Janaina Alves"
+const OPERADOR_DOMINIO_REGEX = /^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]{1,40}):\s*(.*)/s;
 
 class AgenteIAService {
   constructor() {
@@ -51,8 +56,14 @@ class AgenteIAService {
       dadosCliente = this.buscarDadosCliente(contato.cliente_id);
     }
 
+    // 3.5. Detecta se é mensagem de operador da equipe Marçal (vindo do Messenger Domínio)
+    const modoEquipe = this.detectarModoEquipe(mensagem);
+    if (modoEquipe.ehEquipe) {
+      console.log(`[AgenteIA] Modo EQUIPE detectado — operador: ${modoEquipe.operador}`);
+    }
+
     // 4. Monta o prompt do sistema
-    const systemPrompt = this.montarSystemPrompt(contato, dadosCliente);
+    const systemPrompt = this.montarSystemPrompt(contato, dadosCliente, modoEquipe);
 
     // 5. Monta mensagens para a API
     const messages = this.montarMensagens(historico, mensagem);
@@ -125,9 +136,64 @@ class AgenteIAService {
         const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
         return { texto: respostaLimpa + feedbackMsg, acoes };
       }
+
+      // Feedback das consultas Integra Contador (modo equipe)
+      const acoesIntegra = acoes.filter(a =>
+        ['CONSULTAR_PGDASD_ULTIMA', 'CONSULTAR_PROCURACOES', 'CONSULTAR_DCTFWEB', 'LISTAR_CAIXA_POSTAL'].includes(a.tipo)
+        && a.feedback
+      );
+      if (acoesIntegra.length > 0) {
+        let blocos = '';
+        for (const a of acoesIntegra) {
+          blocos += '\n\n' + this._formatarFeedbackIntegraContador(a.feedback);
+        }
+        const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+        return { texto: respostaLimpa + blocos, acoes };
+      }
     }
 
     return { texto: resposta, acoes: acoes || [] };
+  }
+
+  /**
+   * Formata retorno do Integra Contador em mensagem legível pra WhatsApp
+   */
+  _formatarFeedbackIntegraContador(fb) {
+    if (!fb.sucesso) {
+      return `⚠️ *${fb.rotulo || 'Consulta SERPRO'}:* ${fb.erro || 'falhou'}`;
+    }
+    const r = fb.resultado || {};
+    const status = r.status;
+    const mensagens = Array.isArray(r.mensagens) ? r.mensagens : [];
+    let msg = `🔎 *${fb.rotulo}* — CNPJ ${fb.cnpj}\n`;
+
+    if (status && status !== 200) {
+      msg += `_Status SERPRO: ${status}_\n`;
+    }
+    if (mensagens.length > 0) {
+      const textos = mensagens.map(m => m.texto || m.codigo).filter(Boolean).join(' | ');
+      if (textos) msg += `_${textos}_\n`;
+    }
+
+    // Tenta parsear o campo 'dados' (vem como string JSON)
+    if (r.dados) {
+      let dados = r.dados;
+      if (typeof dados === 'string') {
+        try { dados = JSON.parse(dados); } catch (e) { /* mantém string */ }
+      }
+      if (typeof dados === 'object' && dados !== null) {
+        const resumo = JSON.stringify(dados, null, 2);
+        // Trunca pra WhatsApp (limite de 4096 chars na mensagem)
+        msg += '```\n' + (resumo.length > 2500 ? resumo.substring(0, 2500) + '\n[...truncado...]' : resumo) + '\n```';
+      } else if (typeof dados === 'string' && dados.length > 0) {
+        msg += dados.length > 2500 ? dados.substring(0, 2500) + '...' : dados;
+      } else {
+        msg += '_Sem dados retornados._';
+      }
+    } else {
+      msg += '_Sem dados retornados._';
+    }
+    return msg;
   }
 
   /**
@@ -177,7 +243,35 @@ class AgenteIAService {
   /**
    * Monta o prompt do sistema para o agente
    */
-  montarSystemPrompt(contato, dadosCliente) {
+  /**
+   * Detecta se a mensagem veio de um operador da equipe Marçal
+   * (Messenger do Domínio adiciona prefixo "Nome:" automaticamente)
+   * @returns {{ ehEquipe: boolean, operador: string|null, mensagemSemPrefixo: string }}
+   */
+  detectarModoEquipe(mensagem) {
+    if (!mensagem || typeof mensagem !== 'string') {
+      return { ehEquipe: false, operador: null, mensagemSemPrefixo: mensagem };
+    }
+    const match = mensagem.match(OPERADOR_DOMINIO_REGEX);
+    if (!match) {
+      return { ehEquipe: false, operador: null, mensagemSemPrefixo: mensagem };
+    }
+    // Heurística simples: nomes próprios começam com maiúscula e têm 2-4 palavras
+    const possivelNome = match[1].trim();
+    const palavras = possivelNome.split(/\s+/);
+    const pareceNome = palavras.length >= 1 && palavras.length <= 4 &&
+                       palavras.every(p => /^[A-ZÀ-Ÿ]/.test(p));
+    if (!pareceNome) {
+      return { ehEquipe: false, operador: null, mensagemSemPrefixo: mensagem };
+    }
+    return {
+      ehEquipe: true,
+      operador: possivelNome,
+      mensagemSemPrefixo: match[2].trim(),
+    };
+  }
+
+  montarSystemPrompt(contato, dadosCliente, modoEquipe = { ehEquipe: false }) {
     let prompt = `QUEM VOCÊ É:
 Você é a Ana. Trabalha na Marçal Contabilidade, escritório do Thiago Borges em Curitiba/PR. Você faz parte da equipe — não é uma assistente virtual, não é um robô, não é uma IA. Você é a Ana do escritório contábil, e ponto.
 
@@ -312,6 +406,39 @@ AÇÕES (inclua no final da resposta — o cliente não vê isso):
 - [ACAO:ENVIAR_GUIA:tipo|referencia] — enviar 2ª via de guia/boleto
 - [ACAO:IGNORAR] — mensagem não é pro escritório (grupo)
 - [ACAO:VINCULAR_CLIENTE:cnpj] — vincular contato ao cliente pelo CNPJ`;
+
+    // Bloco MODO EQUIPE — só aparece quando a mensagem veio com prefixo "Nome:" do Messenger Domínio
+    if (modoEquipe.ehEquipe) {
+      prompt += `\n\n=== MODO EQUIPE INTERNA — ${modoEquipe.operador} ===
+
+Essa mensagem veio do Messenger do Domínio (sistema interno do escritório). Quem está falando é a/o ${modoEquipe.operador}, da equipe da Marçal — NÃO é cliente. Trate como colega de trabalho.
+
+Diferenças importantes no MODO EQUIPE:
+- Tom mais direto e técnico, sem firulas. ${modoEquipe.operador} sabe contabilidade e tem pressa.
+- A equipe pode pedir consultas em nome de QUALQUER cliente da carteira (não só do contato atual)
+- Sempre que a equipe mencionar um cliente, peça o CNPJ se ainda não tiver — sem CNPJ não dá pra consultar a Receita
+- Você TEM acesso ao Integra Contador (SERPRO/RFB) pra consultas oficiais
+
+AÇÕES EXTRA DISPONÍVEIS NO MODO EQUIPE (use o CNPJ do cliente, só dígitos, 14 chars):
+
+- [ACAO:CONSULTAR_PGDASD_ULTIMA:cnpj] — consulta a última declaração PGDAS-D (Simples Nacional) do cliente
+  Use quando: "qual a última PGDAS do cliente X", "ele já transmitiu o Simples desse mês"
+
+- [ACAO:CONSULTAR_PROCURACOES:cnpj] — verifica se a procuração e-CAC do cliente está ativa
+  Use quando: "tá com procuração?", "valida a procuração do cliente Y", "perdemos a procuração?"
+
+- [ACAO:CONSULTAR_DCTFWEB:cnpj] — lista declarações DCTFWeb entregues pelo cliente
+  Use quando: "quais DCTFWeb tá entregue", "ele tem DCTFWeb pendente?"
+
+- [ACAO:LISTAR_CAIXA_POSTAL:cnpj] — lista mensagens da Caixa Postal e-CAC do cliente
+  Use quando: "tem mensagem nova no e-CAC do cliente Z", "olha a caixa postal dele"
+
+REGRAS IMPORTANTES NO MODO EQUIPE:
+- Quando executar qualquer ação acima, o sistema vai puxar os dados e devolver pra você na próxima mensagem do histórico — você NÃO precisa inventar a resposta
+- Se o operador pedir algo que não tá na sua lista (emitir DAS, transmitir DCTFWeb, etc), responda algo como "ainda tô aprendendo isso, vou pedir pro Thiago liberar essa função pra mim"
+- NÃO peça confirmação pra fazer consultas — são read-only, dispare direto
+- NÃO use [ACAO:IGNORAR] no modo equipe — toda mensagem da equipe merece resposta`;
+    }
 
     if (contato?.cliente_id && dadosCliente) {
       const { cliente, nfsRecentes, tomadores, resumo } = dadosCliente;
@@ -797,9 +924,49 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           console.log(`[WhatsApp] Mensagem ignorada (não direcionada ao escritório) na conversa ${conversaId}`);
           break;
 
+        case 'CONSULTAR_PGDASD_ULTIMA':
+          await this._executarConsultaIntegraContador(acao, 'consultarUltimaDeclaracaoPGDASD', 'Última PGDAS-D');
+          break;
+
+        case 'CONSULTAR_PROCURACOES':
+          await this._executarConsultaIntegraContador(acao, 'consultarProcuracoes', 'Procurações e-CAC');
+          break;
+
+        case 'CONSULTAR_DCTFWEB':
+          await this._executarConsultaIntegraContador(acao, 'consultarRelacaoDCTFWeb', 'Relação DCTFWeb');
+          break;
+
+        case 'LISTAR_CAIXA_POSTAL':
+          await this._executarConsultaIntegraContador(acao, 'listarMensagensCaixaPostal', 'Caixa Postal e-CAC');
+          break;
+
         default:
           console.log(`[WhatsApp] Ação não implementada: ${acao.tipo}`);
       }
+    }
+  }
+
+  /**
+   * Helper: executa uma consulta read-only ao Integra Contador
+   * Armazena o resultado em acao.feedback pra ser anexado à resposta
+   */
+  async _executarConsultaIntegraContador(acao, metodo, rotuloHumano) {
+    if (!acao.parametro) {
+      acao.feedback = { sucesso: false, erro: 'CNPJ não informado na ação' };
+      return;
+    }
+    const cnpj = String(acao.parametro).replace(/\D/g, '');
+    if (cnpj.length !== 14) {
+      acao.feedback = { sucesso: false, erro: `CNPJ inválido: ${acao.parametro}` };
+      return;
+    }
+    try {
+      console.log(`[AgenteIA] ${rotuloHumano}: chamando Integra Contador pra ${cnpj}`);
+      const resultado = await integraContadorService[metodo](cnpj);
+      acao.feedback = { sucesso: true, rotulo: rotuloHumano, cnpj, resultado };
+    } catch (err) {
+      console.error(`[AgenteIA] Falha ${rotuloHumano} (${cnpj}):`, err.message);
+      acao.feedback = { sucesso: false, erro: err.message, rotulo: rotuloHumano };
     }
   }
 
