@@ -850,6 +850,16 @@ async function processarMensagemZapi(body) {
           const nfId = nfEmitida.feedback.nfId;
           const numDisplay = nfEmitida.feedback.numero || nfId;
 
+          // WARMUP do PDF antes de passar o link pro Z-API baixar (idem BUSCAR_DANFSE).
+          try {
+            const { obterDanfsePdf } = require('./notasFiscais');
+            console.log(`[Z-API] 🔥 Warmup DANFSe NF recém-emitida ${nfId}...`);
+            const warmup = await obterDanfsePdf(nfId);
+            console.log(`[Z-API] 🔥 Warmup concluído: fonte=${warmup?.fonte} (${warmup?.pdf?.length || 0} bytes)`);
+          } catch (warmupErr) {
+            console.warn(`[Z-API] Warmup falhou:`, warmupErr.message);
+          }
+
           // Gera token temporário (24h) para acesso ao DANFSe sem login
           const tokenTemp = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'danfse' });
           // Força HTTPS em produção (Render) pra evitar redirect que o Z-API não segue.
@@ -880,6 +890,18 @@ async function processarMensagemZapi(body) {
         try {
           const nfId = danfseBuscado.feedback.nfId;
           const numDisplay = danfseBuscado.feedback.numero || nfId;
+
+          // WARMUP: gera/cacheia o PDF ANTES do Z-API baixar o link.
+          // Quando Z-API bater no endpoint, pega cache-hit imediato (sem novo round ADN).
+          // E o re-fetch do preview do WhatsApp (~2s depois) também pega o cache.
+          try {
+            const { obterDanfsePdf } = require('./notasFiscais');
+            console.log(`[Z-API] 🔥 Warmup DANFSe NF ${nfId} (aquecendo cache antes do Z-API baixar)...`);
+            const warmup = await obterDanfsePdf(nfId);
+            console.log(`[Z-API] 🔥 Warmup concluído: fonte=${warmup?.fonte} (${warmup?.pdf?.length || 0} bytes)`);
+          } catch (warmupErr) {
+            console.warn(`[Z-API] Warmup falhou (vai baixar do jeito antigo):`, warmupErr.message);
+          }
 
           const tokenTemp = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'danfse' });
           // Força HTTPS em produção (Render) pra evitar redirect que o Z-API não segue.

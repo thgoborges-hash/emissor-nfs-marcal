@@ -890,34 +890,56 @@ router.get('/:id/danfse', autenticado, async (req, res) => {
   }
 });
 
-// Cache em memória do PDF OFICIAL, por nfId. TTL 10min.
-// Motivação: WhatsApp/Z-API re-fetch o link pra gerar preview (~2s depois do 1º download),
-// e como o ADN está intermitente (502), o re-fetch costuma cair no Puppeteer. Resultado:
-// mesmo quando o oficial vem no 1º request, o preview exibido acaba sendo o Puppeteer.
-// Cacheamos só o oficial — se cair no local, não cacheia pra próxima tentativa voltar a tentar ADN.
-const DANFSE_CACHE = new Map(); // nfId → { pdf: Buffer, fonte: 'oficial', ts: number }
-const DANFSE_CACHE_TTL_MS = 10 * 60 * 1000;
+// Cache compartilhado em danfseCacheService — permite warmup a partir de outros módulos (ex: whatsapp.js).
+const danfseCacheService = require('../services/danfseCacheService');
 
-function _lerCacheDanfse(nfId) {
-  const hit = DANFSE_CACHE.get(nfId);
-  if (!hit) return null;
-  if (Date.now() - hit.ts > DANFSE_CACHE_TTL_MS) {
-    DANFSE_CACHE.delete(nfId);
-    return null;
+/**
+ * Gera o PDF do DANFSe pra uma NF (roda cascata ADN oficial → Puppeteer local com retry).
+ * Usa e popula o cache compartilhado. Chamável tanto pelo endpoint HTTP quanto pelo
+ * warmup do whatsapp.js (pre-aquecimento antes do Z-API baixar o link).
+ *
+ * @param {number} notaId
+ * @returns {Promise<{ pdf: Buffer, fonte: 'oficial'|'local'|'oficial-cache', numDisplay: string, nomeArquivo: string } | null>}
+ *   Retorna null se a nota não existir.
+ */
+async function obterDanfsePdf(notaId) {
+  const nota = buscarDadosNota(notaId);
+  if (!nota) return null;
+
+  const numDisplay = nota.numero_nfse || nota.numero_dps || nota.id;
+  const nomeArquivo = `DANFSe_NF_${numDisplay}.pdf`;
+
+  const cache = danfseCacheService.ler(notaId);
+  if (cache) {
+    console.log(`[DANFSe-PDF] ⚡ Cache HIT (${cache.fonte}) NF ${numDisplay}: ${cache.pdf.length} bytes`);
+    return { pdf: cache.pdf, fonte: `${cache.fonte}-cache`, numDisplay, nomeArquivo };
   }
-  return hit;
-}
 
-function _gravarCacheDanfse(nfId, pdf, fonte) {
-  if (fonte !== 'oficial') return; // só cacheia oficial
-  DANFSE_CACHE.set(nfId, { pdf, fonte, ts: Date.now() });
-  // Limpeza lazy pra não vazar memória se muitos PDFs acumularem
-  if (DANFSE_CACHE.size > 200) {
-    const agora = Date.now();
-    for (const [k, v] of DANFSE_CACHE) {
-      if (agora - v.ts > DANFSE_CACHE_TTL_MS) DANFSE_CACHE.delete(k);
+  console.log(`[DANFSe-PDF] Gerando PDF para NF ${numDisplay} (cascata: ADN oficial → fallback local)...`);
+  const html = await gerarHtmlDanfse(nota);
+
+  let pfxBuffer = null, senha = null;
+  try {
+    if (nota.chave_acesso && nota.certificado_a1_senha_encrypted) {
+      const certificadoService = require('../services/certificadoService');
+      const cert = certificadoService.carregarCertificado(nota.cliente_id, nota.certificado_a1_senha_encrypted);
+      pfxBuffer = cert.pfxBuffer;
+      senha = cert.senha;
     }
+  } catch (err) {
+    console.warn(`[DANFSe-PDF] Não conseguiu carregar cert p/ tentar oficial: ${err.message}`);
   }
+
+  const { pdf: pdfBuffer, fonte } = await danfsePdfService.obterDanfseCascata({
+    chaveAcesso: nota.chave_acesso,
+    pfxBuffer, senha,
+    htmlLocal: html,
+  });
+
+  console.log(`[DANFSe-PDF] ✅ PDF entregue (${fonte}): ${pdfBuffer.length} bytes`);
+  danfseCacheService.gravar(notaId, pdfBuffer, fonte);
+
+  return { pdf: pdfBuffer, fonte, numDisplay, nomeArquivo };
 }
 
 // GET /api/notas-fiscais/:id/danfse-pdf - Gera DANFSe padrão oficial como PDF
@@ -933,49 +955,9 @@ router.get('/:id/danfse-pdf', autenticado, async (req, res) => {
       return res.status(403).json({ erro: 'Acesso não autorizado' });
     }
 
-    const numDisplay = nota.numero_nfse || nota.numero_dps || nota.id;
-    const nomeArquivo = `DANFSe_NF_${numDisplay}.pdf`;
-
-    // Tenta servir do cache (apenas PDF oficial, TTL 10min).
-    const cache = _lerCacheDanfse(notaId);
-    if (cache) {
-      console.log(`[DANFSe-PDF] ⚡ Cache HIT (${cache.fonte}) NF ${numDisplay}: ${cache.pdf.length} bytes`);
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('X-DANFSe-Fonte', `${cache.fonte}-cache`);
-      res.setHeader('Content-Disposition',
-        req.query.download === '1'
-          ? `attachment; filename="${nomeArquivo}"`
-          : `inline; filename="${nomeArquivo}"`
-      );
-      return res.send(cache.pdf);
-    }
-
-    console.log(`[DANFSe-PDF] Gerando PDF para NF ${numDisplay} (cascata: ADN oficial → fallback local)...`);
-
-    // Monta HTML de fallback em paralelo com tentativa oficial
-    const html = await gerarHtmlDanfse(nota);
-
-    // Tenta carregar cert A1 do cliente pra chamada oficial (se não conseguir, cascata cai no local)
-    let pfxBuffer = null, senha = null;
-    try {
-      if (nota.chave_acesso && nota.certificado_a1_senha_encrypted) {
-        const certificadoService = require('../services/certificadoService');
-        const cert = certificadoService.carregarCertificado(nota.cliente_id, nota.certificado_a1_senha_encrypted);
-        pfxBuffer = cert.pfxBuffer;
-        senha = cert.senha;
-      }
-    } catch (err) {
-      console.warn(`[DANFSe-PDF] Não conseguiu carregar cert p/ tentar oficial: ${err.message}`);
-    }
-
-    const { pdf: pdfBuffer, fonte } = await danfsePdfService.obterDanfseCascata({
-      chaveAcesso: nota.chave_acesso,
-      pfxBuffer, senha,
-      htmlLocal: html,
-    });
-
-    console.log(`[DANFSe-PDF] ✅ PDF entregue (${fonte}): ${pdfBuffer.length} bytes`);
-    _gravarCacheDanfse(notaId, pdfBuffer, fonte);
+    const resultado = await obterDanfsePdf(notaId);
+    if (!resultado) return res.status(404).json({ erro: 'Nota fiscal não encontrada' });
+    const { pdf: pdfBuffer, fonte, nomeArquivo } = resultado;
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('X-DANFSe-Fonte', fonte); // 'oficial' ou 'local' — útil pra monitorar adoção
@@ -1203,3 +1185,5 @@ router.get('/relatorios/ranking-tomadores', autenticado, apenasEscritorio, (req,
 });
 
 module.exports = router;
+// Exporta helpers usados por outros módulos (ex: warmup do whatsapp.js).
+module.exports.obterDanfsePdf = obterDanfsePdf;

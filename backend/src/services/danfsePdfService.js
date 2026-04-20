@@ -146,8 +146,14 @@ async function baixarDanfseOficial(chaveAcesso, pfxBuffer, senha) {
   });
 }
 
+// Configurações de retry pra lidar com ADN instável (502 intermitente)
+const ADN_RETRY_MAX = Number(process.env.ADN_DANFSE_RETRY_MAX || 3);
+const ADN_RETRY_DELAY_MS = Number(process.env.ADN_DANFSE_RETRY_DELAY_MS || 800);
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
 /**
- * Estratégia em cascata: tenta ADN oficial primeiro, se falhar usa Puppeteer local.
+ * Estratégia em cascata: tenta ADN oficial com retry antes de cair no Puppeteer local.
  * @param {object} opts
  * @param {string} opts.chaveAcesso
  * @param {Buffer} [opts.pfxBuffer] — cert A1 do cliente (opcional)
@@ -156,14 +162,31 @@ async function baixarDanfseOficial(chaveAcesso, pfxBuffer, senha) {
  * @returns {Promise<{ pdf: Buffer, fonte: 'oficial'|'local' }>}
  */
 async function obterDanfseCascata({ chaveAcesso, pfxBuffer, senha, htmlLocal }) {
-  // 1ª tentativa: endpoint oficial
-  try {
-    const pdfOficial = await baixarDanfseOficial(chaveAcesso, pfxBuffer, senha);
-    if (pdfOficial) {
-      return { pdf: pdfOficial, fonte: 'oficial' };
+  // Tenta o ADN oficial com retry — ADN está instável (502 intermitente)
+  // e janelas boas/ruins ocorrem em segundos, então retry com backoff
+  // geralmente captura uma janela boa.
+  if (chaveAcesso && pfxBuffer && senha) {
+    for (let tentativa = 1; tentativa <= ADN_RETRY_MAX; tentativa++) {
+      try {
+        const pdfOficial = await baixarDanfseOficial(chaveAcesso, pfxBuffer, senha);
+        if (pdfOficial) {
+          if (tentativa > 1) {
+            console.log(`[DANFSe-Cascata] ✓ OFICIAL obtido na tentativa ${tentativa}/${ADN_RETRY_MAX}`);
+          }
+          return { pdf: pdfOficial, fonte: 'oficial' };
+        }
+      } catch (err) {
+        console.warn(`[DANFSe-Cascata] Falha oficial (tentativa ${tentativa}/${ADN_RETRY_MAX}):`, err.message);
+      }
+
+      // Só espera se ainda há tentativas (não espera depois da última falha)
+      if (tentativa < ADN_RETRY_MAX) {
+        const delay = ADN_RETRY_DELAY_MS * tentativa; // backoff linear: 800ms, 1600ms
+        console.log(`[DANFSe-Cascata] Aguardando ${delay}ms antes da retry ${tentativa + 1}...`);
+        await sleep(delay);
+      }
     }
-  } catch (err) {
-    console.warn('[DANFSe-Cascata] Falha oficial (catch):', err.message);
+    console.warn(`[DANFSe-Cascata] ADN falhou após ${ADN_RETRY_MAX} tentativas — indo pro Puppeteer`);
   }
 
   // Fallback: Puppeteer local com template v1.0
