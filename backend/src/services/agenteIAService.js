@@ -933,29 +933,57 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
             try {
               const busca = acao.parametro.trim();
 
-              // Detecta se é admin/equipe (telefone bate com ANA_ADMIN_WHATSAPP)
-              // ou se a mensagem veio do Messenger do Domínio (modo equipe).
-              const adminPhone = (process.env.ANA_ADMIN_WHATSAPP || '').replace(/\D/g, '');
-              const telefoneContato = (contato?.telefone || '').replace(/\D/g, '');
-              const ehAdmin = adminPhone && telefoneContato &&
-                (telefoneContato === adminPhone ||
-                 telefoneContato.endsWith(adminPhone) ||
-                 adminPhone.endsWith(telefoneContato));
+              // Detecta admin/equipe com matching tolerante (variações de formato
+              // Z-API: com/sem "9 extra" de celular, possível truncamento do último dígito).
+              const adminPhoneRaw = (process.env.ANA_ADMIN_WHATSAPP || '').replace(/\D/g, '');
+              const telefoneContatoRaw = (contato?.telefone || '').replace(/\D/g, '');
+              const variantesTelefone = (num) => {
+                if (!num) return new Set();
+                const v = new Set([num]);
+                // Com/sem 9 extra (13 ↔ 12 dígitos, BR)
+                if (num.length === 13 && num.startsWith('55') && num[4] === '9') {
+                  v.add(num.slice(0, 4) + num.slice(5));
+                } else if (num.length === 12 && num.startsWith('55')) {
+                  v.add(num.slice(0, 4) + '9' + num.slice(4));
+                }
+                return v;
+              };
+              const matchTelefone = (a, b) => {
+                if (!a || !b) return false;
+                const va = variantesTelefone(a);
+                const vb = variantesTelefone(b);
+                for (const x of va) for (const y of vb) {
+                  if (x === y) return true;
+                  // Tolerância final: prefixo comum de ≥10 dígitos cobre truncamento do último
+                  const menor = x.length < y.length ? x : y;
+                  const maior = x.length < y.length ? y : x;
+                  if (menor.length >= 10 && maior.startsWith(menor)) return true;
+                }
+                return false;
+              };
+              const ehAdmin = matchTelefone(adminPhoneRaw, telefoneContatoRaw);
               const ehEquipe = ehAdmin || contato?.modoEquipe?.ehEquipe;
 
-              // No modo admin/equipe, permitimos descobrir o cliente_id pelo CNPJ
-              // mencionado na mensagem (ex: "manda o PDF da NF 116 do CNPJ 36.749.464/0001-42").
+              // Sempre tenta extrair CNPJ da mensagem — se achou, usa como cliente_id.
+              // Isso funciona pra admin E pra cliente que por acaso mencione o próprio CNPJ.
               let clienteIdParaBusca = contato?.cliente_id || null;
-              if (ehEquipe && contato?.mensagemOriginal) {
+              let cnpjMencionado = null;
+              if (contato?.mensagemOriginal) {
                 const cnpjMatch = contato.mensagemOriginal.match(/(\d{2}[.\s]?\d{3}[.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2})/);
                 if (cnpjMatch) {
                   const cnpjLimpo = cnpjMatch[1].replace(/\D/g, '');
-                  const clienteEncontrado = db.prepare(
-                    'SELECT id FROM clientes WHERE REPLACE(REPLACE(REPLACE(cnpj, ".", ""), "/", ""), "-", "") = ? LIMIT 1'
-                  ).get(cnpjLimpo);
-                  if (clienteEncontrado) {
-                    clienteIdParaBusca = clienteEncontrado.id;
-                    console.log(`[WhatsApp] BUSCAR_DANFSE modo equipe: CNPJ ${cnpjLimpo} → cliente_id=${clienteIdParaBusca}`);
+                  if (cnpjLimpo.length === 14) {
+                    cnpjMencionado = cnpjLimpo;
+                    // Comparação em JS pra tolerar qualquer formato de armazenamento no banco
+                    // (com pontuação, espaços, mascarado etc).
+                    const todosClientes = db.prepare('SELECT id, razao_social, cnpj FROM clientes WHERE cnpj IS NOT NULL AND cnpj != ""').all();
+                    const clienteEncontrado = todosClientes.find(c => (c.cnpj || '').replace(/\D/g, '') === cnpjLimpo);
+                    if (clienteEncontrado) {
+                      clienteIdParaBusca = clienteEncontrado.id;
+                      console.log(`[WhatsApp] BUSCAR_DANFSE: CNPJ ${cnpjLimpo} → ${clienteEncontrado.razao_social} (id=${clienteIdParaBusca})${ehEquipe ? ' (modo equipe)' : ''}`);
+                    } else {
+                      console.log(`[WhatsApp] BUSCAR_DANFSE: CNPJ ${cnpjLimpo} não encontrado na base de ${todosClientes.length} clientes`);
+                    }
                   }
                 }
               }
