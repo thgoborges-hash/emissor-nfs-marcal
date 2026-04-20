@@ -62,7 +62,33 @@ function destinoPermitido(chave) {
   // Extraímos só os dígitos pra garantir match independente do sufixo.
   const normalizar = (s) => s.replace(/-group/g, '').replace(/@g\.us$/, '').replace(/\D/g, '');
   const chaveNorm = normalizar(chave);
-  return ANA_WHITELIST.some(w => normalizar(w) === chaveNorm);
+
+  // Tolerância ao "9 extra" de celular brasileiro:
+  // Z-API às vezes entrega contas antigas sem o 9 (ex: 554199610449),
+  // enquanto o número cadastrado tem o 9 (ex: 5541996104498).
+  // Geramos variantes com/sem o 9 pra casar os dois formatos.
+  const variantes = (num) => {
+    const v = new Set([num]);
+    // Padrão BR celular: 55 (DDI) + DD (DDD, 2 dígitos) + 9 + 8 dígitos = 13 total
+    // Sem o 9:            55 (DDI) + DD (DDD, 2 dígitos)     + 8 dígitos = 12 total
+    if (num.length === 13 && num.startsWith('55')) {
+      const semNove = num.slice(0, 4) + num.slice(5); // remove o 5º caractere (o "9")
+      if (num[4] === '9') v.add(semNove);
+    } else if (num.length === 12 && num.startsWith('55')) {
+      const comNove = num.slice(0, 4) + '9' + num.slice(4);
+      v.add(comNove);
+    }
+    return v;
+  };
+
+  const variantesChave = variantes(chaveNorm);
+  return ANA_WHITELIST.some(w => {
+    const wNorm = normalizar(w);
+    const variantesW = variantes(wNorm);
+    // Match se QUALQUER variante da whitelist bater com QUALQUER variante da chave
+    for (const a of variantesW) for (const b of variantesChave) if (a === b) return true;
+    return false;
+  });
 }
 
 if (WHATSAPP_PROVIDER === 'blip') {
@@ -1507,6 +1533,27 @@ router.post('/agente/testar', autenticado, apenasEscritorio, async (req, res) =>
           }
           if (feedbackMsg) {
             respostaFinal = respostaRaw.replace(/\[ACAO:[^\]]+\]/g, '').trim() + feedbackMsg;
+          }
+        }
+
+        // Feedback de BUSCAR_DANFSE: no WhatsApp o PDF vai via Z-API,
+        // mas no Sandbox não tem Z-API — então anexa o link direto na resposta
+        // pra usuário poder clicar e baixar o PDF pela cascata.
+        const feedbackDanfse = acoes.find(a => a.tipo === 'BUSCAR_DANFSE' && a.feedback?.sucesso);
+        if (feedbackDanfse?.feedback?.nfId) {
+          const nfId = feedbackDanfse.feedback.nfId;
+          const numDisplay = feedbackDanfse.feedback.numero || nfId;
+          const tokenTemp = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'danfse' });
+          const baseUrl = `${req.protocol}://${req.get('host')}`;
+          const linkDanfse = `${baseUrl}/api/notas-fiscais/${nfId}/danfse-pdf?token=${tokenTemp}&download=1`;
+          const danfseMsg = `\n\n📄 DANFSe da NF ${numDisplay}: ${linkDanfse}`;
+          respostaFinal = respostaFinal.replace(/\[ACAO:[^\]]+\]/g, '').trim() + danfseMsg;
+        } else if (acoes.some(a => a.tipo === 'BUSCAR_DANFSE') && !feedbackDanfse) {
+          // ANA prometeu buscar mas a ação não achou NF
+          const falha = acoes.find(a => a.tipo === 'BUSCAR_DANFSE' && a.feedback?.erro);
+          if (falha) {
+            respostaFinal = respostaFinal.replace(/\[ACAO:[^\]]+\]/g, '').trim() +
+              `\n\n⚠️ ${falha.feedback.erro || 'Não consegui localizar essa NF.'}`;
           }
         }
       } catch (acaoErr) {
