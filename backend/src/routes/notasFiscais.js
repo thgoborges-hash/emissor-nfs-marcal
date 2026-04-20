@@ -434,7 +434,8 @@ router.put('/:id/emitir', autenticado, async (req, res) => {
     );
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const linkDanfse = `${baseUrl}/api/notas-fiscais/${notaId}/danfse`;
+    // Usa /danfse-pdf (cascata ADN oficial → Puppeteer fallback) em vez de HTML
+    const linkDanfse = `${baseUrl}/api/notas-fiscais/${notaId}/danfse-pdf`;
 
     // Envia notificação via WhatsApp (se configurado e tomador tem telefone)
     try {
@@ -975,7 +976,8 @@ router.post('/:id/enviar-email', autenticado, apenasEscritorio, async (req, res)
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const linkDanfse = `${baseUrl}/api/notas-fiscais/${notaId}/danfse`;
+    // Usa /danfse-pdf (cascata ADN oficial → Puppeteer fallback) em vez de HTML
+    const linkDanfse = `${baseUrl}/api/notas-fiscais/${notaId}/danfse-pdf`;
 
     await emailService.enviarNFManual({
       para,

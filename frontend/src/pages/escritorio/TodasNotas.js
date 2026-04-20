@@ -49,14 +49,16 @@ export default function TodasNotas() {
 
   const handleVerPDF = (id) => {
     const token = localStorage.getItem('token');
-    window.open(`/api/notas-fiscais/${id}/danfse?token=${token}`, '_blank');
+    // Usa rota /danfse-pdf (com cascata ADN oficial → Puppeteer fallback)
+    window.open(`/api/notas-fiscais/${id}/danfse-pdf?token=${token}`, '_blank');
   };
 
-  const handleBaixarPDF = (id, numeroDps) => {
+  const handleBaixarPDF = (id, numeroDps, numeroNfse) => {
     const token = localStorage.getItem('token');
     const link = document.createElement('a');
-    link.href = `/api/notas-fiscais/${id}/danfse?download=1&token=${token}`;
-    link.download = `NFSe_DPS_${numeroDps}.html`;
+    // Usa rota /danfse-pdf (com cascata ADN oficial → Puppeteer fallback)
+    link.href = `/api/notas-fiscais/${id}/danfse-pdf?download=1&token=${token}`;
+    link.download = `DANFSe_NF_${numeroNfse || numeroDps || id}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -122,7 +124,7 @@ export default function TodasNotas() {
                         {nf.status === 'emitida' && (
                           <>
                             <button className="btn btn-primary btn-sm" onClick={() => handleVerPDF(nf.id)} title="Ver PDF">Ver PDF</button>
-                            <button className="btn btn-outline btn-sm" onClick={() => handleBaixarPDF(nf.id, nf.numero_dps)} title="Baixar PDF" style={{ borderColor: '#3b82f6', color: '#3b82f6' }}>Baixar</button>
+                            <button className="btn btn-outline btn-sm" onClick={() => handleBaixarPDF(nf.id, nf.numero_dps, nf.numero_nfse)} title="Baixar PDF" style={{ borderColor: '#3b82f6', color: '#3b82f6' }}>Baixar</button>
                             <button className="btn btn-danger btn-sm" onClick={() => handleCancelar(nf.id)}>Cancelar</button>
                           </>
                         )}
