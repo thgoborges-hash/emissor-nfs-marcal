@@ -118,7 +118,7 @@ export default function TestarAgente() {
               Simular como cliente (opcional):
             </label>
             <select value={clienteId} onChange={e => setClienteId(e.target.value)}
-              style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14 }}>
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, background: '#fff', color: '#111827' }}>
               <option value="">Cliente nao identificado</option>
               {clientes.filter(c => c.ativo).map(c => (
                 <option key={c.id} value={c.id}>{c.nome_fantasia || c.razao_social} ({c.cnpj})</option>
@@ -166,6 +166,7 @@ export default function TestarAgente() {
                 background: msg.role === 'user' ? '#dcf8c6' : msg.role === 'system' ? '#fee2e2' : '#fff',
                 boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
                 fontSize: 14, lineHeight: 1.5,
+                color: '#111827',  // força texto escuro — o tema dark global puxaria texto claro nos balões brancos do chat
               }}>
                 <div style={{ fontSize: 11, color: '#888', marginBottom: 2 }}>
                   {msg.role === 'user' ? '👤 Cliente (voce)' : msg.role === 'assistant' ? '🤖 Agente IA' : '⚠️ Sistema'}
@@ -211,7 +212,7 @@ export default function TestarAgente() {
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && enviar()}
             placeholder={iaOk ? "Digite como se fosse um cliente..." : "IA nao configurada"}
             disabled={enviando || !iaOk}
-            style={{ flex: 1, padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 20, outline: 'none', fontSize: 14 }} />
+            style={{ flex: 1, padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 20, outline: 'none', fontSize: 14, background: '#fff', color: '#111827' }} />
           <button className="btn btn-primary" onClick={enviar}
             disabled={enviando || !mensagem.trim() || !iaOk}
             style={{ borderRadius: 20, padding: '8px 24px' }}>
