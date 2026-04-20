@@ -611,6 +611,10 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           db.prepare('UPDATE whatsapp_conversas SET status = ? WHERE id = ?')
             .run('aguardando_humano', conversaId);
           console.log(`[WhatsApp] Conversa ${conversaId} transferida para atendimento humano`);
+          // Notifica o admin via WhatsApp (não bloqueia o fluxo se falhar)
+          this._notificarAdminTransferencia(conversaId, contato).catch(err =>
+            console.warn('[WhatsApp] Falha ao notificar admin:', err.message)
+          );
           break;
 
         case 'VINCULAR_CLIENTE':
@@ -992,6 +996,82 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
    */
   limparResposta(resposta) {
     return resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+  }
+
+  /**
+   * Seleciona o provider WhatsApp ativo (mesmo dispatcher de routes/whatsapp.js)
+   */
+  _obterWhatsAppProvider() {
+    const provider = process.env.WHATSAPP_PROVIDER || 'meta';
+    if (provider === 'blip') return require('./blipService');
+    if (provider === 'evolution') return require('./evolutionService');
+    if (provider === 'zapi') return require('./zapiService');
+    return require('./whatsappService'); // meta cloud api
+  }
+
+  /**
+   * Notifica o admin (Thiago) via WhatsApp quando uma conversa é transferida.
+   * Roda em background — falhas não bloqueiam a resposta ao cliente.
+   */
+  async _notificarAdminTransferencia(conversaId, contato) {
+    const adminPhone = process.env.ANA_ADMIN_WHATSAPP || '5541996104498';
+    if (!adminPhone) {
+      console.warn('[WhatsApp] ANA_ADMIN_WHATSAPP não configurado — alerta não enviado');
+      return;
+    }
+
+    const db = getDb();
+
+    // Pega últimas 5 mensagens da conversa pra dar contexto
+    const ultimas = db.prepare(`
+      SELECT direcao, conteudo, remetente, created_at
+      FROM whatsapp_mensagens
+      WHERE conversa_id = ?
+      ORDER BY created_at DESC LIMIT 5
+    `).all(conversaId).reverse();
+
+    // Monta informação do cliente
+    let clienteInfo = 'Contato desconhecido';
+    let telefoneCliente = contato?.telefone || '?';
+    if (contato?.cliente_id) {
+      const c = db.prepare('SELECT razao_social, cnpj FROM clientes WHERE id = ?').get(contato.cliente_id);
+      if (c) clienteInfo = `${c.razao_social} (${c.cnpj})`;
+    } else if (contato?.nome) {
+      clienteInfo = contato.nome;
+    }
+
+    // Monta histórico resumido
+    const historicoTxt = ultimas
+      .map(m => {
+        const quem = m.direcao === 'entrada' ? '👤 Cliente' : (m.remetente === 'bot' ? '🤖 ANA' : '👨 Equipe');
+        const conteudo = (m.conteudo || '').replace(/\[ACAO:[^\]]+\]/g, '').trim().slice(0, 200);
+        return `${quem}: ${conteudo}`;
+      })
+      .join('\n');
+
+    const baseUrl = process.env.APP_BASE_URL || 'https://emissor-nfs-marcal.onrender.com';
+    const mensagem = `🔔 *ANA pediu reforço*
+
+Cliente: *${clienteInfo}*
+WhatsApp: ${telefoneCliente}
+
+_Últimas mensagens:_
+${historicoTxt}
+
+Abra o painel pra responder:
+${baseUrl}/escritorio/whatsapp`;
+
+    try {
+      const provider = this._obterWhatsAppProvider();
+      if (!provider.isConfigured?.()) {
+        console.warn('[WhatsApp] Provider não configurado, alerta admin não enviado');
+        return;
+      }
+      await provider.enviarTexto(adminPhone, mensagem);
+      console.log(`[WhatsApp] ✓ Admin (${adminPhone}) notificado da transferência da conversa ${conversaId}`);
+    } catch (err) {
+      console.error('[WhatsApp] Erro enviando alerta admin:', err.message);
+    }
   }
 
   // =====================================================
