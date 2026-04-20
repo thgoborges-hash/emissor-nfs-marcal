@@ -976,7 +976,9 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                     cnpjMencionado = cnpjLimpo;
                     // Comparação em JS pra tolerar qualquer formato de armazenamento no banco
                     // (com pontuação, espaços, mascarado etc).
-                    const todosClientes = db.prepare('SELECT id, razao_social, cnpj FROM clientes WHERE cnpj IS NOT NULL AND cnpj != ""').all();
+                    // Busca todos com CNPJ não-vazio e compara em JS (tolera qualquer formato de armazenamento).
+                    // Nota: SQLite usa aspas SIMPLES pra string literal; "" seria referência a coluna.
+                    const todosClientes = db.prepare("SELECT id, razao_social, cnpj FROM clientes WHERE cnpj IS NOT NULL AND TRIM(cnpj) != ''").all();
                     const clienteEncontrado = todosClientes.find(c => (c.cnpj || '').replace(/\D/g, '') === cnpjLimpo);
                     if (clienteEncontrado) {
                       clienteIdParaBusca = clienteEncontrado.id;
