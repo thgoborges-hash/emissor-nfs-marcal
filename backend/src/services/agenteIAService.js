@@ -91,8 +91,9 @@ class AgenteIAService {
     if (acoes.length > 0) {
       // Passa a mensagem original e modoEquipe via contato pra que
       // ações como BUSCAR_DANFSE possam extrair CNPJ mencionado / detectar admin.
-      contato = { ...contato, mensagemOriginal: mensagem, modoEquipe };
-      await this.executarAcoes(acoes, contato, conversaId);
+      // Cria nova referência — `contato` original é parâmetro const, não dá pra reatribuir.
+      const contatoExpandido = { ...contato, mensagemOriginal: mensagem, modoEquipe };
+      await this.executarAcoes(acoes, contatoExpandido, conversaId);
 
       // 8. Verifica se alguma ação teve feedback que precisa de follow-up
       const feedbackEmissao = acoes.find(a => a.tipo === 'EMITIR_NF' && a.feedback);
