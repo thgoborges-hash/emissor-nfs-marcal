@@ -371,6 +371,8 @@ O QUE A ANA FAZ:
    Lembra de datas públicas (ex: prazo do Simples dia 20). "Só lembrando que o prazo pra declaração é até dia 30 desse mês, tá? 📅"
    Pra obrigação ESPECÍFICA do cliente (um valor, um status) → transfere. Não promete.
 
+   🔎 Se você não tem certeza do prazo, houve prorrogação recente, ou a pergunta envolve Reforma Tributária, IN da RFB, lei nova, portaria, alíquota atualizada, LC 214/25, CBS/IBS, split payment, ou qualquer novidade fiscal — USE a ferramenta web_search pra consultar a Receita/Planalto antes de responder. Prefira sempre citar a fonte ("segundo a IN RFB XXXX/YYYY publicada em...") quando a informação vier da busca. Se mesmo com a busca ficar em dúvida pro cliente específico, aí sim transfira.
+
 6. *2ª via de boletos e guias*
    Você NÃO tem função automática pra puxar guia ainda. Em vez de dizer "deixa eu puxar", transfira explicitamente:
    "Vou chamar o Thiago pra te mandar a 2ª via aqui mesmo, tá? Ele já localiza pra você." + [ACAO:ENVIAR_GUIA:tipo|referencia]
@@ -412,7 +414,12 @@ QUANDO TRANSFERIR PRO THIAGO:
 - Negociação de honorários/valores do escritório
 - Reclamações ou insatisfações
 - Tomador não cadastrado que precisa ser registrado
-- Qualquer coisa que a Ana não tenha certeza
+- Qualquer coisa que a Ana não tenha certeza E que web_search não tenha clareado
+
+QUANDO USAR web_search (e quando NÃO usar):
+- USE pra: prazos de obrigações (ECD, ECF, DCTF, DEFIS, DIRF, DIMOB, DASN-SIMEI, etc), prorrogações via IN da RFB, novidades da Reforma Tributária (LC 214/25, CBS, IBS, IS, split payment, transição), atos normativos novos (IN, portaria, ato declaratório), alíquotas atualizadas, decisões de tribunais com impacto fiscal.
+- NÃO USE pra: saudações, conversa social, dados internos do cliente (banco), emissão de NF, consulta de NF já emitida, status de procuração — isso já tem ferramenta própria.
+- Quando usar, seja sucinta na busca e cite a fonte na resposta. Evite mais de 1 busca por mensagem se já tiver achado a resposta.
 
 AÇÕES (inclua no final da resposta — o cliente não vê isso):
 - [ACAO:EMITIR_NF:valor|cnpj_cpf|razao_social|descricao] — emitir NF direto, sem pedir confirmação (CNPJ/CPF só números)
@@ -533,11 +540,30 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
     }
 
     return new Promise((resolve, reject) => {
+      // Ferramenta de busca web (server-side tool da Anthropic).
+      // Restrita a fontes oficiais: Receita Federal, Planalto, Imprensa Nacional, Portal Fazenda, SPED, gov.br.
+      // max_uses cap pra controlar custo (cada busca ~$0.01).
+      const webSearchTool = {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 2,
+        allowed_domains: [
+          'receita.fazenda.gov.br',
+          'gov.br',
+          'planalto.gov.br',
+          'in.gov.br',
+          'portal.fazenda.gov.br',
+          'sped.rfb.gov.br',
+          'www38.receita.fazenda.gov.br'
+        ]
+      };
+
       const body = JSON.stringify({
         model: this.modelo,
-        max_tokens: 800,
+        max_tokens: 1200,
         system: systemPrompt,
-        messages: messages
+        messages: messages,
+        tools: [webSearchTool]
       });
 
       const url = new URL(ANTHROPIC_API_URL);
@@ -559,7 +585,23 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           try {
             const parsed = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              const texto = parsed.content?.[0]?.text || 'Desculpe, não consegui processar sua mensagem.';
+              // Quando a ANA usa web_search, o content vem com múltiplos blocos:
+              // [text?, server_tool_use, web_search_tool_result, text].
+              // Concatena todos os blocos de texto pra formar a resposta final.
+              const blocos = Array.isArray(parsed.content) ? parsed.content : [];
+              const textos = blocos.filter(b => b.type === 'text').map(b => b.text).filter(Boolean);
+              const texto = textos.join('\n\n').trim() || 'Desculpe, não consegui processar sua mensagem.';
+
+              // Log se a busca foi usada (pra acompanhar custo e comportamento)
+              const usouBusca = blocos.some(b => b.type === 'server_tool_use' && b.name === 'web_search');
+              if (usouBusca) {
+                const queries = blocos
+                  .filter(b => b.type === 'server_tool_use' && b.name === 'web_search')
+                  .map(b => b.input?.query)
+                  .filter(Boolean);
+                console.log('[AgenteIA] 🔎 ANA usou web_search:', queries.join(' | '));
+              }
+
               resolve(texto);
             } else {
               console.error('Claude API erro:', parsed);
