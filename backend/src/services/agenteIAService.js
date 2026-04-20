@@ -89,6 +89,9 @@ class AgenteIAService {
     console.log(`[AgenteIA] Ações extraídas: ${acoes.length > 0 ? acoes.map(a => `${a.tipo}(${(a.parametro||'').substring(0,50)})`).join(', ') : 'nenhuma'}`);
 
     if (acoes.length > 0) {
+      // Passa a mensagem original e modoEquipe via contato pra que
+      // ações como BUSCAR_DANFSE possam extrair CNPJ mencionado / detectar admin.
+      contato = { ...contato, mensagemOriginal: mensagem, modoEquipe };
       await this.executarAcoes(acoes, contato, conversaId);
 
       // 8. Verifica se alguma ação teve feedback que precisa de follow-up
@@ -927,15 +930,70 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
         case 'BUSCAR_DANFSE':
           if (acao.parametro) {
             try {
-              // Parametro pode ser número da NF ou ID
               const busca = acao.parametro.trim();
-              const nfEncontrada = db.prepare(`
-                SELECT id, numero_nfse, numero_dps, chave_acesso, cliente_id, status
-                FROM notas_fiscais
-                WHERE cliente_id = ? AND status = 'emitida'
-                AND (numero_nfse = ? OR CAST(id AS TEXT) = ? OR numero_dps = ?)
-                ORDER BY created_at DESC LIMIT 1
-              `).get(contato.cliente_id, busca, busca, busca);
+
+              // Detecta se é admin/equipe (telefone bate com ANA_ADMIN_WHATSAPP)
+              // ou se a mensagem veio do Messenger do Domínio (modo equipe).
+              const adminPhone = (process.env.ANA_ADMIN_WHATSAPP || '').replace(/\D/g, '');
+              const telefoneContato = (contato?.telefone || '').replace(/\D/g, '');
+              const ehAdmin = adminPhone && telefoneContato &&
+                (telefoneContato === adminPhone ||
+                 telefoneContato.endsWith(adminPhone) ||
+                 adminPhone.endsWith(telefoneContato));
+              const ehEquipe = ehAdmin || contato?.modoEquipe?.ehEquipe;
+
+              // No modo admin/equipe, permitimos descobrir o cliente_id pelo CNPJ
+              // mencionado na mensagem (ex: "manda o PDF da NF 116 do CNPJ 36.749.464/0001-42").
+              let clienteIdParaBusca = contato?.cliente_id || null;
+              if (ehEquipe && contato?.mensagemOriginal) {
+                const cnpjMatch = contato.mensagemOriginal.match(/(\d{2}[.\s]?\d{3}[.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2})/);
+                if (cnpjMatch) {
+                  const cnpjLimpo = cnpjMatch[1].replace(/\D/g, '');
+                  const clienteEncontrado = db.prepare(
+                    'SELECT id FROM clientes WHERE REPLACE(REPLACE(REPLACE(cnpj, ".", ""), "/", ""), "-", "") = ? LIMIT 1'
+                  ).get(cnpjLimpo);
+                  if (clienteEncontrado) {
+                    clienteIdParaBusca = clienteEncontrado.id;
+                    console.log(`[WhatsApp] BUSCAR_DANFSE modo equipe: CNPJ ${cnpjLimpo} → cliente_id=${clienteIdParaBusca}`);
+                  }
+                }
+              }
+
+              // Monta a query: com filtro de cliente_id se soubermos (modo cliente ou admin com CNPJ),
+              // sem filtro (global) se for admin sem CNPJ — pois aí ele está buscando numa base grande.
+              let nfEncontrada = null;
+              if (clienteIdParaBusca) {
+                nfEncontrada = db.prepare(`
+                  SELECT id, numero_nfse, numero_dps, chave_acesso, cliente_id, status
+                  FROM notas_fiscais
+                  WHERE cliente_id = ? AND status = 'emitida'
+                  AND (numero_nfse = ? OR CAST(id AS TEXT) = ? OR numero_dps = ?)
+                  ORDER BY created_at DESC LIMIT 1
+                `).get(clienteIdParaBusca, busca, busca, busca);
+              } else if (ehEquipe) {
+                // Admin sem CNPJ mencionado → busca global, mas pede desambiguação se achar mais de um
+                const candidatos = db.prepare(`
+                  SELECT id, numero_nfse, numero_dps, chave_acesso, cliente_id
+                  FROM notas_fiscais
+                  WHERE status = 'emitida' AND chave_acesso IS NOT NULL
+                  AND (numero_nfse = ? OR CAST(id AS TEXT) = ? OR numero_dps = ?)
+                  ORDER BY created_at DESC LIMIT 5
+                `).all(busca, busca, busca);
+                if (candidatos.length === 1) {
+                  nfEncontrada = candidatos[0];
+                } else if (candidatos.length > 1) {
+                  const listaClientes = candidatos.map(c => {
+                    const cli = db.prepare('SELECT razao_social, cnpj FROM clientes WHERE id = ?').get(c.cliente_id);
+                    return `• NF ${c.numero_nfse || c.id} — ${cli?.razao_social || 'cliente ' + c.cliente_id} (CNPJ ${cli?.cnpj || '-'})`;
+                  }).join('\n');
+                  acao.feedback = {
+                    sucesso: false,
+                    erro: `Achei ${candidatos.length} NFs com esse número. Me diz o CNPJ do cliente:\n${listaClientes}`
+                  };
+                  console.log(`[WhatsApp] BUSCAR_DANFSE modo equipe: ambíguo (${candidatos.length} candidatos) pra busca "${busca}"`);
+                  break;
+                }
+              }
 
               if (nfEncontrada && nfEncontrada.chave_acesso) {
                 acao.feedback = {
@@ -944,15 +1002,15 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                   numero: nfEncontrada.numero_nfse || nfEncontrada.numero_dps,
                   chaveAcesso: nfEncontrada.chave_acesso
                 };
-                console.log(`[WhatsApp] DANFSe encontrado: NF ${nfEncontrada.numero_nfse || nfEncontrada.id}`);
-              } else {
-                // Tenta pegar a última NF emitida
+                console.log(`[WhatsApp] DANFSe encontrado: NF ${nfEncontrada.numero_nfse || nfEncontrada.id}${ehEquipe ? ' (modo equipe)' : ''}`);
+              } else if (clienteIdParaBusca) {
+                // Fallback no modo cliente: pega a última NF emitida do cliente
                 const ultimaNf = db.prepare(`
                   SELECT id, numero_nfse, numero_dps, chave_acesso
                   FROM notas_fiscais
                   WHERE cliente_id = ? AND status = 'emitida' AND chave_acesso IS NOT NULL
                   ORDER BY created_at DESC LIMIT 1
-                `).get(contato.cliente_id);
+                `).get(clienteIdParaBusca);
 
                 if (ultimaNf) {
                   acao.feedback = {
@@ -965,6 +1023,8 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 } else {
                   acao.feedback = { sucesso: false, erro: 'Nenhuma NF emitida encontrada' };
                 }
+              } else {
+                acao.feedback = { sucesso: false, erro: `Não achei nenhuma NF com número ${busca}. Me passa o CNPJ do cliente pra eu buscar certo.` };
               }
             } catch (err) {
               console.error('[WhatsApp] Erro ao buscar DANFSe:', err);
