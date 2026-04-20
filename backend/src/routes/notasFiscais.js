@@ -595,6 +595,7 @@ function buscarDadosNota(notaId) {
            c.nome_fantasia as cliente_nome_fantasia, c.email as cliente_email,
            c.telefone as cliente_telefone, c.municipio as cliente_municipio,
            c.uf as cliente_uf,
+           c.certificado_a1_path, c.certificado_a1_senha_encrypted,
            t.razao_social as tomador_razao_social, t.nome_fantasia as tomador_nome_fantasia,
            t.tipo_documento, t.documento as tomador_documento, t.email as tomador_email,
            t.telefone as tomador_telefone, t.municipio as tomador_municipio, t.uf as tomador_uf,
