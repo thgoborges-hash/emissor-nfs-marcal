@@ -902,15 +902,35 @@ router.get('/:id/danfse-pdf', autenticado, async (req, res) => {
     }
 
     const numDisplay = nota.numero_nfse || nota.numero_dps || nota.id;
-    console.log(`[DANFSe-PDF] Gerando PDF padrão oficial para NF ${numDisplay}...`);
+    console.log(`[DANFSe-PDF] Gerando PDF para NF ${numDisplay} (cascata: ADN oficial → fallback local)...`);
 
+    // Monta HTML de fallback em paralelo com tentativa oficial
     const html = await gerarHtmlDanfse(nota);
-    const pdfBuffer = await danfsePdfService.htmlParaPdf(html);
 
-    console.log(`[DANFSe-PDF] ✅ PDF gerado: ${pdfBuffer.length} bytes`);
+    // Tenta carregar cert A1 do cliente pra chamada oficial (se não conseguir, cascata cai no local)
+    let pfxBuffer = null, senha = null;
+    try {
+      if (nota.chave_acesso && nota.certificado_a1_senha_encrypted) {
+        const certificadoService = require('../services/certificadoService');
+        const cert = certificadoService.carregarCertificado(nota.cliente_id, nota.certificado_a1_senha_encrypted);
+        pfxBuffer = cert.pfxBuffer;
+        senha = cert.senha;
+      }
+    } catch (err) {
+      console.warn(`[DANFSe-PDF] Não conseguiu carregar cert p/ tentar oficial: ${err.message}`);
+    }
+
+    const { pdf: pdfBuffer, fonte } = await danfsePdfService.obterDanfseCascata({
+      chaveAcesso: nota.chave_acesso,
+      pfxBuffer, senha,
+      htmlLocal: html,
+    });
+
+    console.log(`[DANFSe-PDF] ✅ PDF entregue (${fonte}): ${pdfBuffer.length} bytes`);
 
     const nomeArquivo = `DANFSe_NF_${numDisplay}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('X-DANFSe-Fonte', fonte); // 'oficial' ou 'local' — útil pra monitorar adoção
     res.setHeader('Content-Disposition',
       req.query.download === '1'
         ? `attachment; filename="${nomeArquivo}"`
