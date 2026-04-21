@@ -320,6 +320,26 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_conversas_contato ON whatsapp_conversas(
 CREATE INDEX IF NOT EXISTS idx_whatsapp_mensagens_conversa ON whatsapp_mensagens(conversa_id);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_notificacoes_agendado ON whatsapp_notificacoes(agendado_para);
 
+-- Snapshot de obrigacoes por cliente (alimentado pelo worker serproSnapshotService)
+-- Usado pela tela Entregas pra mostrar status sem bater na SERPRO a cada page load.
+CREATE TABLE IF NOT EXISTS snapshot_obrigacoes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL,
+  obrigacao TEXT NOT NULL,           -- 'SITFIS', 'DCTFWEB', 'PGDASD', 'PROCURACAO', 'CAIXA_POSTAL'
+  competencia TEXT,                  -- YYYYMM, se aplicavel (pode ser NULL pra coisas atemporais)
+  status TEXT NOT NULL,              -- 'ok', 'pendente', 'atrasada', 'sem_dados', 'erro'
+  resumo TEXT,                       -- resumo curto legivel (ex: 'Transmitida em 15/04')
+  dados_raw TEXT,                    -- JSON bruto da SERPRO pra debug
+  erro TEXT,                         -- mensagem se status='erro'
+  atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(cliente_id, obrigacao, competencia),
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshot_cliente ON snapshot_obrigacoes(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_snapshot_obrigacao ON snapshot_obrigacoes(obrigacao);
+CREATE INDEX IF NOT EXISTS idx_snapshot_atualizado ON snapshot_obrigacoes(atualizado_em);
+
 -- Índices para performance
 CREATE INDEX IF NOT EXISTS idx_clientes_cnpj ON clientes(cnpj);
 CREATE INDEX IF NOT EXISTS idx_tomadores_cliente ON tomadores(cliente_id);

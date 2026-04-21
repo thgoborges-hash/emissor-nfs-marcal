@@ -273,6 +273,52 @@ router.get('/ccmei/:cnpj', async (req, res) => {
   }
 });
 
+// Entrega de PDF gerado por acao SERPRO (sem auth de escritorio, usa token JWT)
+// GET /api/integra-contador/documento/:token?jwt=...
+// Nota: essa rota e publica (bypass do router.use(autenticado, apenasEscritorio))
+//       porque o Z-API baixa o link sem contexto de sessao. Protegida por JWT.
+// Implementacao: precisamos registrar esse endpoint ANTES dos middlewares ou
+// reiniciar o router. Como ja passou pelo router.use no topo, vamos expor via
+// outro router que o server.js montar ANTES.
+// => Solucao: gravamos e exportamos router2 separado no final; server.js monta /api/integra-contador/documento/:token via router2.
+
+// ======================================================
+// Snapshot de obrigacoes (alimentado pelo worker diario)
+// ======================================================
+
+const serproSnapshotService = require('../services/serproSnapshotService');
+
+// GET /api/integra-contador/snapshot — matriz completa (pra tela Entregas)
+router.get('/snapshot', async (req, res) => {
+  try {
+    const dados = serproSnapshotService.lerSnapshotsTodos();
+    res.json({ dados, total: dados.length });
+  } catch (err) {
+    console.error('[IntegraContador] Erro lendo snapshot:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// GET /api/integra-contador/snapshot/:clienteId — detalhe por cliente
+router.get('/snapshot/:clienteId', async (req, res) => {
+  try {
+    const dados = serproSnapshotService.lerSnapshot(parseInt(req.params.clienteId));
+    res.json({ clienteId: parseInt(req.params.clienteId), dados });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// POST /api/integra-contador/snapshot/rodar — dispara varredura manual (admin)
+// Perigoso — vai bater em 156 clientes com intervalo de 5s (~13 min + SERPRO latencia).
+// Executa em background e retorna imediato.
+router.post('/snapshot/rodar', async (req, res) => {
+  serproSnapshotService.rodarSnapshotCompleto().catch(err => {
+    console.error('[IntegraContador] Erro na varredura:', err);
+  });
+  res.json({ ok: true, mensagem: 'Varredura iniciada em background. Acompanhe nos logs.' });
+});
+
 // Chamada genérica (escape hatch pra serviços não cobertos pelos wrappers)
 // POST /api/integra-contador/chamar
 // { acao: 'Consultar', cnpj: '...', idSistema: '...', idServico: '...', versaoSistema: '1.0', dados: {...} }
@@ -290,4 +336,38 @@ router.post('/chamar', async (req, res) => {
   }
 });
 
+
+// Router separado pra rotas publicas (sem auth) — usado pelo Z-API pra baixar documentos
+const jwt = require('jsonwebtoken');
+const routerPublico = express.Router();
+const serproDocumentoService = require('../services/serproDocumentoService');
+const { JWT_SECRET } = require('../middleware/auth');
+
+routerPublico.get('/documento/:token', async (req, res) => {
+  try {
+    const jwtToken = req.query.jwt || req.query.token || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!jwtToken) return res.status(401).json({ erro: 'JWT obrigatorio (?token=...)' });
+    let payload;
+    try {
+      payload = jwt.verify(jwtToken, JWT_SECRET);
+    } catch (e) {
+      return res.status(401).json({ erro: 'JWT invalido' });
+    }
+    if (payload.uso !== 'serpro-doc' && payload.uso !== 'danfse') {
+      return res.status(403).json({ erro: 'JWT sem permissao pra documentos SERPRO' });
+    }
+    const hit = serproDocumentoService.ler(req.params.token);
+    if (!hit) return res.status(404).json({ erro: 'Documento expirado ou nao encontrado' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${hit.nomeArquivo}"`);
+    res.send(hit.pdf);
+  } catch (err) {
+    console.error('[IntegraContador] Erro entregando documento:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+module.exports.routerPublico = routerPublico;
+
 module.exports = router;
+module.exports.routerPublico = routerPublico;

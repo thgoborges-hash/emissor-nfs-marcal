@@ -958,6 +958,29 @@ async function processarMensagemZapi(body) {
           console.error('[Z-API] Erro ao enviar DANFSe sob demanda:', danfseErr);
         }
       }
+
+      // ========================================================================
+      // Envia PDFs gerados por acoes SERPRO (DAS, DARF, SITFIS, CCMEI)
+      // Cada acao com sucesso popula feedback.pdfEnvio = { link, nomeArquivo, titulo }
+      // ========================================================================
+      const TIPOS_SERPRO_PDF = ['GERAR_DAS_SIMPLES', 'GERAR_DAS_SIMPLES_AVULSO', 'GERAR_DAS_MEI', 'SOLICITAR_SITFIS', 'EMITIR_CCMEI', 'EMITIR_DARF'];
+      const acoesSerproPdf = acoes.filter(a => TIPOS_SERPRO_PDF.includes(a.tipo) && a.feedback && a.feedback.sucesso && a.feedback.pdfEnvio);
+      for (const a of acoesSerproPdf) {
+        const { link, nomeArquivo, titulo } = a.feedback.pdfEnvio;
+        if (zapiService) {
+          try {
+            console.log(`[Z-API] 📄 Enviando ${a.feedback.rotulo} (${a.feedback.tamanhoPdfKb}KB) pra ${destinoResposta}`);
+            await zapiService.enviarDocumento(destinoResposta, link, nomeArquivo, titulo);
+            console.log(`[Z-API] ✅ ${a.feedback.rotulo} enviado`);
+          } catch (errEnvio) {
+            console.error(`[Z-API] Erro ao enviar ${a.feedback.rotulo}:`, errEnvio.message);
+            try {
+              await zapiService.enviarTexto(destinoResposta,
+                `⚠️ Nao consegui anexar o PDF do ${a.feedback.rotulo} aqui, mas voce pode baixar em:\n${link}`);
+            } catch (e2) { /* ignora */ }
+          }
+        }
+      }
     }
   } catch (err) {
     console.error('[Z-API] Erro ao gerar resposta IA:', err);

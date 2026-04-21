@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { entregasApi } from '../../services/api';
+import { entregasApi, integraContadorApi } from '../../services/api';
 import DonutChart from '../../components/DonutChart';
 import Sparkline from '../../components/Sparkline';
 import { KpiGridSkeleton } from '../../components/Skeleton';
@@ -264,6 +264,172 @@ export default function Entregas() {
           </div>
         )}
       </section>
+
+      {/* Secao: Status SERPRO (alimentado pelo snapshot diario) */}
+      <SerproStatusSection />
     </div>
+  );
+}
+
+// ======================================================
+// Secao adicional: Status SERPRO (procuracao, PGDAS-D, DCTFWeb, Caixa Postal)
+// Le do snapshot diario. Nao bate na SERPRO a cada abertura da tela.
+// ======================================================
+function SerproStatusSection() {
+  const [dados, setDados] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [filtroBusca, setFiltroBusca] = useState('');
+  const [filtroStatus, setFiltroStatus] = useState('todos');
+  const [rodando, setRodando] = useState(false);
+
+  const carregar = async () => {
+    setCarregando(true);
+    setErro(null);
+    try {
+      const { data } = await integraContadorApi.snapshotTodos();
+      setDados(data.dados || []);
+    } catch (err) {
+      setErro(err.response?.data?.erro || err.message);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  useEffect(() => { carregar(); }, []);
+
+  const rodarAgora = async () => {
+    if (!window.confirm('Vai consultar a SERPRO pra TODA a carteira (~13min, usa creditos). Continuar?')) return;
+    setRodando(true);
+    try {
+      await integraContadorApi.rodarSnapshot();
+      alert('Varredura iniciada. Acompanhe nos logs do Render e volte aqui em ~15min pra ver os resultados atualizados.');
+    } catch (err) {
+      alert(err.response?.data?.erro || err.message);
+    } finally {
+      setRodando(false);
+    }
+  };
+
+  // Agrupa dados por cliente
+  const porCliente = {};
+  for (const row of dados) {
+    const k = row.cliente_id;
+    if (!porCliente[k]) {
+      porCliente[k] = { id: k, razao: row.razao_social, cnpj: row.cnpj, obrigacoes: {} };
+    }
+    porCliente[k].obrigacoes[row.obrigacao] = row;
+  }
+  let clientes = Object.values(porCliente);
+
+  // Filtro
+  clientes = clientes.filter(c => {
+    if (filtroBusca && !(c.razao || '').toLowerCase().includes(filtroBusca.toLowerCase())) return false;
+    if (filtroStatus === 'pendencias') {
+      const temPend = Object.values(c.obrigacoes).some(o => ['pendente', 'atrasada', 'erro'].includes(o.status));
+      if (!temPend) return false;
+    }
+    return true;
+  });
+
+  const OBRIGACOES = [
+    { key: 'PROCURACAO', label: 'Procuracao e-CAC' },
+    { key: 'PGDASD',      label: 'PGDAS-D' },
+    { key: 'DCTFWEB',     label: 'DCTFWeb' },
+    { key: 'CAIXA_POSTAL',label: 'Caixa Postal' },
+  ];
+
+  function iconeStatus(s) {
+    if (!s) return '—';
+    if (s === 'ok') return '✅';
+    if (s === 'pendente') return '⚠️';
+    if (s === 'atrasada') return '❌';
+    if (s === 'sem_dados') return '○';
+    if (s === 'erro') return '🔶';
+    return '—';
+  }
+
+  return (
+    <section className="section-card mt-3">
+      <div className="flex-between" style={{ flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+        <h3 className="section-title" style={{ marginBottom: 0 }}>🏛️ Status SERPRO / e-CAC</h3>
+        <button onClick={rodarAgora} disabled={rodando} className="btn btn-primary" style={{ fontSize: 13 }}>
+          {rodando ? 'Iniciando...' : 'Rodar varredura agora'}
+        </button>
+      </div>
+
+      <p className="text-light text-sm" style={{ marginTop: 0 }}>
+        Status das obrigacoes federais alimentado por varredura diaria (SERPRO Integra Contador). Atualizado em lote, nao em tempo real.
+      </p>
+
+      {carregando && <div className="text-muted text-sm">Carregando snapshot…</div>}
+      {erro && <div className="alert alert-warning text-sm">Erro ao carregar snapshot: {erro}</div>}
+      {!carregando && dados.length === 0 && (
+        <div className="alert alert-warning text-sm">
+          <strong>Snapshot vazio.</strong> A varredura diaria ainda nao rodou. Clique em "Rodar varredura agora" pra popular a primeira vez (leva ~13min).
+        </div>
+      )}
+
+      {dados.length > 0 && (
+        <>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <input
+              className="form-control"
+              style={{ maxWidth: 260 }}
+              placeholder="Buscar cliente..."
+              value={filtroBusca}
+              onChange={e => setFiltroBusca(e.target.value)}
+            />
+            <select className="form-control" style={{ maxWidth: 220 }}
+              value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
+              <option value="todos">Todos</option>
+              <option value="pendencias">So com pendencia/erro</option>
+            </select>
+            <div className="text-muted text-sm" style={{ alignSelf: 'center' }}>
+              Mostrando {clientes.length} cliente(s)
+            </div>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table className="matriz-entregas">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  {OBRIGACOES.map(o => <th key={o.key} style={{ textAlign: 'center', width: 120 }}>{o.label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {clientes.slice(0, 80).map(c => (
+                  <tr key={c.id}>
+                    <td>
+                      <div style={{ fontWeight: 500, fontSize: 13.5 }}>{c.razao}</div>
+                      <div className="text-muted text-sm" style={{ fontFamily: 'var(--font-mono)' }}>{c.cnpj}</div>
+                    </td>
+                    {OBRIGACOES.map(o => {
+                      const row = c.obrigacoes[o.key];
+                      const titulo = row ? (row.resumo || row.status) + (row.erro ? ' — ' + row.erro : '') : 'Sem dados';
+                      return (
+                        <td key={o.key} style={{ textAlign: 'center' }}>
+                          <span title={titulo} style={{ fontSize: 18 }}>{iconeStatus(row && row.status)}</span>
+                          {row && row.resumo && (
+                            <div className="text-muted" style={{ fontSize: 10.5, marginTop: 2 }}>{row.resumo.slice(0, 30)}</div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {clientes.length > 80 && (
+            <div className="text-muted text-sm mt-2">Mostrando primeiros 80. Use os filtros pra refinar.</div>
+          )}
+          <div className="text-muted text-sm mt-2">
+            Legenda: ✅ ok · ⚠️ pendente · ❌ atrasada · 🔶 erro na consulta · ○ sem dados
+          </div>
+        </>
+      )}
+    </section>
   );
 }

@@ -151,6 +151,29 @@ class AgenteIAService {
         return { texto: respostaLimpa + feedbackMsg, acoes };
       }
 
+      // Feedback das acoes SERPRO que geram PDF (ANA avisa sucesso/erro, envio do documento
+      // acontece em routes/whatsapp.js via acao.feedback.pdfEnvio)
+      const acoesPdfSerpro = acoes.filter(a =>
+        ['GERAR_DAS_SIMPLES', 'GERAR_DAS_SIMPLES_AVULSO', 'GERAR_DAS_MEI', 'SOLICITAR_SITFIS', 'EMITIR_CCMEI', 'EMITIR_DARF'].includes(a.tipo)
+        && a.feedback
+      );
+      if (acoesPdfSerpro.length > 0) {
+        let blocos = '';
+        for (const a of acoesPdfSerpro) {
+          const fb = a.feedback;
+          if (fb.sucesso) {
+            blocos += `\n\n\u2705 ${fb.rotulo} gerado${fb.cnpj ? ` (CNPJ ${fb.cnpj})` : ''}. Mandando o PDF aqui...`;
+          } else {
+            blocos += `\n\n\u26a0\ufe0f Nao consegui gerar ${fb.rotulo || 'o documento'}: ${fb.erro}`;
+          }
+        }
+        const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+        // Nao retornamos ainda — deixamos cair no proximo bloco (integra contador read-only) tambem
+        // mas armazenamos a mensagem ja pronta em acoes pra o caller usar. Na pratica so uma
+        // dessas vai ter feedback por vez, entao retornamos direto:
+        return { texto: respostaLimpa + blocos, acoes };
+      }
+
       // Feedback das consultas Integra Contador (modo equipe)
       const acoesIntegra = acoes.filter(a =>
         ['CONSULTAR_PGDASD_ULTIMA', 'CONSULTAR_PROCURACOES', 'CONSULTAR_DCTFWEB', 'LISTAR_CAIXA_POSTAL'].includes(a.tipo)
@@ -460,6 +483,24 @@ AÇÕES EXTRA DISPONÍVEIS NO MODO EQUIPE (use o CNPJ do cliente, só dígitos, 
 
 - [ACAO:LISTAR_CAIXA_POSTAL:cnpj] — lista mensagens da Caixa Postal e-CAC do cliente
   Use quando: "tem mensagem nova no e-CAC do cliente Z", "olha a caixa postal dele"
+
+- [ACAO:GERAR_DAS_SIMPLES:cnpj|periodoApuracao] — gera DAS do Simples Nacional pra um periodo ja declarado (formato YYYYMM)
+  Use quando: "gera o DAS da Empresa X de abril/2026", "emite DAS do Simples"
+
+- [ACAO:GERAR_DAS_SIMPLES_AVULSO:cnpj|periodoApuracao] — gera DAS Simples em modalidade AVULSA (reemissao, periodo sem declaracao)
+  Use quando: "reemite o DAS Simples", "gera a 2a via do DAS abril"
+
+- [ACAO:GERAR_DAS_MEI:cnpj|periodoApuracao] — gera DAS do MEI em PDF (formato YYYY, ano)
+  Use quando: "gera DAS do MEI Fulano", "emite DAS MEI de 2026"
+
+- [ACAO:SOLICITAR_SITFIS:cnpj] — gera o Relatorio de Situacao Fiscal (substituto oficial da Certidao Negativa de Debitos)
+  Use quando: "tira a certidao negativa do cliente X", "precisa da CND", "situacao fiscal", "relatorio de pendencias"
+
+- [ACAO:EMITIR_CCMEI:cnpj] — emite o Certificado de Condicao de MEI em PDF
+  Use quando: "gera o CCMEI", "certificado de MEI", "comprovante de MEI"
+
+- [ACAO:EMITIR_DARF:cnpj|codigoReceita|periodoApuracao|dataVencimento|valorPrincipal] — gera DARF via Sicalc
+  Use quando: "gera DARF pra Empresa X", "emite guia DARF". Formatos: periodoApuracao=YYYYMM, dataVencimento=DDMMYYYY, valorPrincipal=decimal
 
 REGRAS IMPORTANTES NO MODO EQUIPE:
 - Quando executar qualquer ação acima, o sistema vai puxar os dados e devolver pra você na próxima mensagem do histórico — você NÃO precisa inventar a resposta
@@ -1094,10 +1135,240 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           await this._executarConsultaIntegraContador(acao, 'listarMensagensCaixaPostal', 'Caixa Postal e-CAC');
           break;
 
+        case 'GERAR_DAS_SIMPLES':
+          await this._executarAcaoSerproComPdf(acao, {
+            rotulo: 'DAS Simples Nacional',
+            metodo: 'gerarDASSimples',
+            prefixoArquivo: 'DAS_Simples',
+            tipoParam: 'cnpj|periodoApuracao',
+          });
+          break;
+
+        case 'GERAR_DAS_SIMPLES_AVULSO':
+          await this._executarAcaoSerproComPdf(acao, {
+            rotulo: 'DAS Simples (Avulso)',
+            metodo: 'gerarDASSimplesAvulso',
+            prefixoArquivo: 'DAS_Avulso',
+            tipoParam: 'cnpj|periodoApuracao',
+          });
+          break;
+
+        case 'GERAR_DAS_MEI':
+          await this._executarAcaoSerproComPdf(acao, {
+            rotulo: 'DAS MEI',
+            metodo: 'gerarDASMEI',
+            prefixoArquivo: 'DAS_MEI',
+            tipoParam: 'cnpj|periodoApuracao',
+          });
+          break;
+
+        case 'SOLICITAR_SITFIS':
+          await this._executarAcaoSitfis(acao);
+          break;
+
+        case 'EMITIR_CCMEI':
+          await this._executarAcaoSerproComPdf(acao, {
+            rotulo: 'Certificado de Condicao de MEI',
+            metodo: 'emitirCCMEI',
+            prefixoArquivo: 'CCMEI',
+            tipoParam: 'cnpj',
+          });
+          break;
+
+        case 'EMITIR_DARF':
+          await this._executarAcaoDarf(acao);
+          break;
+
         default:
           console.log(`[WhatsApp] Ação não implementada: ${acao.tipo}`);
       }
     }
+  }
+
+  /**
+   * Helper: executa uma acao SERPRO que retorna PDF base64. Decodifica, cacheia via
+   * serproDocumentoService, gera token de download e popula acao.feedback com o link pronto.
+   */
+  async _executarAcaoSerproComPdf(acao, { rotulo, metodo, prefixoArquivo, tipoParam }) {
+    if (!acao.parametro) {
+      acao.feedback = { sucesso: false, erro: 'Parametros ausentes na acao', rotulo };
+      return;
+    }
+    const partes = String(acao.parametro).split('|');
+    const cnpj = (partes[0] || '').replace(/\D/g, '');
+    if (cnpj.length !== 14) {
+      acao.feedback = { sucesso: false, erro: `CNPJ invalido: ${partes[0]}`, rotulo };
+      return;
+    }
+    const periodoApuracao = partes[1] || '';
+
+    try {
+      console.log(`[AgenteIA] ${rotulo}: chamando SERPRO pra ${cnpj} periodo=${periodoApuracao || 'N/A'}`);
+      const serproDocumentoService = require('./serproDocumentoService');
+      const certificadoService = require('./certificadoService');
+      let resposta;
+      if (tipoParam === 'cnpj|periodoApuracao') {
+        if (!periodoApuracao) {
+          acao.feedback = { sucesso: false, erro: 'Periodo de apuracao obrigatorio (YYYYMM ou YYYY)', rotulo };
+          return;
+        }
+        resposta = await integraContadorService[metodo](cnpj, periodoApuracao);
+      } else {
+        resposta = await integraContadorService[metodo](cnpj);
+      }
+
+      const dados = this._parseDadosSerproResposta(resposta);
+      const pdfBase64 = dados && (dados.pdf || dados.documento || dados.relatorio);
+      if (!pdfBase64 || typeof pdfBase64 !== 'string' || pdfBase64.length < 100) {
+        acao.feedback = { sucesso: false, erro: 'SERPRO nao retornou PDF no payload', rotulo, resposta_raw: resposta };
+        return;
+      }
+
+      const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+      if (pdfBuffer.slice(0, 4).toString() !== '%PDF') {
+        acao.feedback = { sucesso: false, erro: 'Conteudo recebido nao e PDF valido', rotulo };
+        return;
+      }
+
+      const sufixo = periodoApuracao ? `_${periodoApuracao}` : '';
+      const nomeArquivo = `${prefixoArquivo}_${cnpj}${sufixo}.pdf`;
+      const titulo = `${rotulo}${periodoApuracao ? ` ${periodoApuracao}` : ''}`;
+      const token = serproDocumentoService.gravar({
+        pdf: pdfBuffer,
+        nomeArquivo,
+        titulo,
+        metadata: { cnpj, operacao: metodo, periodoApuracao },
+      });
+
+      const { gerarToken } = require('../middleware/auth');
+      const jwtToken = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'serpro-doc' });
+      let baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+      if (baseUrl.startsWith('http://') && !baseUrl.includes('localhost')) {
+        baseUrl = baseUrl.replace(/^http:\/\//, 'https://');
+      }
+      const link = `${baseUrl}/api/integra-contador/documento/${token}?token=${jwtToken}`;
+
+      acao.feedback = {
+        sucesso: true,
+        rotulo,
+        cnpj,
+        periodoApuracao,
+        tamanhoPdfKb: Math.round(pdfBuffer.length / 1024),
+        pdfEnvio: { link, nomeArquivo, titulo },
+      };
+    } catch (err) {
+      console.error(`[AgenteIA] Falha ${rotulo} (${cnpj}):`, err.message);
+      acao.feedback = { sucesso: false, erro: err.message, rotulo };
+    }
+  }
+
+  /**
+   * Helper SITFIS: assincrono (solicita protocolo -> aguarda -> emite relatorio).
+   * Usa o wrapper obterRelatorioSitfis do service que ja orquestra isso.
+   */
+  async _executarAcaoSitfis(acao) {
+    const rotulo = 'Relatorio de Situacao Fiscal';
+    if (!acao.parametro) {
+      acao.feedback = { sucesso: false, erro: 'CNPJ obrigatorio', rotulo };
+      return;
+    }
+    const cnpj = String(acao.parametro).replace(/\D/g, '');
+    if (cnpj.length !== 14) {
+      acao.feedback = { sucesso: false, erro: `CNPJ invalido: ${acao.parametro}`, rotulo };
+      return;
+    }
+    try {
+      const serproDocumentoService = require('./serproDocumentoService');
+      console.log(`[AgenteIA] SITFIS: solicitando pra ${cnpj}...`);
+      const { pdfBase64, protocolo, tentativas } = await integraContadorService.obterRelatorioSitfis(cnpj);
+      if (!pdfBase64) {
+        acao.feedback = { sucesso: false, erro: 'SITFIS sem PDF apos retries', rotulo };
+        return;
+      }
+      const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+      const nomeArquivo = `SITFIS_${cnpj}.pdf`;
+      const titulo = `Situacao Fiscal — CNPJ ${cnpj}`;
+      const token = serproDocumentoService.gravar({ pdf: pdfBuffer, nomeArquivo, titulo, metadata: { cnpj, operacao: 'sitfis', protocolo } });
+      const { gerarToken } = require('../middleware/auth');
+      const jwtToken = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'serpro-doc' });
+      let baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+      if (baseUrl.startsWith('http://') && !baseUrl.includes('localhost')) {
+        baseUrl = baseUrl.replace(/^http:\/\//, 'https://');
+      }
+      const link = `${baseUrl}/api/integra-contador/documento/${token}?token=${jwtToken}`;
+      acao.feedback = {
+        sucesso: true,
+        rotulo,
+        cnpj,
+        tentativas,
+        protocolo,
+        tamanhoPdfKb: Math.round(pdfBuffer.length / 1024),
+        pdfEnvio: { link, nomeArquivo, titulo },
+      };
+    } catch (err) {
+      console.error(`[AgenteIA] SITFIS falhou (${cnpj}):`, err.message);
+      acao.feedback = { sucesso: false, erro: err.message, rotulo };
+    }
+  }
+
+  /**
+   * Helper DARF via Sicalc — parametros: cnpj|codigoReceita|periodoApuracao|dataVencimento|valorPrincipal
+   */
+  async _executarAcaoDarf(acao) {
+    const rotulo = 'DARF (Sicalc)';
+    if (!acao.parametro) {
+      acao.feedback = { sucesso: false, erro: 'Parametros ausentes', rotulo };
+      return;
+    }
+    const partes = String(acao.parametro).split('|');
+    const cnpj = (partes[0] || '').replace(/\D/g, '');
+    const codigoReceita = partes[1];
+    const periodoApuracao = partes[2];
+    const dataVencimento = partes[3];
+    const valorPrincipal = parseFloat(partes[4] || '0');
+    if (cnpj.length !== 14 || !codigoReceita || !periodoApuracao || !dataVencimento || !valorPrincipal) {
+      acao.feedback = { sucesso: false, erro: 'Todos os campos sao obrigatorios: cnpj|codigoReceita|periodoApuracao|dataVencimento|valorPrincipal', rotulo };
+      return;
+    }
+    try {
+      const serproDocumentoService = require('./serproDocumentoService');
+      const dados = { codigoReceita, periodoApuracao, dataVencimento, valorPrincipal };
+      console.log(`[AgenteIA] DARF: ${cnpj} cod=${codigoReceita} periodo=${periodoApuracao}`);
+      const resposta = await integraContadorService.gerarDARF(cnpj, dados);
+      const d = this._parseDadosSerproResposta(resposta);
+      const pdfBase64 = d && (d.pdf || d.documento);
+      if (!pdfBase64) {
+        acao.feedback = { sucesso: false, erro: 'SERPRO nao retornou PDF do DARF', rotulo, resposta_raw: resposta };
+        return;
+      }
+      const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+      const nomeArquivo = `DARF_${cnpj}_${periodoApuracao}.pdf`;
+      const titulo = `DARF — CNPJ ${cnpj} ${periodoApuracao}`;
+      const token = serproDocumentoService.gravar({ pdf: pdfBuffer, nomeArquivo, titulo, metadata: { cnpj, operacao: 'darf', periodoApuracao } });
+      const { gerarToken } = require('../middleware/auth');
+      const jwtToken = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'serpro-doc' });
+      let baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+      if (baseUrl.startsWith('http://') && !baseUrl.includes('localhost')) {
+        baseUrl = baseUrl.replace(/^http:\/\//, 'https://');
+      }
+      const link = `${baseUrl}/api/integra-contador/documento/${token}?token=${jwtToken}`;
+      acao.feedback = { sucesso: true, rotulo, cnpj, tamanhoPdfKb: Math.round(pdfBuffer.length / 1024), pdfEnvio: { link, nomeArquivo, titulo } };
+    } catch (err) {
+      console.error(`[AgenteIA] DARF falhou (${cnpj}):`, err.message);
+      acao.feedback = { sucesso: false, erro: err.message, rotulo };
+    }
+  }
+
+  /**
+   * Extrai 'dados' da resposta SERPRO (pode vir como string JSON).
+   */
+  _parseDadosSerproResposta(resposta) {
+    if (!resposta) return null;
+    let d = resposta.dados;
+    if (typeof d === 'string') {
+      try { d = JSON.parse(d); } catch (e) { /* mantem string */ }
+    }
+    return d;
   }
 
   /**

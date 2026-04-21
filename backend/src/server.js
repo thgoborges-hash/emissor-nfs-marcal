@@ -25,7 +25,16 @@ app.use('/api', require('./routes/tomadores'));
 app.use('/api/notas-fiscais', require('./routes/notasFiscais'));
 app.use('/api/certificados', require('./routes/certificados'));
 app.use('/api/whatsapp', require('./routes/whatsapp'));
+// Monta rotas publicas ANTES (sem auth) — entrega de documentos SERPRO por token JWT
+app.use('/api/integra-contador', require('./routes/integraContador').routerPublico);
 app.use('/api/integra-contador', require('./routes/integraContador'));
+
+// Inicializa cron do snapshot SERPRO (so ativa se ENABLE_SERPRO_SNAPSHOT_CRON=true)
+try {
+  require('./services/serproSnapshotService').iniciarCron();
+} catch (e) {
+  console.warn('[server] Erro inicializando snapshot cron:', e.message);
+}
 app.use('/api/sieg', require('./routes/sieg'));
 app.use('/api/painel', require('./routes/painel'));
 app.use('/api/apuracao', require('./routes/apuracao'));

@@ -125,6 +125,10 @@ export const integraContadorApi = {
     api.get(`/integra-contador/pagamentos/${cnpj}`, { params: { dataInicio, dataFim } }),
   // CCMEI
   emitirCcmei: (cnpj) => api.get(`/integra-contador/ccmei/${cnpj}`),
+  // Snapshot de obrigacoes (alimentado pelo worker diario)
+  snapshotTodos: () => api.get('/integra-contador/snapshot'),
+  snapshotCliente: (clienteId) => api.get(`/integra-contador/snapshot/${clienteId}`),
+  rodarSnapshot: () => api.post('/integra-contador/snapshot/rodar'),
 };
 
 // === SIEG ===
