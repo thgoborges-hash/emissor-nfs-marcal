@@ -257,6 +257,118 @@ class IntegraContadorService {
     return await this.chamar('Consultar', cnpjContribuinte, 'DCTFWEB', servico.idServico, servico.versao, {});
   }
 
+
+  /**
+   * Gera DAS Simples Nacional em modalidade AVULSA (quando ha declaracao no periodo).
+   */
+  async gerarDASSimplesAvulso(cnpj, periodoApuracao) {
+    const s = config.servicos.PGDASD.GERAR_DAS_AVULSO;
+    return await this.chamar('Emitir', cnpj, 'PGDASD', s.idServico, s.versao, { periodoApuracao });
+  }
+
+  /**
+   * Gera DAS Simples Nacional na modalidade COBRANCA da RFB (para reemissao).
+   */
+  async gerarDASSimplesCobranca(cnpj, periodoApuracao) {
+    const s = config.servicos.PGDASD.GERAR_DAS_COBRANCA;
+    return await this.chamar('Emitir', cnpj, 'PGDASD', s.idServico, s.versao, { periodoApuracao });
+  }
+
+  /**
+   * Gera DARF via Sicalc — consolida os calculos e devolve o PDF.
+   * @param {object} dados - { receita, periodoApuracao, vencimento, valorPrincipal, ... }
+   *   Campos exatos no manual: https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador
+   */
+  async gerarDARF(cnpj, dados) {
+    const s = config.servicos.SICALC.CONSOLIDAR_GERAR_DARF;
+    return await this.chamar('Emitir', cnpj, 'SICALC', s.idServico, s.versao, dados);
+  }
+
+  /**
+   * Gera Guia DCTFWeb — emite DARF com os debitos declarados em uma DCTFWeb.
+   * @param {object} dados - { categoria, numDeclaracao, periodoApuracao, ... }
+   */
+  async gerarGuiaDCTFWeb(cnpj, dados) {
+    const s = config.servicos.DCTFWEB.GERAR_GUIA;
+    return await this.chamar('Emitir', cnpj, 'DCTFWEB', s.idServico, s.versao, dados);
+  }
+
+  /**
+   * Consulta pagamentos feitos pelo contribuinte (util pra bater DARF pago).
+   */
+  async consultarPagamentos(cnpj, filtros = {}) {
+    const s = config.servicos.PAGTOWEB.CONSULTAR_PAGAMENTOS;
+    return await this.chamar('Consultar', cnpj, 'PAGTOWEB', s.idServico, s.versao, filtros);
+  }
+
+  /**
+   * Emite Certificado de Condicao de MEI (CCMEI) em PDF.
+   */
+  async emitirCCMEI(cnpj) {
+    const s = config.servicos.CCMEI.EMITIR_CCMEI;
+    return await this.chamar('Emitir', cnpj, 'CCMEI', s.idServico, s.versao, {});
+  }
+
+  /**
+   * SITFIS — Relatorio de Situacao Fiscal (substituto pro contador da Certidao Negativa).
+   *
+   * O servico e assincrono em duas etapas:
+   *   1) SOLICITAR_PROTOCOLO — devolve um protocolo + tempo estimado em ms (tempoEspera)
+   *   2) EMITIR_RELATORIO    — usa o protocolo; pode devolver 'em processamento' se chamado cedo demais
+   *
+   * Este wrapper orquestra os 2 passos com retry ate X minutos.
+   *
+   * @returns {{ pdfBase64: string|null, dados: object, protocolo: string, tentativas: number }}
+   */
+  async obterRelatorioSitfis(cnpj, opts = {}) {
+    const maxTentativas = opts.maxTentativas || 6;
+    const esperaPadraoMs = opts.esperaPadraoMs || 5000;
+
+    // Passo 1 — solicita protocolo
+    const sSol = config.servicos.SITFIS.SOLICITAR_PROTOCOLO;
+    const respSol = await this.chamar('Apoiar', cnpj, 'SITFIS', sSol.idServico, sSol.versao, {});
+    const dadosSol = this._parseDadosSerpro(respSol);
+    const protocolo = dadosSol && (dadosSol.protocoloRelatorio || dadosSol.protocolo);
+    if (!protocolo) {
+      throw new Error(`SITFIS: resposta nao trouxe protocolo. Body: ${JSON.stringify(respSol).slice(0, 400)}`);
+    }
+    const tempoEsperaMs = Number(dadosSol.tempoEspera) || esperaPadraoMs;
+
+    // Espera o tempo sugerido pelo SERPRO antes da primeira tentativa
+    await new Promise(r => setTimeout(r, tempoEsperaMs));
+
+    // Passo 2 — tenta emitir relatorio com retry
+    const sEmit = config.servicos.SITFIS.EMITIR_RELATORIO;
+    for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+      const respEmit = await this.chamar('Emitir', cnpj, 'SITFIS', sEmit.idServico, sEmit.versao, { protocoloRelatorio: protocolo });
+    const dadosEmit = this._parseDadosSerpro(respEmit);
+      // Se devolveu PDF base64, terminou
+      const pdfBase64 = dadosEmit && (dadosEmit.pdf || dadosEmit.relatorio);
+      if (pdfBase64 && typeof pdfBase64 === 'string' && pdfBase64.length > 100) {
+        return { pdfBase64, dados: dadosEmit, protocolo, tentativas: tentativa };
+      }
+      // Caso 'em processamento' — aguarda e retenta
+      const aguardarMs = Number(dadosEmit && dadosEmit.tempoEspera) || esperaPadraoMs;
+      console.log(`[IntegraContador] SITFIS ${cnpj} tentativa ${tentativa}/${maxTentativas} ainda processando, aguardando ${aguardarMs}ms...`);
+      await new Promise(r => setTimeout(r, aguardarMs));
+    }
+
+    throw new Error(`SITFIS: protocolo ${protocolo} nao ficou pronto em ${maxTentativas} tentativas`);
+  }
+
+  /**
+   * Helper pra extrair o campo 'dados' da resposta SERPRO (pode vir como objeto ou string JSON).
+   */
+  _parseDadosSerpro(resposta) {
+    if (!resposta) return null;
+    let d = resposta.dados;
+    if (typeof d === 'string') {
+      try { d = JSON.parse(d); } catch (e) { /* mantem string */ }
+    }
+    return d;
+  }
+
+
   // -------------------------------------------------
   // Helpers internos
   // -------------------------------------------------
@@ -314,7 +426,7 @@ class IntegraContadorService {
         const db = getDb();
         clienteMarcal = db.prepare(`
           SELECT id, razao_social, cnpj, certificado_a1_path, certificado_a1_senha_encrypted,
-                 certificado_titular, certificado_validade
+                 certificado_validade
           FROM clientes
           WHERE REPLACE(REPLACE(REPLACE(cnpj, '.', ''), '/', ''), '-', '') = ?
             AND certificado_a1_path IS NOT NULL
@@ -353,7 +465,7 @@ class IntegraContadorService {
         id: f.clienteMarcal.id,
         razao_social: f.clienteMarcal.razao_social,
         cnpj: f.clienteMarcal.cnpj,
-        titular: f.clienteMarcal.certificado_titular,
+        titular: null,
         validade: f.clienteMarcal.certificado_validade,
       } : null,
       via_slot_dedicado: f.slotDedicado.existe && f.slotDedicado.senhaConfig,
