@@ -1,116 +1,51 @@
 /**
  * DANFSe PDF Service
  *
- * Gera DANFSe no padrão oficial v1.0 (layout governo) como PDF
- * usando Puppeteer para converter HTML → PDF.
+ * Entrega APENAS o DANFSe oficial gerado pelo ADN (Ambiente de Dados
+ * Nacional da Receita Federal), autenticando com mTLS + certificado A1
+ * do prestador.
  *
- * O DANFSe é um documento AUXILIAR — a validade fiscal é do XML.
- * Qualquer sistema pode gerar desde que siga o layout padrão.
+ * Politica desde 20/04/2026: sem fallback local (Puppeteer) — se o ADN
+ * nao responder apos os retries, devolvemos erro. PDF gerado fora do
+ * canal oficial nao tem validade pratica (sem selo/assinatura do ADN)
+ * e causaria confusao pro cliente final.
+ *
+ * O documento fiscal com validade legal eh o XML assinado — o DANFSe eh
+ * apenas representacao visual pra apresentacao/arquivo. Por isso nao
+ * tem problema retornar erro: a NF continua emitida e valida.
  */
 
-let browserInstance = null;
-let browserLaunchPromise = null;
-
-async function getBrowser() {
-  if (browserInstance && browserInstance.connected) {
-    return browserInstance;
-  }
-  if (browserLaunchPromise) return browserLaunchPromise;
-
-  browserLaunchPromise = (async () => {
-    try {
-      const puppeteer = require('puppeteer');
-      console.log('[DANFSe-PDF] Iniciando Puppeteer...');
-
-      const opts = {
-        headless: 'new',
-        args: [
-          '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-          '--disable-gpu', '--disable-extensions', '--single-process', '--no-zygote',
-        ],
-        timeout: 30000,
-      };
-      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        opts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-      }
-
-      browserInstance = await puppeteer.launch(opts);
-      browserInstance.on('disconnected', () => {
-        browserInstance = null;
-        browserLaunchPromise = null;
-      });
-      console.log('[DANFSe-PDF] Puppeteer pronto.');
-      return browserInstance;
-    } catch (err) {
-      console.error('[DANFSe-PDF] Erro Puppeteer:', err.message);
-      browserLaunchPromise = null;
-      throw err;
-    }
-  })();
-  return browserLaunchPromise;
-}
-
-/**
- * Converte HTML em PDF via Puppeteer.
- */
-async function htmlParaPdf(html) {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  try {
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
-    const pdf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '8mm', right: '8mm', bottom: '8mm', left: '8mm' },
-    });
-    return Buffer.from(pdf);
-  } finally {
-    await page.close().catch(() => {});
-  }
-}
-
-async function fechar() {
-  if (browserInstance) {
-    try { await browserInstance.close(); } catch (e) {}
-    browserInstance = null;
-    browserLaunchPromise = null;
-  }
-}
+const https = require("https");
+const { URL } = require("url");
 
 // =====================================================
-// DANFSe OFICIAL via endpoint ADN (Ambiente de Dados Nacional)
-// https://adn.nfse.gov.br/danfse/{chaveAcesso}  (mTLS com A1)
-// Confirmado 200 OK em 18/04/2026 — retorna PDF oficial 230KB
+// Endpoint oficial ADN / DANFSe
+// https://adn.nfse.gov.br/danfse/{chaveAcesso}
+// Doc: https://adn.nfse.gov.br/danfse/docs/index.html
 // =====================================================
 
-const https = require('https');
-const { URL } = require('url');
+const ADN_BASE_URL       = process.env.ADN_DANFSE_BASE_URL       || "https://adn.nfse.gov.br";
+const ADN_TIMEOUT_MS     = Number(process.env.ADN_DANFSE_TIMEOUT_MS     || 20000);
+const ADN_RETRY_MAX      = Number(process.env.ADN_DANFSE_RETRY_MAX      || 6);
+const ADN_RETRY_BASE_MS  = Number(process.env.ADN_DANFSE_RETRY_BASE_MS  || 1000);
+const ADN_USER_AGENT     = process.env.ADN_DANFSE_USER_AGENT    || "emissor-nfs-marcal/1.0 (+https://emissor-nfs-marcal.onrender.com)";
 
-const ADN_BASE_URL = process.env.ADN_DANFSE_BASE_URL || 'https://adn.nfse.gov.br';
-const ADN_TIMEOUT_MS = Number(process.env.ADN_DANFSE_TIMEOUT_MS || 20000);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * Tenta baixar o DANFSe oficial direto do ADN (Receita Federal).
- * @param {string} chaveAcesso — 50 chars
- * @param {Buffer} pfxBuffer — A1 pfx buffer
- * @param {string} senha — senha do cert
- * @returns {Promise<Buffer|null>} PDF buffer ou null se falhar
- */
-async function baixarDanfseOficial(chaveAcesso, pfxBuffer, senha) {
-  if (!chaveAcesso || !pfxBuffer || !senha) {
-    console.log('[DANFSe-ADN] Parâmetros ausentes, pulando tentativa oficial');
-    return null;
-  }
-
-  const url = new URL(`${ADN_BASE_URL}/danfse/${chaveAcesso}`);
+function tentarAdn(chaveAcesso, pfxBuffer, senha) {
+  const url = new URL(ADN_BASE_URL + "/danfse/" + chaveAcesso);
   const options = {
-    method: 'GET',
+    method: "GET",
     hostname: url.hostname,
     port: url.port || 443,
     path: url.pathname,
     pfx: pfxBuffer,
     passphrase: senha,
-    headers: { 'Accept': 'application/pdf' },
+    headers: {
+      "Accept": "application/pdf",
+      "User-Agent": ADN_USER_AGENT,
+      "Connection": "close",
+    },
     timeout: ADN_TIMEOUT_MS,
   };
 
@@ -118,86 +53,67 @@ async function baixarDanfseOficial(chaveAcesso, pfxBuffer, senha) {
   return new Promise((resolve) => {
     const req = https.request(options, (r) => {
       const chunks = [];
-      r.on('data', c => chunks.push(c));
-      r.on('end', () => {
-        const tempo = Date.now() - inicio;
-        const buffer = Buffer.concat(chunks);
-        const ePdf = buffer.slice(0, 4).toString() === '%PDF';
-
+      r.on("data", (c) => chunks.push(c));
+      r.on("end", () => {
+        const tempoMs = Date.now() - inicio;
+        const buffer  = Buffer.concat(chunks);
+        const ePdf    = buffer.slice(0, 4).toString() === "%PDF";
+        const preview = buffer.slice(0, 200).toString("utf-8").replace(/[^\x20-\x7E\n]/g, ".");
         if (r.statusCode === 200 && ePdf) {
-          console.log(`[DANFSe-ADN] ✓ OFICIAL em ${tempo}ms (${buffer.length} bytes) chave=${chaveAcesso.slice(-6)}`);
-          resolve(buffer);
+          resolve({ status: 200, pdf: buffer, preview: "", tempoMs });
         } else {
-          console.warn(`[DANFSe-ADN] ✗ ADN retornou status=${r.statusCode} ePdf=${ePdf} em ${tempo}ms — vai fazer fallback`);
-          resolve(null);
+          resolve({ status: r.statusCode, pdf: null, preview, tempoMs });
         }
       });
     });
-    req.on('timeout', () => {
-      console.warn(`[DANFSe-ADN] ✗ Timeout ${ADN_TIMEOUT_MS}ms — vai fazer fallback`);
+    req.on("timeout", () => {
+      const tempoMs = Date.now() - inicio;
       req.destroy();
-      resolve(null);
+      resolve({ status: 0, pdf: null, preview: "timeout " + ADN_TIMEOUT_MS + "ms", tempoMs });
     });
-    req.on('error', (err) => {
-      console.warn(`[DANFSe-ADN] ✗ Erro de rede: ${err.message} — vai fazer fallback`);
-      resolve(null);
+    req.on("error", (err) => {
+      const tempoMs = Date.now() - inicio;
+      resolve({ status: 0, pdf: null, preview: "rede: " + err.message, tempoMs });
     });
     req.end();
   });
 }
 
-// Configurações de retry pra lidar com ADN instável (502 intermitente)
-const ADN_RETRY_MAX = Number(process.env.ADN_DANFSE_RETRY_MAX || 3);
-const ADN_RETRY_DELAY_MS = Number(process.env.ADN_DANFSE_RETRY_DELAY_MS || 800);
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-/**
- * Estratégia em cascata: tenta ADN oficial com retry antes de cair no Puppeteer local.
- * @param {object} opts
- * @param {string} opts.chaveAcesso
- * @param {Buffer} [opts.pfxBuffer] — cert A1 do cliente (opcional)
- * @param {string} [opts.senha]     — senha do cert (opcional)
- * @param {string} opts.htmlLocal   — HTML fallback já montado (obrigatório)
- * @returns {Promise<{ pdf: Buffer, fonte: 'oficial'|'local' }>}
- */
-async function obterDanfseCascata({ chaveAcesso, pfxBuffer, senha, htmlLocal }) {
-  // Tenta o ADN oficial com retry — ADN está instável (502 intermitente)
-  // e janelas boas/ruins ocorrem em segundos, então retry com backoff
-  // geralmente captura uma janela boa.
-  if (chaveAcesso && pfxBuffer && senha) {
-    for (let tentativa = 1; tentativa <= ADN_RETRY_MAX; tentativa++) {
-      try {
-        const pdfOficial = await baixarDanfseOficial(chaveAcesso, pfxBuffer, senha);
-        if (pdfOficial) {
-          if (tentativa > 1) {
-            console.log(`[DANFSe-Cascata] ✓ OFICIAL obtido na tentativa ${tentativa}/${ADN_RETRY_MAX}`);
-          }
-          return { pdf: pdfOficial, fonte: 'oficial' };
-        }
-      } catch (err) {
-        console.warn(`[DANFSe-Cascata] Falha oficial (tentativa ${tentativa}/${ADN_RETRY_MAX}):`, err.message);
-      }
-
-      // Só espera se ainda há tentativas (não espera depois da última falha)
-      if (tentativa < ADN_RETRY_MAX) {
-        const delay = ADN_RETRY_DELAY_MS * tentativa; // backoff linear: 800ms, 1600ms
-        console.log(`[DANFSe-Cascata] Aguardando ${delay}ms antes da retry ${tentativa + 1}...`);
-        await sleep(delay);
-      }
-    }
-    console.warn(`[DANFSe-Cascata] ADN falhou após ${ADN_RETRY_MAX} tentativas — indo pro Puppeteer`);
+async function obterDanfseOficial({ chaveAcesso, pfxBuffer, senha }) {
+  if (!chaveAcesso || !pfxBuffer || !senha) {
+    const err = new Error("DANFSe: parametros ausentes (chaveAcesso/pfxBuffer/senha)");
+    err.code = "ADN_PARAMS_FALTANDO";
+    throw err;
   }
 
-  // Fallback: Puppeteer local com template v1.0
-  console.log('[DANFSe-Cascata] ↓ Usando fallback local (Puppeteer)');
-  const pdfLocal = await htmlParaPdf(htmlLocal);
-  return { pdf: pdfLocal, fonte: 'local' };
+  const historico = [];
+  for (let tentativa = 1; tentativa <= ADN_RETRY_MAX; tentativa++) {
+    const r = await tentarAdn(chaveAcesso, pfxBuffer, senha);
+    historico.push({ tentativa, status: r.status, tempoMs: r.tempoMs });
+    if (r.pdf) {
+      if (tentativa > 1) {
+        console.log("[DANFSe-ADN] OK na tentativa " + tentativa + "/" + ADN_RETRY_MAX + " (" + r.pdf.length + " bytes)");
+      } else {
+        console.log("[DANFSe-ADN] OK (" + r.pdf.length + " bytes, " + r.tempoMs + "ms) chave=" + chaveAcesso.slice(-6));
+      }
+      return { pdf: r.pdf, fonte: "oficial" };
+    }
+    console.warn("[DANFSe-ADN] tentativa " + tentativa + "/" + ADN_RETRY_MAX + " falhou: status=" + r.status + " em " + r.tempoMs + "ms | " + r.preview.slice(0, 120));
+
+    if (tentativa < ADN_RETRY_MAX) {
+      const delay = Math.min(ADN_RETRY_BASE_MS * Math.pow(2, tentativa - 1), 30000);
+      await sleep(delay);
+    }
+  }
+
+  const err = new Error("ADN indisponivel apos " + ADN_RETRY_MAX + " tentativas (chave " + chaveAcesso.slice(-6) + ")");
+  err.code = "ADN_INDISPONIVEL";
+  err.historico = historico;
+  throw err;
 }
 
 module.exports = {
-  htmlParaPdf,
-  fechar,
-  baixarDanfseOficial,
-  obterDanfseCascata,
+  obterDanfseOficial,
+  obterDanfseCascata: async ({ chaveAcesso, pfxBuffer, senha }) =>
+    obterDanfseOficial({ chaveAcesso, pfxBuffer, senha }),
 };
