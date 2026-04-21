@@ -175,6 +175,104 @@ router.get('/dctfweb/:cnpj', async (req, res) => {
   }
 });
 
+// =====================================================
+// Novos endpoints (Fase 1)
+// =====================================================
+
+// SITFIS — Relatorio de Situacao Fiscal (substituto da Certidao Negativa)
+// GET /api/integra-contador/sitfis/:cnpj
+router.get('/sitfis/:cnpj', async (req, res) => {
+  try {
+    const resultado = await integraContadorService.obterRelatorioSitfis(req.params.cnpj);
+    res.json(resultado);
+  } catch (err) {
+    console.error('[IntegraContador] Erro obterRelatorioSitfis:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// DAS Simples Avulso (reemissao de DAS)
+// POST /api/integra-contador/das/simples/avulso { cnpj, periodoApuracao }
+router.post('/das/simples/avulso', async (req, res) => {
+  try {
+    const { cnpj, periodoApuracao } = req.body;
+    if (!cnpj || !periodoApuracao) return res.status(400).json({ erro: 'cnpj e periodoApuracao sao obrigatorios' });
+    const resultado = await integraContadorService.gerarDASSimplesAvulso(cnpj, periodoApuracao);
+    res.json(resultado);
+  } catch (err) {
+    console.error('[IntegraContador] Erro gerarDASSimplesAvulso:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// DAS Simples Cobranca (reemissao de DAS via Cobranca da RFB)
+router.post('/das/simples/cobranca', async (req, res) => {
+  try {
+    const { cnpj, periodoApuracao } = req.body;
+    if (!cnpj || !periodoApuracao) return res.status(400).json({ erro: 'cnpj e periodoApuracao sao obrigatorios' });
+    const resultado = await integraContadorService.gerarDASSimplesCobranca(cnpj, periodoApuracao);
+    res.json(resultado);
+  } catch (err) {
+    console.error('[IntegraContador] Erro gerarDASSimplesCobranca:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// DARF via Sicalc — consolida e gera o PDF
+// POST /api/integra-contador/darf { cnpj, dados: { receita, periodoApuracao, vencimento, valorPrincipal, ... } }
+router.post('/darf', async (req, res) => {
+  try {
+    const { cnpj, dados } = req.body;
+    if (!cnpj || !dados) return res.status(400).json({ erro: 'cnpj e dados sao obrigatorios' });
+    const resultado = await integraContadorService.gerarDARF(cnpj, dados);
+    res.json(resultado);
+  } catch (err) {
+    console.error('[IntegraContador] Erro gerarDARF:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// Guia DCTFWeb (gerar DARF dos debitos declarados)
+// POST /api/integra-contador/dctfweb/guia { cnpj, dados: { categoria, numDeclaracao, periodoApuracao } }
+router.post('/dctfweb/guia', async (req, res) => {
+  try {
+    const { cnpj, dados } = req.body;
+    if (!cnpj || !dados) return res.status(400).json({ erro: 'cnpj e dados sao obrigatorios' });
+    const resultado = await integraContadorService.gerarGuiaDCTFWeb(cnpj, dados);
+    res.json(resultado);
+  } catch (err) {
+    console.error('[IntegraContador] Erro gerarGuiaDCTFWeb:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// Pagamentos PAGTOWEB
+// GET /api/integra-contador/pagamentos/:cnpj?dataInicio=&dataFim=
+router.get('/pagamentos/:cnpj', async (req, res) => {
+  try {
+    const filtros = {};
+    if (req.query.dataInicio) filtros.dataInicio = req.query.dataInicio;
+    if (req.query.dataFim) filtros.dataFim = req.query.dataFim;
+    const resultado = await integraContadorService.consultarPagamentos(req.params.cnpj, filtros);
+    res.json(resultado);
+  } catch (err) {
+    console.error('[IntegraContador] Erro consultarPagamentos:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// CCMEI — emite Certificado de Condicao de MEI
+// GET /api/integra-contador/ccmei/:cnpj
+router.get('/ccmei/:cnpj', async (req, res) => {
+  try {
+    const resultado = await integraContadorService.emitirCCMEI(req.params.cnpj);
+    res.json(resultado);
+  } catch (err) {
+    console.error('[IntegraContador] Erro emitirCCMEI:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 // Chamada genérica (escape hatch pra serviços não cobertos pelos wrappers)
 // POST /api/integra-contador/chamar
 // { acao: 'Consultar', cnpj: '...', idSistema: '...', idServico: '...', versaoSistema: '1.0', dados: {...} }
