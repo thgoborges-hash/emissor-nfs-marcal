@@ -42,7 +42,7 @@ function tentarAdn(chaveAcesso, pfxBuffer, senha) {
     pfx: pfxBuffer,
     passphrase: senha,
     headers: {
-      "Accept": "application/pdf",
+      "Accept": "*/*",
       "User-Agent": ADN_USER_AGENT,
       "Connection": "close",
     },
