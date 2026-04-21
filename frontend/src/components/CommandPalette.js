@@ -20,7 +20,8 @@ const COMMANDS = [
   { icon: '🏢', label: 'Gestão de clientes', hint: 'Cadastro e dados', path: '/escritorio/clientes' },
   { icon: '🔐', label: 'Certificados A1', hint: 'e-CNPJ por cliente', path: '/escritorio/certificados' },
   // Config
-  { icon: '🏛️', label: 'Certificado SERPRO', hint: 'Status Integra Contador', path: '/escritorio/certificado-serpro' },
+  { icon: '🏛️', label: 'Integra Contador', hint: 'DAS, DCTFWeb, DARF, SITFIS, CCMEI', path: '/escritorio/integra-contador' },
+  { icon: '🔐', label: 'Certificado SERPRO', hint: 'Status do setup SERPRO', path: '/escritorio/certificado-serpro' },
   { icon: '💬', label: 'WhatsApp', hint: 'Configurações de envio', path: '/escritorio/whatsapp' },
   { icon: '📈', label: 'Relatórios', hint: 'Faturamento, ranking, status', path: '/escritorio/relatorios' },
   { icon: '📊', label: 'Dashboard clássico', hint: 'Visão legada', path: '/escritorio' },

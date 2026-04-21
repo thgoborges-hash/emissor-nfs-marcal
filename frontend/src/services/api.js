@@ -109,6 +109,22 @@ export const integraContadorApi = {
   consultarProcuracoes: (cnpj) => api.get(`/integra-contador/procuracoes/${cnpj}`),
   consultarDctfweb: (cnpj) => api.get(`/integra-contador/dctfweb/${cnpj}`),
   caixaPostal: (cnpj) => api.get(`/integra-contador/caixa-postal/${cnpj}`),
+  // DAS
+  gerarDasSimples:         (cnpj, periodoApuracao) => api.post('/integra-contador/das/simples',         { cnpj, periodoApuracao }),
+  gerarDasSimplesAvulso:   (cnpj, periodoApuracao) => api.post('/integra-contador/das/simples/avulso',  { cnpj, periodoApuracao }),
+  gerarDasSimplesCobranca: (cnpj, periodoApuracao) => api.post('/integra-contador/das/simples/cobranca',{ cnpj, periodoApuracao }),
+  gerarDasMei:             (cnpj, periodoApuracao) => api.post('/integra-contador/das/mei',             { cnpj, periodoApuracao }),
+  // SITFIS (Certidao)
+  obterSitfis: (cnpj) => api.get(`/integra-contador/sitfis/${cnpj}`),
+  // DARF via Sicalc
+  gerarDarf: (cnpj, dados) => api.post('/integra-contador/darf', { cnpj, dados }),
+  // Guia DCTFWeb
+  gerarGuiaDctfweb: (cnpj, dados) => api.post('/integra-contador/dctfweb/guia', { cnpj, dados }),
+  // Pagamentos
+  consultarPagamentos: (cnpj, dataInicio, dataFim) =>
+    api.get(`/integra-contador/pagamentos/${cnpj}`, { params: { dataInicio, dataFim } }),
+  // CCMEI
+  emitirCcmei: (cnpj) => api.get(`/integra-contador/ccmei/${cnpj}`),
 };
 
 // === SIEG ===

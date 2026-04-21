@@ -34,7 +34,8 @@ const TABS = [
 
 // Config (menu engrenagem à direita)
 const CONFIG = [
-  { to: '/escritorio/certificado-serpro', label: 'Certificado SERPRO', icon: '🏛️' },
+  { to: '/escritorio/integra-contador', label: 'Integra Contador', icon: '🏛️' },
+  { to: '/escritorio/certificado-serpro', label: 'Certificado SERPRO', icon: '🔐' },
   { to: '/escritorio/whatsapp', label: 'WhatsApp', icon: '💬' },
   { to: '/escritorio/relatorios', label: 'Relatórios', icon: '📈' },
   { to: '/escritorio', label: 'Dashboard clássico', icon: '📊' },
