@@ -868,9 +868,13 @@ async function processarMensagemZapi(body) {
           }
 
           if (!warmupOk) {
-            const aviso = `⚠️ PDF oficial da NF ${numDisplay} ainda não está disponível agora (Portal Nacional instável). A NF foi emitida com sucesso e o XML está válido. Tenta de novo em alguns minutos pelo painel ou peça pra Ana "manda o PDF da NF ${numDisplay}".`;
+            const aviso = `⚠️ PDF oficial da NF ${numDisplay} ainda não está disponível agora (Portal Nacional instável). A NF foi emitida com sucesso e o XML está válido. Vou tentar de novo em alguns minutos e te envio aqui assim que chegar.`;
             try { await zapiService.enviarTexto(destinoResposta, aviso); } catch (avisoErr) { console.warn('[Z-API] Erro ao enviar aviso de PDF indisponível:', avisoErr.message); }
-            console.log(`[Z-API] PDF oficial indisponível para NF ${nfId}, aviso enviado em vez do documento`);
+            try {
+              const danfseRetryQueue = require('../services/danfseRetryQueue');
+              danfseRetryQueue.adicionar({ nfId, destino: destinoResposta, numDisplay });
+            } catch (queueErr) { console.warn('[Z-API] Erro ao agendar retry do DANFSe:', queueErr.message); }
+            console.log(`[Z-API] PDF oficial indisponível para NF ${nfId}, aviso + retry agendado`);
             return;
           }
 
@@ -922,9 +926,13 @@ async function processarMensagemZapi(body) {
           }
 
           if (!warmupOk) {
-            const aviso = `⚠️ PDF oficial da NF ${numDisplay} indisponível agora (Portal Nacional instável). Tenta de novo em alguns minutos.`;
+            const aviso = `⚠️ PDF oficial da NF ${numDisplay} indisponível agora (Portal Nacional instável). Vou tentar de novo em alguns minutos e te envio aqui assim que chegar.`;
             try { await zapiService.enviarTexto(destinoResposta, aviso); } catch (avisoErr) { console.warn('[Z-API] Erro ao enviar aviso de PDF indisponível:', avisoErr.message); }
-            console.log(`[Z-API] PDF oficial indisponível para NF ${nfId}, aviso enviado em vez do documento`);
+            try {
+              const danfseRetryQueue = require('../services/danfseRetryQueue');
+              danfseRetryQueue.adicionar({ nfId, destino: destinoResposta, numDisplay });
+            } catch (queueErr) { console.warn('[Z-API] Erro ao agendar retry do DANFSe:', queueErr.message); }
+            console.log(`[Z-API] PDF oficial indisponível para NF ${nfId}, aviso + retry agendado`);
             return;
           }
 
