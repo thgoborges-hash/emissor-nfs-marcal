@@ -850,14 +850,28 @@ async function processarMensagemZapi(body) {
           const nfId = nfEmitida.feedback.nfId;
           const numDisplay = nfEmitida.feedback.numero || nfId;
 
-          // WARMUP do PDF antes de passar o link pro Z-API baixar (idem BUSCAR_DANFSE).
+          // WARMUP do PDF: tenta gerar/cachear o DANFSe oficial antes de passar
+          // o link pro Z-API. Se o ADN estiver fora, evitamos mandar um link
+          // que retornaria 500 (o que o cliente final veria como documento
+          // quebrado). Nesse caso, mandamos um aviso textual em vez do PDF.
+          let warmupOk = false;
+          let warmupErroMsg = '';
           try {
             const { obterDanfsePdf } = require('./notasFiscais');
             console.log(`[Z-API] 🔥 Warmup DANFSe NF recém-emitida ${nfId}...`);
             const warmup = await obterDanfsePdf(nfId);
             console.log(`[Z-API] 🔥 Warmup concluído: fonte=${warmup?.fonte} (${warmup?.pdf?.length || 0} bytes)`);
+            warmupOk = !!(warmup && warmup.pdf);
           } catch (warmupErr) {
-            console.warn(`[Z-API] Warmup falhou:`, warmupErr.message);
+            warmupErroMsg = warmupErr.message || 'falha desconhecida';
+            console.warn(`[Z-API] Warmup DANFSe falhou:`, warmupErroMsg);
+          }
+
+          if (!warmupOk) {
+            const aviso = `⚠️ PDF oficial da NF ${numDisplay} ainda não está disponível agora (Portal Nacional instável). A NF foi emitida com sucesso e o XML está válido. Tenta de novo em alguns minutos pelo painel ou peça pra Ana "manda o PDF da NF ${numDisplay}".`;
+            try { await zapiService.enviarTexto(destinoResposta, aviso); } catch (avisoErr) { console.warn('[Z-API] Erro ao enviar aviso de PDF indisponível:', avisoErr.message); }
+            console.log(`[Z-API] PDF oficial indisponível para NF ${nfId}, aviso enviado em vez do documento`);
+            return;
           }
 
           // Gera token temporário (24h) para acesso ao DANFSe sem login
@@ -892,15 +906,26 @@ async function processarMensagemZapi(body) {
           const numDisplay = danfseBuscado.feedback.numero || nfId;
 
           // WARMUP: gera/cacheia o PDF ANTES do Z-API baixar o link.
-          // Quando Z-API bater no endpoint, pega cache-hit imediato (sem novo round ADN).
-          // E o re-fetch do preview do WhatsApp (~2s depois) também pega o cache.
+          // Se ADN estiver fora, mandamos aviso textual em vez do link
+          // (que apontaria pra um endpoint retornando 500).
+          let warmupOk = false;
+          let warmupErroMsg = '';
           try {
             const { obterDanfsePdf } = require('./notasFiscais');
             console.log(`[Z-API] 🔥 Warmup DANFSe NF ${nfId} (aquecendo cache antes do Z-API baixar)...`);
             const warmup = await obterDanfsePdf(nfId);
             console.log(`[Z-API] 🔥 Warmup concluído: fonte=${warmup?.fonte} (${warmup?.pdf?.length || 0} bytes)`);
+            warmupOk = !!(warmup && warmup.pdf);
           } catch (warmupErr) {
-            console.warn(`[Z-API] Warmup falhou (vai baixar do jeito antigo):`, warmupErr.message);
+            warmupErroMsg = warmupErr.message || 'falha desconhecida';
+            console.warn(`[Z-API] Warmup DANFSe falhou:`, warmupErroMsg);
+          }
+
+          if (!warmupOk) {
+            const aviso = `⚠️ PDF oficial da NF ${numDisplay} indisponível agora (Portal Nacional instável). Tenta de novo em alguns minutos.`;
+            try { await zapiService.enviarTexto(destinoResposta, aviso); } catch (avisoErr) { console.warn('[Z-API] Erro ao enviar aviso de PDF indisponível:', avisoErr.message); }
+            console.log(`[Z-API] PDF oficial indisponível para NF ${nfId}, aviso enviado em vez do documento`);
+            return;
           }
 
           const tokenTemp = gerarToken({ id: 0, tipo: 'escritorio', papel: 'sistema', uso: 'danfse' });

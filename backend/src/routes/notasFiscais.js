@@ -915,28 +915,34 @@ async function obterDanfsePdf(notaId) {
     return { pdf: cache.pdf, fonte: `${cache.fonte}-cache`, numDisplay, nomeArquivo };
   }
 
-  console.log(`[DANFSe-PDF] Gerando PDF para NF ${numDisplay} (cascata: ADN oficial → fallback local)...`);
-  const html = await gerarHtmlDanfse(nota);
+  console.log(`[DANFSe-PDF] Buscando PDF oficial no ADN para NF ${numDisplay}...`);
 
-  let pfxBuffer = null, senha = null;
-  try {
-    if (nota.chave_acesso && nota.certificado_a1_senha_encrypted) {
-      const certificadoService = require('../services/certificadoService');
-      const cert = certificadoService.carregarCertificado(nota.cliente_id, nota.certificado_a1_senha_encrypted);
-      pfxBuffer = cert.pfxBuffer;
-      senha = cert.senha;
-    }
-  } catch (err) {
-    console.warn(`[DANFSe-PDF] Não conseguiu carregar cert p/ tentar oficial: ${err.message}`);
+  if (!nota.chave_acesso || !nota.certificado_a1_senha_encrypted) {
+    const err = new Error('NF sem chave de acesso ou cliente sem certificado A1 — DANFSe oficial indisponível');
+    err.code = 'DANFSE_PRE_REQUISITO';
+    throw err;
   }
 
-  const { pdf: pdfBuffer, fonte } = await danfsePdfService.obterDanfseCascata({
+  let pfxBuffer, senha;
+  try {
+    const certificadoService = require('../services/certificadoService');
+    const cert = certificadoService.carregarCertificado(nota.cliente_id, nota.certificado_a1_senha_encrypted);
+    pfxBuffer = cert.pfxBuffer;
+    senha = cert.senha;
+  } catch (err) {
+    const wrap = new Error(`Falha ao carregar certificado A1 do cliente: ${err.message}`);
+    wrap.code = 'DANFSE_CERT_FALHA';
+    throw wrap;
+  }
+
+  // Sem fallback local (Puppeteer): se o ADN nao responder, propagamos o erro
+  // pra quem chamou exibir mensagem amigavel (ex.: ANA avisa a equipe).
+  const { pdf: pdfBuffer, fonte } = await danfsePdfService.obterDanfseOficial({
     chaveAcesso: nota.chave_acesso,
     pfxBuffer, senha,
-    htmlLocal: html,
   });
 
-  console.log(`[DANFSe-PDF] ✅ PDF entregue (${fonte}): ${pdfBuffer.length} bytes`);
+  console.log(`[DANFSe-PDF] ✅ PDF oficial entregue (${pdfBuffer.length} bytes)`);
   danfseCacheService.gravar(notaId, pdfBuffer, fonte);
 
   return { pdf: pdfBuffer, fonte, numDisplay, nomeArquivo };
