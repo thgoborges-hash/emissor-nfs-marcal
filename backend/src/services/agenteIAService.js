@@ -10,9 +10,13 @@ const integraContadorService = require('./integraContadorService');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
-// Regex pra detectar prefixo de operador vindo do Messenger do Domínio
-// Ex.: "Janaina Alves: Segue a declaração..." → operador = "Janaina Alves"
-const OPERADOR_DOMINIO_REGEX = /^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]{1,40}):\s*(.*)/s;
+// Regex pra detectar prefixo de operador vindo do Messenger do Domínio.
+// Aceita:
+//   (a) Mensagem crua: "Janaina Alves: Segue a declaração..."
+//   (b) Mensagem de grupo prefixada pelo whatsapp.js: "[Marçal Contabilidade] Janaina Alves: ..."
+//   (c) Formatação de negrito do WhatsApp: "*Janaina Alves:*" com asteriscos.
+// Grupo `[...]` inicial opcional; asteriscos opcionais antes do nome e depois dos ":".
+const OPERADOR_DOMINIO_REGEX = /^(?:\[[^\]]+\]\s*)?\*?([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]{1,40}):\*?\s*(.*)/s;
 
 class AgenteIAService {
   constructor() {
