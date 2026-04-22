@@ -61,12 +61,35 @@ class AgenteIAService {
     }
 
     // 3.5. Detecta se é mensagem de operador da equipe Marçal (vindo do Messenger Domínio)
-    const modoEquipe = this.detectarModoEquipe(mensagem);
+    let modoEquipe = this.detectarModoEquipe(mensagem);
     if (modoEquipe.ehEquipe) {
-      console.log(`[AgenteIA] Modo EQUIPE detectado — operador: ${modoEquipe.operador}`);
+      console.log(`[AgenteIA] Modo EQUIPE detectado via prefixo — operador: ${modoEquipe.operador}`);
     }
 
-    // 3.6. Detecta se o contato é o admin (pra destravar modo equipe sem precisar do prefixo "Nome:")
+    // 3.5.1. Se a conversa é um grupo interno do escritório (ANA_STAFF_GROUP_IDS),
+    // SEMPRE tratar como modo equipe — só equipe tem acesso ao grupo.
+    // Cobre o caso do Thiago (ou qualquer staff) mandando NF no grupo Staff sem
+    // prefixar 'Nome:' — o whatsapp.js já prefixa '[PushName] texto' que não casa
+    // com o regex do Messenger Domínio.
+    if (!modoEquipe.ehEquipe) {
+      const staffGroups = (process.env.ANA_STAFF_GROUP_IDS || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      const tel = String(telefone || '');
+      const ehGrupoStaff = staffGroups.some(id => tel === id || tel.includes(id));
+      if (ehGrupoStaff) {
+        const pushMatch = mensagem.match(/^\[([^\]]+)\]\s*([\s\S]*)/);
+        modoEquipe = {
+          ehEquipe: true,
+          operador: pushMatch ? pushMatch[1].trim() : 'Equipe',
+          mensagemSemPrefixo: pushMatch ? pushMatch[2].trim() : mensagem,
+        };
+        console.log(`[AgenteIA] Modo EQUIPE ativado por grupo staff — operador: ${modoEquipe.operador} (groupId=${tel})`);
+      }
+    }
+
+    // 3.6. Detecta se o contato é o admin (pra destravar modo equipe em conversa privada)
     const ehAdmin = this._ehAdmin(contato);
     if (ehAdmin && !modoEquipe.ehEquipe) {
       console.log(`[AgenteIA] Contato admin detectado — tratando como modo equipe`);
@@ -554,19 +577,30 @@ NO MODO EQUIPE, A TAG [ACAO:EMITIR_NF:...] DEVE TER **EXATAMENTE 5 CAMPOS**, NUN
 
 POR QUÊ? O formato de 4 campos emite pela Marçal por default. Em modo equipe, as NFs SEMPRE saem em nome de UM CLIENTE DA CARTEIRA (Marçal é contadora, não emite NF pra clientes dos seus clientes). Se você usar 4 campos, o sistema vai BLOQUEAR a emissão e devolver erro.
 
+COMO IDENTIFICAR O EMITENTE NA MENSAGEM DA EQUIPE:
+
+O emitente MUDA A CADA NF. Nunca, jamais, assuma padrão. Nunca assuma "Marçal". Você TEM que extrair da mensagem — ou perguntar.
+
+Padrões comuns da equipe ao passar o emitente (todos válidos — aceite qualquer um):
+- "emite NF do DDA Clinica Medica (CNPJ 27.998.575/0001-00) pra Maysa..."
+- "Emitente: DDA CLINICA MEDICA LTDA - CNPJ: 27.998.575/0001-00\nTomador: Maysa..."
+- "NF do CNPJ 27998575000100 (DDA) pra Maysa..."
+- "Do Estudio Soma (12.345.678/0001-90), emite NF pra ..."
+
+Em TODOS esses, o CNPJ do emitente está explícito. Extraia como dígitos só (14 chars) e use como 1º campo.
+
 FLUXO OBRIGATÓRIO EM MODO EQUIPE:
 
-1. A equipe pede emissão. Exemplo: "emite NF de R$ 890 do DDA Clinica Medica (CNPJ 27998575000100) pra Maysa Bittencourt CPF 044.069.959-27, atendimentos médicos"
-2. Você IDENTIFICA 3 coisas no pedido:
-   (a) CNPJ DO EMITENTE = o cliente da carteira que vai assinar a NF (ex: 27998575000100 do DDA)
-   (b) VALOR, CNPJ/CPF DO TOMADOR, razão social, descrição
+1. Leia TODA a mensagem. Procure por "Emitente:", "NF do <empresa> (CNPJ ...)", "do CNPJ X", ou outro padrão onde a equipe diz QUEM vai emitir.
+2. Se achou CNPJ do emitente (14 dígitos) → identifica também valor, CNPJ/CPF do tomador, razão social do tomador, descrição.
 3. Monta a tag com 5 campos:
    [ACAO:EMITIR_NF:27998575000100|890.00|04406995927|Maysa Bittencourt|Atendimentos e Consultas medicas]
 
-SE A EQUIPE NÃO DISSER O CNPJ DO EMITENTE:
+SE VOCÊ NÃO CONSEGUIU IDENTIFICAR O CNPJ DO EMITENTE NA MENSAGEM:
 - NÃO invente. NÃO use 4 campos. NÃO coloque tag nenhuma.
-- Pergunte: "Qual empresa vai emitir essa NF? Me passa o CNPJ dela pra eu emitir no nome certo."
-- Só dispara a tag DEPOIS que receber o CNPJ.
+- NÃO chute "Marçal". NÃO assuma "é nosso padrão".
+- Pergunte direto: "De qual empresa sai essa NF? Me passa o CNPJ do emitente."
+- Só dispara a tag DEPOIS que receber o CNPJ confirmado.
 
 UMA NF POR PEDIDO:
 - Inclua a tag [ACAO:EMITIR_NF:...] **UMA ÚNICA VEZ** por resposta, mesmo que você esteja explicando ou confirmando algo — colar a tag duas vezes não "emite duas notas", só confunde o sistema e pode ser rejeitado.
