@@ -309,6 +309,20 @@ router.get('/snapshot/:clienteId', async (req, res) => {
   }
 });
 
+// GET /api/integra-contador/snapshot/dctfweb/resumo — agregado DCTFWeb da carteira
+// Alimenta o card destaque na home (clientes em atraso = risco de multa pro escritorio).
+router.get('/snapshot/dctfweb/resumo', (req, res) => {
+  try {
+    res.json({
+      carteira: serproSnapshotService.resumoDctfwebCarteira(),
+      atrasados: serproSnapshotService.listarClientesDctfwebAtrasados(),
+    });
+  } catch (err) {
+    console.error('[IntegraContador] Erro resumo DCTFWeb:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 // POST /api/integra-contador/snapshot/rodar — dispara varredura manual (admin)
 // Perigoso — vai bater em 156 clientes com intervalo de 5s (~13 min + SERPRO latencia).
 // Executa em background e retorna imediato.

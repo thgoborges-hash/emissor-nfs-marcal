@@ -1642,3 +1642,258 @@ tbody tr:hover { background: var(--bg-hover); }
   .sidebar-footer { display: none; }
   .main-content { padding: 20px; }
 }
+
+/* =====================================================
+ * HOME v3 — Cards de intencao + Hero DCTFWeb
+ * ===================================================== */
+
+/* Grid de cards de intencao — 3 colunas em desktop, auto-fit em telas menores */
+.intent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.intent-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 200ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.intent-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--intent-accent, var(--primary));
+  opacity: 0.7;
+}
+
+.intent-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--intent-accent, var(--primary));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+.intent-card .intent-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.intent-card .intent-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.intent-card .intent-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.intent-card .intent-destaque {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.1;
+  margin-bottom: 2px;
+}
+
+.intent-card .intent-sub {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.intent-card .intent-arrow {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  opacity: 0.4;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.intent-card:hover .intent-arrow {
+  opacity: 1;
+  transform: translateX(3px);
+}
+
+/* Tons de acento */
+.intent-primary  { --intent-accent: var(--primary); }
+.intent-success  { --intent-accent: var(--success); }
+.intent-warning  { --intent-accent: var(--warning); }
+.intent-danger   { --intent-accent: var(--danger); }
+.intent-neutral  { --intent-accent: var(--border-subtle); }
+
+.intent-warning .intent-destaque { color: var(--warning); }
+.intent-danger  .intent-destaque { color: var(--danger); }
+.intent-success .intent-destaque { color: var(--success); }
+
+/* =====================================================
+ * Hero DCTFWeb — destaque de risco (multa pro escritorio)
+ * ===================================================== */
+.dctf-hero {
+  padding: 24px 28px;
+  border-radius: 16px;
+  margin-bottom: 28px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+
+.dctf-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--dctf-bg);
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.dctf-danger   { --dctf-color: var(--danger);  --dctf-bg: var(--danger);  border-color: var(--danger); }
+.dctf-warning  { --dctf-color: var(--warning); --dctf-bg: var(--warning); }
+.dctf-success  { --dctf-color: var(--success); --dctf-bg: var(--success); }
+.dctf-neutral  { --dctf-color: var(--text-muted); --dctf-bg: var(--text-muted); }
+
+.dctf-danger { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.4), 0 8px 32px rgba(239, 68, 68, 0.12); }
+
+.dctf-hero-main { position: relative; z-index: 1; }
+
+.dctf-hero-titulo {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--dctf-color);
+  margin-bottom: 6px;
+}
+
+.dctf-hero-sub {
+  font-size: 0.95rem;
+  color: var(--text-light);
+  margin-bottom: 16px;
+}
+
+.dctf-hero-metrics {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.dctf-mini {
+  flex: 1;
+  min-width: 120px;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.dctf-mini-valor {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.dctf-mini-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dctf-mini-danger .dctf-mini-valor  { color: var(--danger); }
+.dctf-mini-warning .dctf-mini-valor { color: var(--warning); }
+.dctf-mini-success .dctf-mini-valor { color: var(--success); }
+.dctf-mini-muted .dctf-mini-valor   { color: var(--text-muted); }
+
+/* Barra de progresso do "em dia" */
+.dctf-bar {
+  position: relative;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.dctf-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--success), color-mix(in srgb, var(--success) 70%, white));
+  transition: width 400ms ease;
+}
+
+.dctf-bar-label {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Lista de clientes atrasados — so aparece no estado danger */
+.dctf-atrasados-list {
+  margin-top: 20px;
+  padding: 16px 18px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.dctf-atrasados-header {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--danger);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.dctf-atrasados-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px 0;
+}
+
+.dctf-atrasados-list li {
+  padding: 6px 0;
+  font-size: 0.9rem;
+  color: var(--text);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+.dctf-atrasados-list li:last-child { border-bottom: none; }
+
+.dctf-atrasados-link {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+@media (max-width: 768px) {
+  .intent-card .intent-destaque { font-size: 1.6rem; }
+  .dctf-hero { padding: 18px 20px; }
+  .dctf-hero-titulo { font-size: 1.15rem; }
+  .dctf-mini { min-width: 100px; padding: 10px 12px; }
+  .dctf-mini-valor { font-size: 1.4rem; }
+}

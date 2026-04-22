@@ -60,6 +60,17 @@ class PainelService {
     // Séries históricas pra alimentar os sparklines dos KPIs (últimos 14 dias)
     const series = this._seriesUltimos14Dias();
 
+    // DCTFWeb — destaque pro operador (multa por atraso cai no bolso do escritorio)
+    let dctfweb = { em_dia: 0, atrasada: 0, pendente: 0, sem_dados: 0, erro: 0 };
+    let dctfwebAtrasados = [];
+    try {
+      const serproSnapshot = require('./serproSnapshotService');
+      dctfweb = serproSnapshot.resumoDctfwebCarteira();
+      dctfwebAtrasados = serproSnapshot.listarClientesDctfwebAtrasados().slice(0, 5);
+    } catch (err) {
+      console.warn('[Painel] resumo DCTFWeb indisponivel:', err.message);
+    }
+
     return {
       geradoEm: new Date().toISOString(),
       cards: {
@@ -67,7 +78,9 @@ class PainelService {
         nfs_hoje: { total: nfsHoje.total, valor_total: nfsHoje.valor_total, serie: series.emitidasDiario },
         whatsapp_aguardando: conversasAguardando.total,
         ana_fila_pendente: anaFilaPendente.total,
+        dctfweb,
       },
+      dctfweb_atrasados_preview: dctfwebAtrasados,
       ana_decisoes_hoje: anaFilaHoje,
       ultimas_nfs: ultimasNfs,
       obrigacoes_proximas: obrigacoes,

@@ -69,16 +69,18 @@ async function _coletarPorCliente(cliente) {
     _gravarSnapshot(cliente.id, 'PGDASD', { status: 'erro', erro: err.message });
   }
 
-  // DCTFWeb — lista
+  // DCTFWeb — classifica status: em_dia | atrasada | pendente | sem_dados
   try {
     const r = await integraContadorService.consultarRelacaoDCTFWeb(cnpj);
     const dados = (r && r.dados) || r;
     const parsed = typeof dados === 'string' ? tryJson(dados) : dados;
-    const total = Array.isArray(parsed) ? parsed.length : (parsed && parsed.totalRegistros) || 0;
+    const declaracoes = Array.isArray(parsed) ? parsed : (parsed && (parsed.declaracoes || parsed.lista)) || [];
+    const classif = _classificarDctfweb(declaracoes);
     _gravarSnapshot(cliente.id, 'DCTFWEB', {
-      status: total > 0 ? 'ok' : 'sem_dados',
-      resumo: total > 0 ? `${total} declaracoes localizadas` : 'Nenhuma DCTFWeb encontrada',
-      dadosRaw: parsed,
+      competencia: classif.competenciaAlvo,
+      status: classif.status,
+      resumo: classif.resumo,
+      dadosRaw: { total: declaracoes.length, alvo: classif.competenciaAlvo, amostra: declaracoes.slice(0, 3) },
     });
   } catch (err) {
     _gravarSnapshot(cliente.id, 'DCTFWEB', { status: 'erro', erro: err.message });
@@ -101,6 +103,101 @@ async function _coletarPorCliente(cliente) {
 }
 
 function tryJson(s) { try { return JSON.parse(s); } catch (e) { return s; } }
+
+/**
+ * Classifica o status da DCTFWeb do cliente segundo a competencia alvo (mes anterior).
+ * Regra:
+ *   - competencia alvo = mes imediatamente anterior ao mes corrente (YYYYMM)
+ *   - prazo legal = dia 15 do mes seguinte a competencia (= dia 15 do mes corrente)
+ *   - Se ha declaracao do mes alvo com situacao diferente de CANCELADA => 'em_dia'
+ *   - Se nao, e hoje > dia 15 do mes corrente => 'atrasada' (MULTA)
+ *   - Se nao, e hoje <= dia 15 => 'pendente' (dentro do prazo)
+ *   - Se nao ha historico nenhum => 'sem_dados' (provavelmente nao obrigado)
+ */
+function _classificarDctfweb(declaracoes) {
+  const hoje = new Date();
+  const ano = hoje.getFullYear();
+  const mes = hoje.getMonth() + 1;
+  // competencia alvo = mes anterior
+  const anoAlvo = mes === 1 ? ano - 1 : ano;
+  const mesAlvo = mes === 1 ? 12 : mes - 1;
+  const competenciaAlvo = `${anoAlvo}${String(mesAlvo).padStart(2, '0')}`;
+  const nomeMes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][mesAlvo - 1];
+  const rotuloCompet = `${nomeMes}/${anoAlvo}`;
+
+  if (!Array.isArray(declaracoes) || declaracoes.length === 0) {
+    return {
+      status: 'sem_dados',
+      resumo: 'Nenhuma DCTFWeb no historico (verifique se esta obrigado)',
+      competenciaAlvo,
+    };
+  }
+
+  // Normaliza e procura declaracao do mes alvo
+  const match = declaracoes.find(d => {
+    const comp = String(d.periodoApuracao || d.competencia || d.periodo || '').replace(/\D/g, '');
+    if (comp.length >= 6 && comp.slice(0, 6) === competenciaAlvo) return true;
+    return false;
+  });
+
+  if (match && String(match.situacao || match.status || '').toUpperCase() !== 'CANCELADA') {
+    const situ = match.situacao || match.status || 'TRANSMITIDA';
+    return {
+      status: 'em_dia',
+      resumo: `DCTFWeb ${rotuloCompet} ${String(situ).toLowerCase()}`,
+      competenciaAlvo,
+    };
+  }
+
+  // Nao encontrou: verifica prazo
+  const dia = hoje.getDate();
+  if (dia > 15) {
+    return {
+      status: 'atrasada',
+      resumo: `DCTFWeb ${rotuloCompet} NAO transmitida (prazo: dia 15 venceu)`,
+      competenciaAlvo,
+    };
+  }
+  return {
+    status: 'pendente',
+    resumo: `DCTFWeb ${rotuloCompet} ainda nao transmitida (vence dia 15)`,
+    competenciaAlvo,
+  };
+}
+
+/**
+ * Agregador: conta quantos clientes estao em cada status de DCTFWeb.
+ * Alimenta o card destaque da home. Retorna objeto { em_dia, atrasada, pendente, sem_dados, erro }.
+ */
+function resumoDctfwebCarteira() {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT so.status, COUNT(DISTINCT so.cliente_id) as total
+    FROM snapshot_obrigacoes so
+    INNER JOIN clientes c ON c.id = so.cliente_id
+    WHERE so.obrigacao = 'DCTFWEB' AND c.ativo = 1
+    GROUP BY so.status
+  `).all();
+  const base = { em_dia: 0, atrasada: 0, pendente: 0, sem_dados: 0, erro: 0 };
+  for (const r of rows) {
+    if (base[r.status] !== undefined) base[r.status] = r.total;
+  }
+  return base;
+}
+
+/**
+ * Lista os clientes atrasados na DCTFWeb (pra drill-down no card).
+ */
+function listarClientesDctfwebAtrasados() {
+  const db = getDb();
+  return db.prepare(`
+    SELECT so.cliente_id, c.razao_social, c.cnpj, so.competencia, so.resumo, so.atualizado_em
+    FROM snapshot_obrigacoes so
+    INNER JOIN clientes c ON c.id = so.cliente_id
+    WHERE so.obrigacao = 'DCTFWEB' AND so.status = 'atrasada' AND c.ativo = 1
+    ORDER BY c.razao_social
+  `).all();
+}
 
 async function rodarSnapshotCompleto() {
   const db = getDb();
@@ -163,4 +260,11 @@ function lerSnapshotsTodos() {
   `).all();
 }
 
-module.exports = { rodarSnapshotCompleto, iniciarCron, lerSnapshot, lerSnapshotsTodos };
+module.exports = {
+  rodarSnapshotCompleto,
+  iniciarCron,
+  lerSnapshot,
+  lerSnapshotsTodos,
+  resumoDctfwebCarteira,
+  listarClientesDctfwebAtrasados,
+};

@@ -35,6 +35,13 @@ try {
 } catch (e) {
   console.warn('[server] Erro inicializando snapshot cron:', e.message);
 }
+
+// Inicializa cron de backup diario do SQLite (sempre ativo, salvo DISABLE_BACKUP_CRON=true)
+try {
+  require('./services/backupService').iniciarCron();
+} catch (e) {
+  console.warn('[server] Erro inicializando backup cron:', e.message);
+}
 app.use('/api/sieg', require('./routes/sieg'));
 app.use('/api/painel', require('./routes/painel'));
 app.use('/api/apuracao', require('./routes/apuracao'));

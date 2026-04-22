@@ -199,4 +199,29 @@ function tentarRequisicaoComHeaders(urlStr, pfxBuffer, senha, headers) {
   });
 }
 
+// =====================================================
+// Backup SQLite — disparar manual + listar
+// =====================================================
+const backupService = require('../services/backupService');
+const { autenticado, apenasEscritorio } = require('../middleware/auth');
+
+// GET /api/debug/backup/listar — lista backups existentes (autenticado)
+router.get('/backup/listar', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    res.json({ backups: backupService.listarBackups() });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// POST /api/debug/backup/rodar — dispara backup manual (autenticado)
+router.post('/backup/rodar', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const r = backupService.rodarBackup();
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;
