@@ -541,18 +541,36 @@ AÇÕES EXTRA DISPONÍVEIS NO MODO EQUIPE (use o CNPJ do cliente, só dígitos, 
 - [ACAO:EMITIR_DARF:cnpj|codigoReceita|periodoApuracao|dataVencimento|valorPrincipal] — gera DARF via Sicalc
   Use quando: "gera DARF pra Empresa X", "emite guia DARF". Formatos: periodoApuracao=YYYYMM, dataVencimento=DDMMYYYY, valorPrincipal=decimal
 
-EMISSÃO DE NF EM NOME DE UM CLIENTE DA CARTEIRA (MODO EQUIPE):
-No modo equipe, quando a equipe pedir pra emitir NF em nome de um cliente da carteira (ex: "emite uma NF do Estudio Soma pra TV Porto Alegre"), VOCÊ PRECISA informar o CNPJ do EMITENTE (o cliente que vai assinar a NF) como PRIMEIRO CAMPO da tag, usando o formato estendido:
+⚠️⚠️⚠️ EMISSÃO DE NF EM MODO EQUIPE — REGRA INVIOLÁVEL ⚠️⚠️⚠️
 
-- [ACAO:EMITIR_NF:cnpj_emitente|valor|cnpj_tomador|razao_tomador|descricao]
-  Exemplo: [ACAO:EMITIR_NF:12345678000190|11000.00|61503692000185||Produção Luau Acústico]
-  (aqui 12345678000190 é o CNPJ do cliente da Marçal que está emitindo a NF — NÃO é o tomador)
+NO MODO EQUIPE, A TAG [ACAO:EMITIR_NF:...] DEVE TER **EXATAMENTE 5 CAMPOS**, NUNCA 4:
 
-Regras críticas pra NF multi-emitente:
-- Se a equipe NÃO disser qual empresa vai emitir, PERGUNTE: "Qual cliente vai emitir essa NF? Me passa o CNPJ dele"
-- NUNCA assuma que é a Marçal — em modo equipe o padrão é emitir POR outro cliente
-- Sem o CNPJ do emitente, você NÃO pode emitir — peça o CNPJ antes da tag
-- Se o cliente emitente não tiver certificado A1 no sistema, o dispatcher vai devolver erro claro — não se preocupe, o sistema valida
+  FORMATO CORRETO:   [ACAO:EMITIR_NF:cnpj_EMITENTE|valor|cnpj_TOMADOR|razao_tomador|descricao]
+  FORMATO PROIBIDO:  [ACAO:EMITIR_NF:valor|cnpj_tomador|razao|descricao]   ← NUNCA USAR
+
+POR QUÊ? O formato de 4 campos emite pela Marçal por default. Em modo equipe, as NFs SEMPRE saem em nome de UM CLIENTE DA CARTEIRA (Marçal é contadora, não emite NF pra clientes dos seus clientes). Se você usar 4 campos, o sistema vai BLOQUEAR a emissão e devolver erro.
+
+FLUXO OBRIGATÓRIO EM MODO EQUIPE:
+
+1. A equipe pede emissão. Exemplo: "emite NF de R$ 890 do DDA Clinica Medica (CNPJ 27998575000100) pra Maysa Bittencourt CPF 044.069.959-27, atendimentos médicos"
+2. Você IDENTIFICA 3 coisas no pedido:
+   (a) CNPJ DO EMITENTE = o cliente da carteira que vai assinar a NF (ex: 27998575000100 do DDA)
+   (b) VALOR, CNPJ/CPF DO TOMADOR, razão social, descrição
+3. Monta a tag com 5 campos:
+   [ACAO:EMITIR_NF:27998575000100|890.00|04406995927|Maysa Bittencourt|Atendimentos e Consultas medicas]
+
+SE A EQUIPE NÃO DISSER O CNPJ DO EMITENTE:
+- NÃO invente. NÃO use 4 campos. NÃO coloque tag nenhuma.
+- Pergunte: "Qual empresa vai emitir essa NF? Me passa o CNPJ dela pra eu emitir no nome certo."
+- Só dispara a tag DEPOIS que receber o CNPJ.
+
+UMA NF POR PEDIDO:
+- Inclua a tag [ACAO:EMITIR_NF:...] **UMA ÚNICA VEZ** por resposta, mesmo que você esteja explicando ou confirmando algo — colar a tag duas vezes não "emite duas notas", só confunde o sistema e pode ser rejeitado.
+- Se a equipe pedir duas NFs no mesmo texto, você ainda responde com UMA tag — e diz "essa eu emito agora, qual é a segunda?". Peça uma de cada vez.
+
+Regras de apoio:
+- Se o cliente emitente não tiver certificado A1, o dispatcher devolve erro claro ("Fulano não tem A1 configurado") — só passa pro operador e pede pra subir o certificado.
+- CNPJ do emitente = cliente da Marçal. CNPJ do tomador = pra quem o cliente vendeu/prestou.
 
 REGRAS IMPORTANTES NO MODO EQUIPE:
 - Quando executar qualquer ação acima, o sistema vai puxar os dados e devolver pra você na próxima mensagem do histórico — você NÃO precisa inventar a resposta
@@ -735,7 +753,21 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
         parametro: partes[1] || null
       });
     }
-    return acoes;
+    // Dedupe: remove ações duplicadas (mesmo tipo + mesmo parâmetro) na mesma resposta.
+    // Protege contra alucinação do modelo que às vezes anuncia "vou emitir as duas" e
+    // cola a tag duas vezes com parâmetros idênticos → emitiria 2 NFs na SEFIN.
+    const vistas = new Set();
+    const acoesDedup = [];
+    for (const a of acoes) {
+      const chave = `${a.tipo}::${a.parametro || ''}`;
+      if (vistas.has(chave)) {
+        console.warn(`[AgenteIA] Tag duplicada ignorada: ${chave.substring(0, 80)}`);
+        continue;
+      }
+      vistas.add(chave);
+      acoesDedup.push(a);
+    }
+    return acoesDedup;
   }
 
   /**
@@ -778,6 +810,17 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
             const partesDetectEmitente = acao.parametro.split('|');
             const primeiroLimpo = (partesDetectEmitente[0] || '').replace(/\D/g, '');
             const pareceCnpjEmitente = primeiroLimpo.length === 14 && partesDetectEmitente.length >= 5;
+
+            // GUARD MODO EQUIPE: em modo equipe (ou admin direto), NÃO aceitar formato de 4
+            // campos — isso emitiria pela Marçal por default. Emissão em nome da Marçal
+            // exige que a equipe explicite usando [ACAO:EMITIR_NF:<cnpj_marcal>|...] com
+            // 5 campos, pra garantir intenção.
+            const ehContextoEquipe = !!(contato?.modoEquipe?.ehEquipe || contato?.ehAdmin);
+            if (ehContextoEquipe && !pareceCnpjEmitente) {
+              console.log(`[WhatsApp] 🛑 EMITIR_NF bloqueado: modo equipe exige CNPJ do emitente como 1º campo (5 campos). Recebido: ${acao.parametro.substring(0, 100)}`);
+              acao.feedback = { sucesso: false, erro: 'Pra emitir em modo equipe preciso do CNPJ do cliente que vai emitir a NF como primeiro campo da tag. Me passa o CNPJ do emitente?' };
+              break;
+            }
             if (pareceCnpjEmitente) {
               const clienteEmitente = db.prepare(
                 `SELECT id, razao_social, certificado_a1_path, certificado_a1_senha_encrypted
