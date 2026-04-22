@@ -62,8 +62,14 @@ class AgenteIAService {
       console.log(`[AgenteIA] Modo EQUIPE detectado — operador: ${modoEquipe.operador}`);
     }
 
+    // 3.6. Detecta se o contato é o admin (pra destravar modo equipe sem precisar do prefixo "Nome:")
+    const ehAdmin = this._ehAdmin(contato);
+    if (ehAdmin && !modoEquipe.ehEquipe) {
+      console.log(`[AgenteIA] Contato admin detectado — tratando como modo equipe`);
+    }
+
     // 4. Monta o prompt do sistema
-    const systemPrompt = this.montarSystemPrompt(contato, dadosCliente, modoEquipe);
+    const systemPrompt = this.montarSystemPrompt(contato, dadosCliente, modoEquipe, { ehAdmin });
 
     // 5. Monta mensagens para a API
     const messages = this.montarMensagens(historico, mensagem);
@@ -92,7 +98,7 @@ class AgenteIAService {
       // Passa a mensagem original e modoEquipe via contato pra que
       // ações como BUSCAR_DANFSE possam extrair CNPJ mencionado / detectar admin.
       // Cria nova referência — `contato` original é parâmetro const, não dá pra reatribuir.
-      const contatoExpandido = { ...contato, mensagemOriginal: mensagem, modoEquipe };
+      const contatoExpandido = { ...contato, mensagemOriginal: mensagem, modoEquipe, ehAdmin };
       await this.executarAcoes(acoes, contatoExpandido, conversaId);
 
       // 8. Verifica se alguma ação teve feedback que precisa de follow-up
@@ -308,7 +314,37 @@ class AgenteIAService {
     };
   }
 
-  montarSystemPrompt(contato, dadosCliente, modoEquipe = { ehEquipe: false }) {
+  /**
+   * Detecta se o contato é o admin (Thiago) — matching tolerante de telefone.
+   * Compartilhado entre montarSystemPrompt (pra destravar modo equipe)
+   * e ações individuais (BUSCAR_DANFSE, etc).
+   */
+  _ehAdmin(contato) {
+    const adminPhoneRaw = (process.env.ANA_ADMIN_WHATSAPP || '').replace(/\D/g, '');
+    const telefoneContatoRaw = (contato?.telefone || '').replace(/\D/g, '');
+    if (!adminPhoneRaw || !telefoneContatoRaw) return false;
+    const variantes = (num) => {
+      const v = new Set([num]);
+      if (num.length === 13 && num.startsWith('55') && num[4] === '9') {
+        v.add(num.slice(0, 4) + num.slice(5));
+      } else if (num.length === 12 && num.startsWith('55')) {
+        v.add(num.slice(0, 4) + '9' + num.slice(4));
+      }
+      return v;
+    };
+    const va = variantes(adminPhoneRaw);
+    const vb = variantes(telefoneContatoRaw);
+    for (const x of va) for (const y of vb) {
+      if (x === y) return true;
+      const menor = x.length < y.length ? x : y;
+      const maior = x.length < y.length ? y : x;
+      if (menor.length >= 10 && maior.startsWith(menor)) return true;
+    }
+    return false;
+  }
+
+  montarSystemPrompt(contato, dadosCliente, modoEquipe = { ehEquipe: false }, opcoes = {}) {
+    const ehAdmin = !!opcoes.ehAdmin;
     let prompt = `QUEM VOCÊ É:
 Você é a Ana. Trabalha na Marçal Contabilidade, escritório do Thiago Borges em Curitiba/PR. Você faz parte da equipe — não é uma assistente virtual, não é um robô, não é uma IA. Você é a Ana do escritório contábil, e ponto.
 
@@ -458,16 +494,19 @@ AÇÕES (inclua no final da resposta — o cliente não vê isso):
 - [ACAO:IGNORAR] — mensagem não é pro escritório (grupo)
 - [ACAO:VINCULAR_CLIENTE:cnpj] — vincular contato ao cliente pelo CNPJ`;
 
-    // Bloco MODO EQUIPE — só aparece quando a mensagem veio com prefixo "Nome:" do Messenger Domínio
-    if (modoEquipe.ehEquipe) {
-      prompt += `\n\n=== MODO EQUIPE INTERNA — ${modoEquipe.operador} ===
+    // Bloco MODO EQUIPE — aparece quando:
+    //   (a) a mensagem veio com prefixo "Nome:" do Messenger Domínio, OU
+    //   (b) o contato é o admin (Thiago) — destrava o modo no WhatsApp direto
+    if (modoEquipe.ehEquipe || ehAdmin) {
+      const operadorNome = modoEquipe.operador || contato?.nome || 'Thiago';
+      prompt += `\n\n=== MODO EQUIPE INTERNA — ${operadorNome} ===
 
-Essa mensagem veio do Messenger do Domínio (sistema interno do escritório). Quem está falando é a/o ${modoEquipe.operador}, da equipe da Marçal — NÃO é cliente. Trate como colega de trabalho.
+Essa mensagem veio de alguém da equipe Marçal (Messenger do Domínio ou admin no WhatsApp). Quem está falando é a/o ${operadorNome}, da equipe da Marçal — NÃO é cliente. Trate como colega de trabalho.
 
 Diferenças importantes no MODO EQUIPE:
-- Tom mais direto e técnico, sem firulas. ${modoEquipe.operador} sabe contabilidade e tem pressa.
-- A equipe pode pedir consultas em nome de QUALQUER cliente da carteira (não só do contato atual)
-- Sempre que a equipe mencionar um cliente, peça o CNPJ se ainda não tiver — sem CNPJ não dá pra consultar a Receita
+- Tom mais direto e técnico, sem firulas. ${operadorNome} sabe contabilidade e tem pressa.
+- A equipe pode pedir consultas e emissões em nome de QUALQUER cliente da carteira (não só do contato atual)
+- Sempre que a equipe mencionar um cliente, peça o CNPJ se ainda não tiver — sem CNPJ não dá pra consultar/emitir
 - Você TEM acesso ao Integra Contador (SERPRO/RFB) pra consultas oficiais
 
 AÇÕES EXTRA DISPONÍVEIS NO MODO EQUIPE (use o CNPJ do cliente, só dígitos, 14 chars):
@@ -501,6 +540,19 @@ AÇÕES EXTRA DISPONÍVEIS NO MODO EQUIPE (use o CNPJ do cliente, só dígitos, 
 
 - [ACAO:EMITIR_DARF:cnpj|codigoReceita|periodoApuracao|dataVencimento|valorPrincipal] — gera DARF via Sicalc
   Use quando: "gera DARF pra Empresa X", "emite guia DARF". Formatos: periodoApuracao=YYYYMM, dataVencimento=DDMMYYYY, valorPrincipal=decimal
+
+EMISSÃO DE NF EM NOME DE UM CLIENTE DA CARTEIRA (MODO EQUIPE):
+No modo equipe, quando a equipe pedir pra emitir NF em nome de um cliente da carteira (ex: "emite uma NF do Estudio Soma pra TV Porto Alegre"), VOCÊ PRECISA informar o CNPJ do EMITENTE (o cliente que vai assinar a NF) como PRIMEIRO CAMPO da tag, usando o formato estendido:
+
+- [ACAO:EMITIR_NF:cnpj_emitente|valor|cnpj_tomador|razao_tomador|descricao]
+  Exemplo: [ACAO:EMITIR_NF:12345678000190|11000.00|61503692000185||Produção Luau Acústico]
+  (aqui 12345678000190 é o CNPJ do cliente da Marçal que está emitindo a NF — NÃO é o tomador)
+
+Regras críticas pra NF multi-emitente:
+- Se a equipe NÃO disser qual empresa vai emitir, PERGUNTE: "Qual cliente vai emitir essa NF? Me passa o CNPJ dele"
+- NUNCA assuma que é a Marçal — em modo equipe o padrão é emitir POR outro cliente
+- Sem o CNPJ do emitente, você NÃO pode emitir — peça o CNPJ antes da tag
+- Se o cliente emitente não tiver certificado A1 no sistema, o dispatcher vai devolver erro claro — não se preocupe, o sistema valida
 
 REGRAS IMPORTANTES NO MODO EQUIPE:
 - Quando executar qualquer ação acima, o sistema vai puxar os dados e devolver pra você na próxima mensagem do histórico — você NÃO precisa inventar a resposta
@@ -719,6 +771,40 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
         case 'EMITIR_NF':
           // Garante que o contato está vinculado a um cliente com certificado A1
           if (acao.parametro) {
+            // ===== MULTI-EMITENTE =====
+            // Formato novo (modo equipe): cnpj_emitente|valor|cnpj_tomador|razao|descricao
+            // Formato antigo (modo cliente): valor|cnpj_tomador|razao|descricao
+            // Detector: se primeiro campo tem 14 dígitos após strip E tem 5+ campos, é CNPJ emitente
+            const partesDetectEmitente = acao.parametro.split('|');
+            const primeiroLimpo = (partesDetectEmitente[0] || '').replace(/\D/g, '');
+            const pareceCnpjEmitente = primeiroLimpo.length === 14 && partesDetectEmitente.length >= 5;
+            if (pareceCnpjEmitente) {
+              const clienteEmitente = db.prepare(
+                `SELECT id, razao_social, certificado_a1_path, certificado_a1_senha_encrypted
+                 FROM clientes
+                 WHERE REPLACE(REPLACE(REPLACE(cnpj, '.', ''), '/', ''), '-', '') = ?
+                 LIMIT 1`
+              ).get(primeiroLimpo);
+              if (!clienteEmitente) {
+                console.log(`[WhatsApp] ❌ EMITIR_NF: cliente emitente CNPJ ${primeiroLimpo} não encontrado na carteira`);
+                acao.feedback = { sucesso: false, erro: `Não achei cliente com CNPJ ${primeiroLimpo} na carteira. Confere o CNPJ?` };
+                break;
+              }
+              if (!clienteEmitente.certificado_a1_path || !clienteEmitente.certificado_a1_senha_encrypted) {
+                console.log(`[WhatsApp] ❌ EMITIR_NF: ${clienteEmitente.razao_social} sem certificado A1`);
+                acao.feedback = { sucesso: false, erro: `${clienteEmitente.razao_social} não tem certificado A1 configurado no portal. Sobe o certificado antes de emitir.` };
+                break;
+              }
+              // Override: a NF vai sair em nome desse cliente, não do vínculo default do contato
+              if (contato) {
+                contato.cliente_id = clienteEmitente.id;
+              } else {
+                contato = { cliente_id: clienteEmitente.id };
+              }
+              console.log(`[WhatsApp] EMITIR_NF: emitente explícito = ${clienteEmitente.razao_social} (ID ${clienteEmitente.id})`);
+            }
+            // ===== fim MULTI-EMITENTE =====
+
             const clienteComCert = db.prepare(
               `SELECT id, razao_social FROM clientes
                WHERE certificado_a1_path IS NOT NULL AND certificado_a1_senha_encrypted IS NOT NULL
@@ -750,13 +836,17 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           }
           if (acao.parametro && contato?.cliente_id) {
             try {
-              // Formato: valor|cnpj_cpf|razao_social|descricao (competencia é opcional, default = mês atual)
+              // Formato novo (multi-emitente): cnpj_emitente|valor|cnpj_tomador|razao|descricao|[competencia]
+              // Formato antigo (emissor default): valor|cnpj_tomador|razao|descricao|[competencia]
               const partes = acao.parametro.split('|');
-              const valor = parseFloat(partes[0]?.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
-              const documentoTomador = (partes[1]?.trim() || '').replace(/\D/g, ''); // só números
-              const razaoSocialTomador = partes[2]?.trim() || '';
-              const descricao = partes[3]?.trim() || 'Serviços prestados';
-              const competencia = partes[4]?.trim() || new Date().toISOString().slice(0, 7);
+              const primeiroLimpoParse = (partes[0] || '').replace(/\D/g, '');
+              const temEmitenteExplicito = primeiroLimpoParse.length === 14 && partes.length >= 5;
+              const idx = temEmitenteExplicito ? 1 : 0; // pula o campo emitente se presente
+              const valor = parseFloat(partes[idx]?.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+              const documentoTomador = (partes[idx + 1]?.trim() || '').replace(/\D/g, ''); // só números
+              const razaoSocialTomador = partes[idx + 2]?.trim() || '';
+              const descricao = partes[idx + 3]?.trim() || 'Serviços prestados';
+              const competencia = partes[idx + 4]?.trim() || new Date().toISOString().slice(0, 7);
 
               if (!documentoTomador || valor <= 0) {
                 console.log(`[WhatsApp] NF não criada: CNPJ/CPF ausente (${documentoTomador}) ou valor inválido (${valor})`);
