@@ -78,6 +78,7 @@ class AgenteIAService {
         .filter(Boolean);
       const tel = String(telefone || '');
       const ehGrupoStaff = staffGroups.some(id => tel === id || tel.includes(id));
+      console.log(`[AgenteIA] staff-check: tel="${tel}" env.len=${(process.env.ANA_STAFF_GROUP_IDS||'').length} groups=${JSON.stringify(staffGroups)} match=${ehGrupoStaff}`);
       if (ehGrupoStaff) {
         const pushMatch = mensagem.match(/^\[([^\]]+)\]\s*([\s\S]*)/);
         modoEquipe = {
