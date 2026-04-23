@@ -2661,3 +2661,57 @@ tbody tr:hover { background: var(--bg-hover); }
   .serpro-banner { flex-direction: column; align-items: flex-start; }
   .serpro-banner-btn { width: 100%; }
 }
+
+
+/* =====================================================
+ * API DOMINIO — card de status
+ * ===================================================== */
+.dominio-status-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  border-radius: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(6px);
+  position: relative;
+  overflow: hidden;
+}
+.dominio-status-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--dominio-accent) 10%, transparent), transparent 60%);
+  pointer-events: none;
+}
+.dominio-status-card.ok { --dominio-accent: var(--success); border-color: color-mix(in srgb, var(--success) 35%, var(--border-subtle)); box-shadow: 0 0 24px rgba(16, 185, 129, 0.15); }
+.dominio-status-card.erro { --dominio-accent: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--border-subtle)); box-shadow: 0 0 24px rgba(239, 68, 68, 0.15); }
+.dominio-status-card.warn { --dominio-accent: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, var(--border-subtle)); box-shadow: 0 0 24px rgba(245, 158, 11, 0.12); }
+
+.dominio-status-icon {
+  width: 52px; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem; font-weight: 700;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--dominio-accent) 18%, transparent);
+  color: var(--dominio-accent);
+  border: 1px solid color-mix(in srgb, var(--dominio-accent) 30%, transparent);
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.dominio-status-body { flex: 1; min-width: 0; z-index: 1; position: relative; }
+.dominio-status-title { font-size: 1rem; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.dominio-status-sub { font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
+.dominio-status-sub code {
+  font-family: var(--font-mono); font-size: 0.76rem;
+  padding: 1px 6px; background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle); border-radius: 4px;
+  color: var(--secondary); margin: 0 2px;
+}
+
+.dominio-config-table { width: 100%; border-collapse: collapse; }
+.dominio-config-table td { padding: 8px 10px; font-size: 0.88rem; border-bottom: 1px solid var(--border-subtle); }
+.dominio-config-table td:first-child { color: var(--text-muted); width: 160px; font-weight: 500; }
+.dominio-config-table td code { font-family: var(--font-mono); font-size: 0.8rem; color: var(--secondary); }

@@ -19,6 +19,7 @@ import OperacoesHoje from './pages/escritorio/OperacoesHoje';
 import FilaAprovacaoAna from './pages/escritorio/FilaAprovacaoAna';
 import CertificadoSerpro from './pages/escritorio/CertificadoSerpro';
 import IntegraContador from './pages/escritorio/IntegraContador';
+import ApiDominio from './pages/escritorio/ApiDominio';
 import Apuracao from './pages/escritorio/Apuracao';
 import Entregas from './pages/escritorio/Entregas';
 
@@ -63,6 +64,7 @@ function App() {
             <Route path="certificados" element={<Certificados />} />
             <Route path="certificado-serpro" element={<CertificadoSerpro />} />
             <Route path="integra-contador" element={<IntegraContador />} />
+            <Route path="dominio" element={<ApiDominio />} />
             <Route path="whatsapp" element={<WhatsAppPainel />} />
             <Route path="ana" element={<PainelAna />} />
             <Route path="relatorios" element={<Relatorios />} />
