@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS clientes (
   certificado_a1_path TEXT, -- caminho do arquivo .pfx
   certificado_a1_senha_encrypted TEXT, -- senha do certificado (criptografada)
   certificado_validade DATE,
+  -- Integracao Dominio (Thomson Reuters / Onvio)
+  dominio_integration_key TEXT,
 
   -- Permissões
   modo_emissao TEXT NOT NULL DEFAULT 'aprovacao', -- 'autonomo' ou 'aprovacao'

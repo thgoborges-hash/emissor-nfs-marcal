@@ -33,6 +33,17 @@ function initDatabase() {
     console.warn('[migration] entregas_mensais.fonte:', e.message);
   }
 
+  // Migração idempotente: adiciona dominio_integration_key em clientes
+  try {
+    const cols = db.prepare("PRAGMA table_info(clientes)").all();
+    if (!cols.some(c => c.name === 'dominio_integration_key')) {
+      db.exec("ALTER TABLE clientes ADD COLUMN dominio_integration_key TEXT");
+      console.log('[migration] clientes.dominio_integration_key adicionada');
+    }
+  } catch (e) {
+    console.warn('[migration] clientes.dominio_integration_key:', e.message);
+  }
+
   // Insere dados iniciais se o banco estiver vazio
   const escritorioCount = db.prepare('SELECT COUNT(*) as count FROM escritorio').get();
   if (escritorioCount.count === 0) {

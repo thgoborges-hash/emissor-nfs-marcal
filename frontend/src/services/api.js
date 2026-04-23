@@ -152,4 +152,19 @@ export const entregasApi = {
   atualizarStatus: (dados) => api.post('/entregas/status', dados),
 };
 
+
+
+// === DOMINIO (Thomson Reuters / Onvio) ===
+export const dominioApi = {
+  status: () => api.get('/dominio/status'),
+  testarAutenticacao: () => api.post('/dominio/autenticar/teste'),
+  verificarAtivacao: (clienteId) => api.get(`/dominio/clientes/${clienteId}/ativacao`),
+  cadastrarKey: (clienteId, integrationKey) => api.post(`/dominio/clientes/${clienteId}/integration-key`, { integrationKey }),
+  ativar: (clienteId) => api.post(`/dominio/clientes/${clienteId}/ativar`),
+  enviarXml: (clienteId, formData) => api.post(`/dominio/clientes/${clienteId}/enviar-xml`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  consultarLote: (clienteId, loteId) => api.get(`/dominio/clientes/${clienteId}/lote/${loteId}`),
+};
+
 export default api;
