@@ -245,16 +245,29 @@ class IntegraContadorService {
    * Lista mensagens da Caixa Postal do e-CAC (útil pra alertar a equipe)
    */
   async listarMensagensCaixaPostal(cnpjContribuinte) {
-    const servico = config.servicos.CAIXAPOSTAL.LISTAR_MENSAGENS;
-    return await this.chamar('Monitorar', cnpjContribuinte, 'CAIXAPOSTAL', servico.idServico, servico.versao, {});
+    // MSGCONTRIBUINTE61 e acao Consultar (nao Monitorar).
+    // Pra monitoracao de novas mensagens existe INNOVAMSG63 (INDICADOR_MENSAGENS).
+    const servico = config.servicos.CAIXAPOSTAL && config.servicos.CAIXAPOSTAL.LISTAR_MENSAGENS;
+    if (!servico) throw new Error('CAIXAPOSTAL.LISTAR_MENSAGENS nao mapeado no config.');
+    return await this.chamar('Consultar', cnpjContribuinte, 'CAIXAPOSTAL', servico.idServico, servico.versao, {});
   }
 
   /**
    * Consulta relação de DCTFWeb entregues
    */
-  async consultarRelacaoDCTFWeb(cnpjContribuinte) {
-    const servico = config.servicos.DCTFWEB.CONSULTAR_RELACAO;
-    return await this.chamar('Consultar', cnpjContribuinte, 'DCTFWEB', servico.idServico, servico.versao, {});
+  async consultarRelacaoDCTFWeb(cnpjContribuinte, periodoApuracao) {
+    // O catalogo SERPRO nao tem "consultar relacao" direto para DCTFWeb.
+    // Usamos CONSULTAR_DEC_COMPLETA passando periodoApuracao. Se retornar dados,
+    // a DCTFWeb daquele periodo foi transmitida; se der 404/vazio, nao foi.
+    const servico = config.servicos.DCTFWEB && config.servicos.DCTFWEB.CONSULTAR_DEC_COMPLETA;
+    if (!servico) throw new Error('DCTFWEB.CONSULTAR_DEC_COMPLETA nao mapeado no config.');
+    if (!periodoApuracao) {
+      const d = new Date();
+      const anoAlvo = d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear();
+      const mesAlvo = d.getMonth() === 0 ? 12 : d.getMonth();
+      periodoApuracao = `${anoAlvo}${String(mesAlvo).padStart(2, '0')}`;
+    }
+    return await this.chamar('Consultar', cnpjContribuinte, 'DCTFWEB', servico.idServico, servico.versao, { periodoApuracao });
   }
 
 

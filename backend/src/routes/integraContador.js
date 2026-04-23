@@ -323,6 +323,16 @@ router.get('/snapshot/dctfweb/resumo', (req, res) => {
   }
 });
 
+// GET /api/integra-contador/snapshot/diagnostico — agregado por obrigacao/status
+router.get('/snapshot/diagnostico', (req, res) => {
+  try {
+    res.json(serproSnapshotService.diagnosticoSnapshot());
+  } catch (err) {
+    console.error('[IntegraContador] Erro diagnostico:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 // POST /api/integra-contador/snapshot/rodar — dispara varredura manual (admin)
 // Perigoso — vai bater em 156 clientes com intervalo de 5s (~13 min + SERPRO latencia).
 // Executa em background e retorna imediato.

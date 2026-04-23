@@ -71,7 +71,12 @@ async function _coletarPorCliente(cliente) {
 
   // DCTFWeb — classifica status: em_dia | atrasada | pendente | sem_dados
   try {
-    const r = await integraContadorService.consultarRelacaoDCTFWeb(cnpj);
+    // Competencia alvo = mes anterior (o DCTFWeb do mes passado vence dia 15 deste)
+    const hoje = new Date();
+    const anoAlvo = hoje.getMonth() === 0 ? hoje.getFullYear() - 1 : hoje.getFullYear();
+    const mesAlvo = hoje.getMonth() === 0 ? 12 : hoje.getMonth();
+    const periodoApuracaoAlvo = `${anoAlvo}${String(mesAlvo).padStart(2, '0')}`;
+    const r = await integraContadorService.consultarRelacaoDCTFWeb(cnpj, periodoApuracaoAlvo);
     const dados = (r && r.dados) || r;
     const parsed = typeof dados === 'string' ? tryJson(dados) : dados;
     const declaracoes = Array.isArray(parsed) ? parsed : (parsed && (parsed.declaracoes || parsed.lista)) || [];
@@ -125,6 +130,11 @@ function _classificarDctfweb(declaracoes) {
   const nomeMes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][mesAlvo - 1];
   const rotuloCompet = `${nomeMes}/${anoAlvo}`;
 
+  // Se o retorno e objeto unico (CONSULTAR_DEC_COMPLETA retorna 1 declaracao),
+  // trata como lista de 1 item ANTES de checar vazio.
+  if (!Array.isArray(declaracoes) && typeof declaracoes === 'object' && declaracoes && Object.keys(declaracoes).length > 0) {
+    declaracoes = [declaracoes];
+  }
   if (!Array.isArray(declaracoes) || declaracoes.length === 0) {
     return {
       status: 'sem_dados',
@@ -133,6 +143,11 @@ function _classificarDctfweb(declaracoes) {
     };
   }
 
+  // Objeto unico ja normalizado acima
+  // trata como lista de 1 item
+  if (!Array.isArray(declaracoes) && typeof declaracoes === 'object' && declaracoes) {
+    declaracoes = [declaracoes];
+  }
   // Normaliza e procura declaracao do mes alvo
   const match = declaracoes.find(d => {
     const comp = String(d.periodoApuracao || d.competencia || d.periodo || '').replace(/\D/g, '');
@@ -260,6 +275,50 @@ function lerSnapshotsTodos() {
   `).all();
 }
 
+
+
+/**
+ * Diagnostico agregado dos snapshots — util pra ver distribuicao de status
+ * por obrigacao, identificar falhas sistemicas (ex: procuracao faltando).
+ */
+function diagnosticoSnapshot() {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT so.obrigacao, so.status, COUNT(*) as total,
+           COUNT(DISTINCT so.cliente_id) as clientes,
+           MAX(so.atualizado_em) as ultima
+    FROM snapshot_obrigacoes so
+    INNER JOIN clientes c ON c.id = so.cliente_id
+    WHERE c.ativo = 1
+    GROUP BY so.obrigacao, so.status
+    ORDER BY so.obrigacao, so.status
+  `).all();
+
+  // Amostra de erros unicos (pra diagnostico)
+  const erros = db.prepare(`
+    SELECT erro, COUNT(*) as total
+    FROM snapshot_obrigacoes so
+    INNER JOIN clientes c ON c.id = so.cliente_id
+    WHERE so.status = 'erro' AND c.ativo = 1 AND so.erro IS NOT NULL
+    GROUP BY erro
+    ORDER BY total DESC
+    LIMIT 10
+  `).all();
+
+  // Estrutura por obrigacao
+  const porObrigacao = {};
+  for (const r of rows) {
+    if (!porObrigacao[r.obrigacao]) porObrigacao[r.obrigacao] = { total_rows: 0, status: {}, ultima: null };
+    porObrigacao[r.obrigacao].status[r.status] = { total: r.total, clientes: r.clientes };
+    porObrigacao[r.obrigacao].total_rows += r.total;
+    if (!porObrigacao[r.obrigacao].ultima || r.ultima > porObrigacao[r.obrigacao].ultima) {
+      porObrigacao[r.obrigacao].ultima = r.ultima;
+    }
+  }
+
+  return { por_obrigacao: porObrigacao, erros_top: erros };
+}
+
 module.exports = {
   rodarSnapshotCompleto,
   iniciarCron,
@@ -267,4 +326,5 @@ module.exports = {
   lerSnapshotsTodos,
   resumoDctfwebCarteira,
   listarClientesDctfwebAtrasados,
+  diagnosticoSnapshot,
 };
