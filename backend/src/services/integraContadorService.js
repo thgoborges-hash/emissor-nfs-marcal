@@ -217,11 +217,17 @@ class IntegraContadorService {
   /**
    * Consulta última declaração PGDAS-D transmitida
    */
-  async consultarUltimaDeclaracaoPGDASD(cnpjContribuinte, anoCalendario) {
-    // CONSULTIMADECREC14 exige anoCalendario. Default: ano atual.
+  async consultarUltimaDeclaracaoPGDASD(cnpjContribuinte, periodoApuracao) {
+    // CONSULTIMADECREC14 exige periodoApuracao no formato YYYYMM.
+    // Default: mes anterior (ultima declaracao plausivel ja transmitida).
     const servico = config.servicos.PGDASD.CONSULTAR_ULTIMA_DECLARACAO;
-    const ano = anoCalendario || String(new Date().getFullYear());
-    return await this.chamar('Consultar', cnpjContribuinte, 'PGDASD', servico.idServico, servico.versao, { anoCalendario: ano });
+    if (\!periodoApuracao) {
+      const d = new Date();
+      const anoAlvo = d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear();
+      const mesAlvo = d.getMonth() === 0 ? 12 : d.getMonth();
+      periodoApuracao = `${anoAlvo}${String(mesAlvo).padStart(2, '0')}`;
+    }
+    return await this.chamar('Consultar', cnpjContribuinte, 'PGDASD', servico.idServico, servico.versao, { periodoApuracao });
   }
 
   /**
