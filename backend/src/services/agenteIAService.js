@@ -77,8 +77,12 @@ class AgenteIAService {
         .map(s => s.trim())
         .filter(Boolean);
       const tel = String(telefone || '');
-      const ehGrupoStaff = staffGroups.some(id => tel === id || tel.includes(id));
-      console.log(`[AgenteIA] staff-check: tel="${tel}" env.len=${(process.env.ANA_STAFF_GROUP_IDS||'').length} groups=${JSON.stringify(staffGroups)} match=${ehGrupoStaff}`);
+      // Z-API entrega grupos como "<id>-group@g.us"; na env.var normalmente o user
+      // salva "<id>@g.us" (sem -group). Comparar só o prefixo numérico cobre ambos.
+      const extrairIdNum = (str) => (String(str).match(/^(\d+)/) || [])[1] || '';
+      const telId = extrairIdNum(tel);
+      const ehGrupoStaff = !!telId && staffGroups.some(id => extrairIdNum(id) === telId);
+      console.log(`[AgenteIA] staff-check: tel="${tel}" telId="${telId}" groups=${JSON.stringify(staffGroups)} match=${ehGrupoStaff}`);
       if (ehGrupoStaff) {
         const pushMatch = mensagem.match(/^\[([^\]]+)\]\s*([\s\S]*)/);
         modoEquipe = {
