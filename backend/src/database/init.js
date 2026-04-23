@@ -74,6 +74,19 @@ function initDatabase() {
     console.warn('[migration] desativar testes:', e.message);
   }
 
+  // Migração: desativa clientes específicos que o Thiago pediu (23/04/2026)
+  try {
+    const patterns = ['%4PAY%', '%SBARAINI%', '%SBENX%', '%LMM %', '%LMM ADMIN%',
+                      '%TITLES%', '%ALASKA%', '%EVOLUA%'];
+    const stmt = db.prepare(`UPDATE clientes SET ativo = 0, updated_at = CURRENT_TIMESTAMP
+                             WHERE ativo = 1 AND razao_social LIKE ?`);
+    let totalDesat = 0;
+    for (const pat of patterns) totalDesat += stmt.run(pat).changes;
+    if (totalDesat > 0) console.log('[migration] desativados ' + totalDesat + ' cliente(s) de lista Thiago 23/04');
+  } catch (e) {
+    console.warn('[migration] desativar lista Thiago:', e.message);
+  }
+
   // Migração idempotente: adiciona dominio_integration_key em clientes
   try {
     const cols = db.prepare("PRAGMA table_info(clientes)").all();
