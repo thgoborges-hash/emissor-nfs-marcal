@@ -299,16 +299,6 @@ router.get('/snapshot', async (req, res) => {
   }
 });
 
-// GET /api/integra-contador/snapshot/:clienteId — detalhe por cliente
-router.get('/snapshot/:clienteId', async (req, res) => {
-  try {
-    const dados = serproSnapshotService.lerSnapshot(parseInt(req.params.clienteId));
-    res.json({ clienteId: parseInt(req.params.clienteId), dados });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
 // GET /api/integra-contador/snapshot/dctfweb/resumo — agregado DCTFWeb da carteira
 // Alimenta o card destaque na home (clientes em atraso = risco de multa pro escritorio).
 router.get('/snapshot/dctfweb/resumo', (req, res) => {
@@ -329,6 +319,16 @@ router.get('/snapshot/diagnostico', (req, res) => {
     res.json(serproSnapshotService.diagnosticoSnapshot());
   } catch (err) {
     console.error('[IntegraContador] Erro diagnostico:', err.message);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// GET /api/integra-contador/snapshot/:clienteId — detalhe por cliente
+router.get('/snapshot/:clienteId', async (req, res) => {
+  try {
+    const dados = serproSnapshotService.lerSnapshot(parseInt(req.params.clienteId));
+    res.json({ clienteId: parseInt(req.params.clienteId), dados });
+  } catch (err) {
     res.status(500).json({ erro: err.message });
   }
 });

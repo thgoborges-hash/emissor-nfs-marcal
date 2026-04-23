@@ -217,9 +217,11 @@ class IntegraContadorService {
   /**
    * Consulta última declaração PGDAS-D transmitida
    */
-  async consultarUltimaDeclaracaoPGDASD(cnpjContribuinte) {
+  async consultarUltimaDeclaracaoPGDASD(cnpjContribuinte, anoCalendario) {
+    // CONSULTIMADECREC14 exige anoCalendario. Default: ano atual.
     const servico = config.servicos.PGDASD.CONSULTAR_ULTIMA_DECLARACAO;
-    return await this.chamar('Consultar', cnpjContribuinte, 'PGDASD', servico.idServico, servico.versao, {});
+    const ano = anoCalendario || String(new Date().getFullYear());
+    return await this.chamar('Consultar', cnpjContribuinte, 'PGDASD', servico.idServico, servico.versao, { anoCalendario: ano });
   }
 
   /**
@@ -256,9 +258,8 @@ class IntegraContadorService {
    * Consulta relação de DCTFWeb entregues
    */
   async consultarRelacaoDCTFWeb(cnpjContribuinte, periodoApuracao) {
-    // O catalogo SERPRO nao tem "consultar relacao" direto para DCTFWeb.
-    // Usamos CONSULTAR_DEC_COMPLETA passando periodoApuracao. Se retornar dados,
-    // a DCTFWeb daquele periodo foi transmitida; se der 404/vazio, nao foi.
+    // CONSDECCOMPLETA33 exige anoPA + mesPA + categoria (nao periodoApuracao).
+    // Categoria GERAL_MENSAL (codigo 11) = DCTFWeb mensal normal.
     const servico = config.servicos.DCTFWEB && config.servicos.DCTFWEB.CONSULTAR_DEC_COMPLETA;
     if (!servico) throw new Error('DCTFWEB.CONSULTAR_DEC_COMPLETA nao mapeado no config.');
     if (!periodoApuracao) {
@@ -267,7 +268,10 @@ class IntegraContadorService {
       const mesAlvo = d.getMonth() === 0 ? 12 : d.getMonth();
       periodoApuracao = `${anoAlvo}${String(mesAlvo).padStart(2, '0')}`;
     }
-    return await this.chamar('Consultar', cnpjContribuinte, 'DCTFWEB', servico.idServico, servico.versao, { periodoApuracao });
+    const anoPA = periodoApuracao.slice(0, 4);
+    const mesPA = periodoApuracao.slice(4, 6);
+    const dados = { anoPA, mesPA, categoria: 'GERAL_MENSAL' };
+    return await this.chamar('Consultar', cnpjContribuinte, 'DCTFWEB', servico.idServico, servico.versao, dados);
   }
 
 
