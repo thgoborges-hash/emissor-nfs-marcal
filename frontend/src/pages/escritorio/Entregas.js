@@ -137,6 +137,7 @@ export default function Entregas() {
         <span className="leg-item leg-ok">✓<span>em dia</span></span>
         <span className="leg-item leg-pend">○<span>pendente</span></span>
         <span className="leg-item leg-atr">!<span>atrasada</span></span>
+        <span className="leg-item leg-block">⚠<span>procuração pendente</span></span>
         <span className="leg-item leg-na">—<span>não aplicável</span></span>
         <span className="leg-item leg-manual">·<span>aguardando manual</span></span>
       </div>
@@ -322,10 +323,12 @@ export default function Entregas() {
                   const isInativa = !isColSerpro && !isSerpro && !marcadaEquipe;
                   const titleTxt = isInativa
                     ? `${dados.nomes_tipos[t]}: aguardando marcação manual (sem integração automática). Clique pra marcar como OK.`
-                    : `${dados.nomes_tipos[t]}: ${e.status}`
-                      + (e.resumo ? ` · ${e.resumo}` : '')
-                      + (e.responsavel && !isSerpro ? ` · ${e.responsavel}` : '')
-                      + (isSerpro ? ' · ⚡ SERPRO' : '');
+                    : e.status === 'bloqueado'
+                      ? `${dados.nomes_tipos[t]}: bloqueado — SERPRO não conseguiu consultar. Provável procuração Integra Contador não outorgada ou sem os serviços marcados no e-CAC. Revisar procuração desse cliente pra Marçal (CNPJ 36.749.464/0001-42).`
+                      : `${dados.nomes_tipos[t]}: ${e.status}`
+                        + (e.resumo ? ` · ${e.resumo}` : '')
+                        + (e.responsavel && !isSerpro ? ` · ${e.responsavel}` : '')
+                        + (isSerpro ? ' · ⚡ SERPRO' : '');
                   return (
                     <td key={t} style={{ textAlign: 'center', position: 'relative' }}>
                       <button
@@ -336,7 +339,8 @@ export default function Entregas() {
                         {isInativa ? '·' :
                           (e.status === 'ok' && '✓') ||
                           (e.status === 'pendente' && '○') ||
-                          (e.status === 'atrasado' && '!')}
+                          (e.status === 'atrasado' && '!') ||
+                          (e.status === 'bloqueado' && '⚠')}
                       </button>
                       {isSerpro && <span className="cell-serpro-dot" title="Via SERPRO">⚡</span>}
                     </td>

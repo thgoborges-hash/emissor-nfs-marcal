@@ -73,6 +73,7 @@ class EntregasService {
     const concluidas = ativas.filter(e => e.status === 'ok').length;
     const atrasadas = ativas.filter(e => e.status === 'atrasado').length;
     const pendentes = ativas.filter(e => e.status === 'pendente').length;
+    const bloqueadas = ativas.filter(e => e.status === 'bloqueado').length;
     const pctCompleto = ativas.length > 0 ? concluidas / ativas.length : 0;
 
     const clientesMap = {};
@@ -100,6 +101,7 @@ class EntregasService {
           if (e.status === 'ok') c.ok++;
           if (e.status === 'pendente') c.pendentes++;
           if (e.status === 'atrasado') c.atrasadas++;
+          if (e.status === 'bloqueado') c.bloqueadas = (c.bloqueadas || 0) + 1;
         }
       }
     });
@@ -152,8 +154,8 @@ class EntregasService {
         pct_completo: pctCompleto,
         total_entregas: total,
         aplicaveis: aplicaveis.length,
-        ativas: ativas.length,  // novo: quantas estao sendo acompanhadas de fato
-        concluidas, pendentes, atrasadas,
+        ativas: ativas.length,
+        concluidas, pendentes, atrasadas, bloqueadas,
         clientes_total: clientes.length,
         clientes_ok: clientesOk,
         clientes_com_atraso: clientesComAtraso,
@@ -193,7 +195,7 @@ class EntregasService {
   _mergeSnapshotSerpro(competencia) {
     const db = getDb();
     const snaps = db.prepare(`
-      SELECT so.cliente_id, so.obrigacao, so.status, so.resumo, so.atualizado_em
+      SELECT so.cliente_id, so.obrigacao, so.status, so.resumo, so.erro, so.atualizado_em
       FROM snapshot_obrigacoes so
       INNER JOIN clientes c ON c.id = so.cliente_id
       WHERE so.obrigacao IN ('DCTFWEB', 'PGDASD')
@@ -215,8 +217,18 @@ class EntregasService {
     const tx = db.transaction(() => {
       for (const s of snaps) {
         const tipo = MAP_SNAPSHOT_PARA_TIPO[s.obrigacao];
-        const novoStatus = MAP_STATUS[s.status];
-        if (!tipo || !novoStatus) continue;
+        if (!tipo) continue;
+
+        let novoStatus = MAP_STATUS[s.status];
+
+        // Caso especial: snapshot.status='erro' — tentamos consultar mas SERPRO barrou.
+        // Se e erro de procuracao (ICGERENCIADOR-022), marca como 'bloqueado' pra sinalizar
+        // que precisa acao operacional no e-CAC. Outros erros SERPRO tambem viram bloqueado.
+        if (!novoStatus && s.status === 'erro') {
+          novoStatus = 'bloqueado';
+        }
+
+        if (!novoStatus) continue;
         const r = updateStmt.run(novoStatus, s.cliente_id, competencia, tipo);
         if (r.changes > 0) {
           atualizadas++;

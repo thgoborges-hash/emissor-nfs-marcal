@@ -2805,3 +2805,31 @@ tbody tr:hover { background: var(--bg-hover); }
 .leg-atr { color: var(--danger); background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.25); }
 .leg-na { color: var(--text-muted); }
 .leg-manual { color: var(--text-muted); opacity: 0.6; }
+
+
+/* =====================================================
+ * ENTREGAS — status "bloqueado" (procuração pendente)
+ * ===================================================== */
+.cell-status.bloqueado {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: var(--warning);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+  font-weight: 700;
+}
+.cell-status.bloqueado:hover {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: var(--warning);
+}
+.leg-item.leg-block {
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+/* Pct pill tambem trata bloqueado (se cliente tem 100% mas com bloqueios) */
+.pct-pill.com-bloqueio {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
