@@ -22,6 +22,17 @@ function initDatabase() {
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
   db.exec(schema);
 
+  // Migração idempotente: adiciona coluna fonte em entregas_mensais pra instalações existentes
+  try {
+    const cols = db.prepare("PRAGMA table_info(entregas_mensais)").all();
+    if (!cols.some(c => c.name === 'fonte')) {
+      db.exec("ALTER TABLE entregas_mensais ADD COLUMN fonte TEXT DEFAULT 'manual'");
+      console.log('[migration] entregas_mensais.fonte adicionada');
+    }
+  } catch (e) {
+    console.warn('[migration] entregas_mensais.fonte:', e.message);
+  }
+
   // Insere dados iniciais se o banco estiver vazio
   const escritorioCount = db.prepare('SELECT COUNT(*) as count FROM escritorio').get();
   if (escritorioCount.count === 0) {

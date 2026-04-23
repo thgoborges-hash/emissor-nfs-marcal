@@ -2521,3 +2521,143 @@ tbody tr:hover { background: var(--bg-hover); }
   .login-orb-1 { width: 360px; height: 360px; }
   .login-orb-2 { width: 280px; height: 280px; }
 }
+
+
+/* =====================================================
+ * ENTREGAS v2 — banner SERPRO + badges de fonte
+ * ===================================================== */
+.serpro-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-top: 14px;
+  border-radius: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(6px);
+}
+.serpro-banner.ativo {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, transparent 70%), var(--bg-card);
+  border-color: rgba(139, 92, 246, 0.28);
+}
+.serpro-banner.inativo {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.06) 0%, transparent 70%), var(--bg-card);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.serpro-banner-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.serpro-banner-icon {
+  font-size: 1.6rem;
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 12px;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+.serpro-banner.inativo .serpro-banner-icon {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+.serpro-banner-title { font-size: 0.95rem; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.serpro-banner-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; }
+.serpro-banner-btn {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--primary);
+  color: var(--primary-hover);
+  background: rgba(139, 92, 246, 0.1);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 160ms ease, transform 160ms ease, box-shadow 220ms ease;
+}
+.serpro-banner-btn:hover:not(:disabled) {
+  background: rgba(139, 92, 246, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.25);
+}
+.serpro-banner-btn:disabled { opacity: 0.6; cursor: wait; }
+
+/* Tag ⚡ auto no gráfico de barras */
+.serpro-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--primary-hover);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  margin-left: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Mini ⚡ no cabeçalho da coluna */
+.serpro-tag-mini {
+  font-size: 0.7rem;
+  color: var(--primary-hover);
+  margin-left: 4px;
+  opacity: 0.9;
+}
+
+/* Tag ⚡ SERPRO inline na nota final */
+.serpro-tag-inline {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--primary-hover);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  letter-spacing: 0.04em;
+  margin-right: 6px;
+}
+
+/* Ponto ⚡ pequeno sobre célula vinda do SERPRO */
+.cell-serpro-dot {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 0.65rem;
+  color: var(--primary-hover);
+  text-shadow: 0 0 6px rgba(139, 92, 246, 0.6);
+  pointer-events: none;
+}
+
+.cell-status.cell-serpro {
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35), 0 0 10px rgba(139, 92, 246, 0.2);
+}
+
+/* Nota final explicando fontes */
+.entregas-nota-fontes {
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+.entregas-nota-fontes strong { color: var(--text); }
+.entregas-nota-fontes ul { list-style: none; padding: 0; margin: 8px 0 0 0; }
+.entregas-nota-fontes li { padding: 4px 0; }
+.entregas-nota-fontes code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 1px 6px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  color: var(--secondary);
+}
+
+@media (max-width: 768px) {
+  .serpro-banner { flex-direction: column; align-items: flex-start; }
+  .serpro-banner-btn { width: 100%; }
+}

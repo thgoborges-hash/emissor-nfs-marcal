@@ -276,6 +276,7 @@ CREATE TABLE IF NOT EXISTS entregas_mensais (
   responsavel_nome TEXT,             -- snapshot do nome (pra preservar histórico)
   observacao TEXT,
   valor_referencia REAL,             -- se aplicável (ex: valor do DAS)
+  fonte TEXT DEFAULT 'manual',       -- 'manual', 'mock', 'serpro'
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(cliente_id, competencia, tipo_entrega),

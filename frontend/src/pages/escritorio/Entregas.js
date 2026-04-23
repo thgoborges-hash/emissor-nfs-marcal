@@ -8,12 +8,12 @@ export default function Entregas() {
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
+  const [sincronizando, setSincronizando] = useState(false);
   const [competencia, setCompetencia] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
 
-  // Filtros
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [filtroBusca, setFiltroBusca] = useState('');
 
@@ -30,6 +30,19 @@ export default function Entregas() {
   };
 
   useEffect(() => { carregar(); }, [competencia]);
+
+  const sincronizarSerpro = async () => {
+    if (!window.confirm('Vai consultar a SERPRO pra toda a carteira (~13min, usa créditos). Continuar?')) return;
+    setSincronizando(true);
+    try {
+      await integraContadorApi.rodarSnapshot();
+      alert('Varredura iniciada em background. Volte aqui em ~15min e recarregue a tela.');
+    } catch (err) {
+      alert(err.response?.data?.erro || err.message);
+    } finally {
+      setSincronizando(false);
+    }
+  };
 
   const toggleStatus = async (clienteId, tipoEntrega, statusAtual) => {
     const novoStatus = statusAtual === 'ok' ? 'pendente' : 'ok';
@@ -56,8 +69,15 @@ export default function Entregas() {
   const tipos = dados.por_tipo;
   const tendencia = (dados.tendencia || []).map(t => t.pct * 100);
   const ranking = dados.ranking_responsaveis || [];
+  const serproInfo = dados.serpro || {};
+  const serproTipos = new Set(dados.serpro_tipos || []);
 
-  // Aplica filtros à matriz
+  const fmtDataHora = (iso) => {
+    if (!iso) return 'nunca';
+    const d = new Date(iso);
+    return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
   const clientesFiltrados = (dados.clientes || []).filter(c => {
     if (filtroBusca && !c.nome.toLowerCase().includes(filtroBusca.toLowerCase())) return false;
     if (filtroStatus === 'pendentes' && c.pendentes === 0 && c.atrasadas === 0) return false;
@@ -85,6 +105,30 @@ export default function Entregas() {
             color: 'var(--text)', fontFamily: 'inherit', fontSize: 13.5,
           }}
         />
+      </div>
+
+      {/* Banner de sincronização SERPRO */}
+      <div className={`serpro-banner ${serproInfo.ultima_varredura ? 'ativo' : 'inativo'}`}>
+        <div className="serpro-banner-main">
+          <div className="serpro-banner-icon">⚡</div>
+          <div>
+            <div className="serpro-banner-title">
+              Varredura SERPRO · {serproInfo.ultima_varredura ? fmtDataHora(serproInfo.ultima_varredura) : 'nunca rodou'}
+            </div>
+            <div className="serpro-banner-sub">
+              {serproInfo.ultima_varredura
+                ? `${serproInfo.clientes_com_snapshot || 0} clientes com status automático (DCTFWeb ${serproInfo.por_tipo?.DCTFWEB || 0} · PGDAS-D ${serproInfo.por_tipo?.PGDASD || 0})`
+                : 'Sem snapshot. Rode pra popular DCTFWeb e PGDAS-D com dados reais da carteira.'}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={sincronizarSerpro}
+          disabled={sincronizando}
+          className="serpro-banner-btn"
+        >
+          {sincronizando ? '⟳ Iniciando…' : '⟳ Sincronizar SERPRO agora'}
+        </button>
       </div>
 
       {/* KPIs principais */}
@@ -136,6 +180,7 @@ export default function Entregas() {
               <div key={t.tipo} className="bar-stack-row">
                 <div className="bar-stack-label">
                   <strong>{t.nome}</strong>
+                  {t.automatica && <span className="serpro-tag" title="Alimentado automaticamente via SERPRO">⚡ auto</span>}
                   <span className="text-muted text-sm" style={{ marginLeft: 8 }}>{t.ok}/{t.total}</span>
                 </div>
                 <div className="bar-stack-track">
@@ -158,6 +203,9 @@ export default function Entregas() {
             <span><i className="legend-dot ok" /> Concluído</span>
             <span><i className="legend-dot pend" /> Pendente</span>
             <span><i className="legend-dot atr" /> Atrasado</span>
+            <span className="text-muted" style={{ marginLeft: 'auto' }}>
+              ⚡ = coluna alimentada automaticamente pelo SERPRO · demais pedem marcação manual
+            </span>
           </div>
         </section>
       </div>
@@ -219,7 +267,10 @@ export default function Entregas() {
               <th>Cliente</th>
               <th style={{ textAlign: 'center', width: 80 }}>%</th>
               {dados.ordem_tipos.filter(t => tipos.find(x => x.tipo === t)).map(t => (
-                <th key={t} style={{ textAlign: 'center', width: 90 }}>{dados.nomes_tipos[t]}</th>
+                <th key={t} style={{ textAlign: 'center', width: 90 }}>
+                  {dados.nomes_tipos[t]}
+                  {serproTipos.has(t) && <span className="serpro-tag-mini" title="Via SERPRO">⚡</span>}
+                </th>
               ))}
             </tr>
           </thead>
@@ -240,17 +291,22 @@ export default function Entregas() {
                   if (!e || e.status === 'nao_aplicavel') {
                     return <td key={t} style={{ textAlign: 'center' }}><span className="cell-na">—</span></td>;
                   }
+                  const isSerpro = e.fonte === 'serpro';
+                  const titleTxt = `${dados.nomes_tipos[t]}: ${e.status}`
+                    + (e.responsavel ? ` · ${e.responsavel}` : '')
+                    + (isSerpro ? ' · alimentado pela SERPRO' : '');
                   return (
-                    <td key={t} style={{ textAlign: 'center' }}>
+                    <td key={t} style={{ textAlign: 'center', position: 'relative' }}>
                       <button
-                        className={`cell-status ${e.status}`}
+                        className={`cell-status ${e.status} ${isSerpro ? 'cell-serpro' : ''}`}
                         onClick={() => toggleStatus(c.id, t, e.status)}
-                        title={`${dados.nomes_tipos[t]}: ${e.status}${e.responsavel ? ` · ${e.responsavel}` : ''}`}
+                        title={titleTxt}
                       >
                         {e.status === 'ok' && '✓'}
                         {e.status === 'pendente' && '○'}
                         {e.status === 'atrasado' && '!'}
                       </button>
+                      {isSerpro && <span className="cell-serpro-dot" title="Via SERPRO">⚡</span>}
                     </td>
                   );
                 })}
@@ -265,171 +321,17 @@ export default function Entregas() {
         )}
       </section>
 
-      {/* Secao: Status SERPRO (alimentado pelo snapshot diario) */}
-      <SerproStatusSection />
-    </div>
-  );
-}
-
-// ======================================================
-// Secao adicional: Status SERPRO (procuracao, PGDAS-D, DCTFWeb, Caixa Postal)
-// Le do snapshot diario. Nao bate na SERPRO a cada abertura da tela.
-// ======================================================
-function SerproStatusSection() {
-  const [dados, setDados] = useState([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState(null);
-  const [filtroBusca, setFiltroBusca] = useState('');
-  const [filtroStatus, setFiltroStatus] = useState('todos');
-  const [rodando, setRodando] = useState(false);
-
-  const carregar = async () => {
-    setCarregando(true);
-    setErro(null);
-    try {
-      const { data } = await integraContadorApi.snapshotTodos();
-      setDados(data.dados || []);
-    } catch (err) {
-      setErro(err.response?.data?.erro || err.message);
-    } finally {
-      setCarregando(false);
-    }
-  };
-
-  useEffect(() => { carregar(); }, []);
-
-  const rodarAgora = async () => {
-    if (!window.confirm('Vai consultar a SERPRO pra TODA a carteira (~13min, usa creditos). Continuar?')) return;
-    setRodando(true);
-    try {
-      await integraContadorApi.rodarSnapshot();
-      alert('Varredura iniciada. Acompanhe nos logs do Render e volte aqui em ~15min pra ver os resultados atualizados.');
-    } catch (err) {
-      alert(err.response?.data?.erro || err.message);
-    } finally {
-      setRodando(false);
-    }
-  };
-
-  // Agrupa dados por cliente
-  const porCliente = {};
-  for (const row of dados) {
-    const k = row.cliente_id;
-    if (!porCliente[k]) {
-      porCliente[k] = { id: k, razao: row.razao_social, cnpj: row.cnpj, obrigacoes: {} };
-    }
-    porCliente[k].obrigacoes[row.obrigacao] = row;
-  }
-  let clientes = Object.values(porCliente);
-
-  // Filtro
-  clientes = clientes.filter(c => {
-    if (filtroBusca && !(c.razao || '').toLowerCase().includes(filtroBusca.toLowerCase())) return false;
-    if (filtroStatus === 'pendencias') {
-      const temPend = Object.values(c.obrigacoes).some(o => ['pendente', 'atrasada', 'erro'].includes(o.status));
-      if (!temPend) return false;
-    }
-    return true;
-  });
-
-  const OBRIGACOES = [
-    { key: 'PROCURACAO', label: 'Procuracao e-CAC' },
-    { key: 'PGDASD',      label: 'PGDAS-D' },
-    { key: 'DCTFWEB',     label: 'DCTFWeb' },
-    { key: 'CAIXA_POSTAL',label: 'Caixa Postal' },
-  ];
-
-  function iconeStatus(s) {
-    if (!s) return '—';
-    if (s === 'ok') return '✅';
-    if (s === 'pendente') return '⚠️';
-    if (s === 'atrasada') return '❌';
-    if (s === 'sem_dados') return '○';
-    if (s === 'erro') return '🔶';
-    return '—';
-  }
-
-  return (
-    <section className="section-card mt-3">
-      <div className="flex-between" style={{ flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-        <h3 className="section-title" style={{ marginBottom: 0 }}>🏛️ Status SERPRO / e-CAC</h3>
-        <button onClick={rodarAgora} disabled={rodando} className="btn btn-primary" style={{ fontSize: 13 }}>
-          {rodando ? 'Iniciando...' : 'Rodar varredura agora'}
-        </button>
-      </div>
-
-      <p className="text-light text-sm" style={{ marginTop: 0 }}>
-        Status das obrigacoes federais alimentado por varredura diaria (SERPRO Integra Contador). Atualizado em lote, nao em tempo real.
-      </p>
-
-      {carregando && <div className="text-muted text-sm">Carregando snapshot…</div>}
-      {erro && <div className="alert alert-warning text-sm">Erro ao carregar snapshot: {erro}</div>}
-      {!carregando && dados.length === 0 && (
-        <div className="alert alert-warning text-sm">
-          <strong>Snapshot vazio.</strong> A varredura diaria ainda nao rodou. Clique em "Rodar varredura agora" pra popular a primeira vez (leva ~13min).
+      {/* Nota sobre as demais fontes */}
+      <div className="entregas-nota-fontes mt-3">
+        <div>
+          <strong>Como são alimentadas as colunas?</strong>
         </div>
-      )}
-
-      {dados.length > 0 && (
-        <>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-            <input
-              className="form-control"
-              style={{ maxWidth: 260 }}
-              placeholder="Buscar cliente..."
-              value={filtroBusca}
-              onChange={e => setFiltroBusca(e.target.value)}
-            />
-            <select className="form-control" style={{ maxWidth: 220 }}
-              value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
-              <option value="todos">Todos</option>
-              <option value="pendencias">So com pendencia/erro</option>
-            </select>
-            <div className="text-muted text-sm" style={{ alignSelf: 'center' }}>
-              Mostrando {clientes.length} cliente(s)
-            </div>
-          </div>
-
-          <div style={{ overflowX: 'auto' }}>
-            <table className="matriz-entregas">
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  {OBRIGACOES.map(o => <th key={o.key} style={{ textAlign: 'center', width: 120 }}>{o.label}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {clientes.slice(0, 80).map(c => (
-                  <tr key={c.id}>
-                    <td>
-                      <div style={{ fontWeight: 500, fontSize: 13.5 }}>{c.razao}</div>
-                      <div className="text-muted text-sm" style={{ fontFamily: 'var(--font-mono)' }}>{c.cnpj}</div>
-                    </td>
-                    {OBRIGACOES.map(o => {
-                      const row = c.obrigacoes[o.key];
-                      const titulo = row ? (row.resumo || row.status) + (row.erro ? ' — ' + row.erro : '') : 'Sem dados';
-                      return (
-                        <td key={o.key} style={{ textAlign: 'center' }}>
-                          <span title={titulo} style={{ fontSize: 18 }}>{iconeStatus(row && row.status)}</span>
-                          {row && row.resumo && (
-                            <div className="text-muted" style={{ fontSize: 10.5, marginTop: 2 }}>{row.resumo.slice(0, 30)}</div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {clientes.length > 80 && (
-            <div className="text-muted text-sm mt-2">Mostrando primeiros 80. Use os filtros pra refinar.</div>
-          )}
-          <div className="text-muted text-sm mt-2">
-            Legenda: ✅ ok · ⚠️ pendente · ❌ atrasada · 🔶 erro na consulta · ○ sem dados
-          </div>
-        </>
-      )}
-    </section>
+        <ul>
+          <li><span className="serpro-tag-inline">⚡ SERPRO</span> <strong>DCTFWeb</strong> e <strong>PGDAS-D</strong> — snapshot automático (varredura diária ou manual).</li>
+          <li><strong>DAS, DCTF, Folha, eSocial, EFD-Reinf, Balancete</strong> — marcação manual pela equipe. Clique em uma célula pra alternar entre pendente ↔ ok.</li>
+          <li>Para ativar a varredura SERPRO automática diária, setar <code>ENABLE_SERPRO_SNAPSHOT_CRON=true</code> no Render (horário default: 06h).</li>
+        </ul>
+      </div>
+    </div>
   );
 }
