@@ -221,7 +221,7 @@ class IntegraContadorService {
     // CONSULTIMADECREC14 exige periodoApuracao no formato YYYYMM.
     // Default: mes anterior (ultima declaracao plausivel ja transmitida).
     const servico = config.servicos.PGDASD.CONSULTAR_ULTIMA_DECLARACAO;
-    if (\!periodoApuracao) {
+    if (!periodoApuracao) {
       const d = new Date();
       const anoAlvo = d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear();
       const mesAlvo = d.getMonth() === 0 ? 12 : d.getMonth();
