@@ -27,26 +27,40 @@ export default function Login() {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <h1>Emissor NFS-e</h1>
-        <p className="subtitle">Marçal Contabilidade</p>
+    <div className="login-v4">
+      <div className="login-orb login-orb-1" />
+      <div className="login-orb login-orb-2" />
+      <div className="login-orb login-orb-3" />
+      <div className="login-grid-overlay" />
 
-        {erro && <div className="erro-msg">{erro}</div>}
+      <div className="login-panel">
+        <div className="login-brand">
+          <div className="login-brand-pulse" />
+          <div>
+            <div className="login-brand-title">Marçal Cockpit</div>
+            <div className="login-brand-sub">Emissor NFS-e · Painel Interno</div>
+          </div>
+        </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Email</label>
+        <h1 className="login-greeting">Bem-vindo de volta</h1>
+        <p className="login-greeting-sub">Acesse o painel do escritório</p>
+
+        {erro && <div className="login-error">{erro}</div>}
+
+        <form onSubmit={handleSubmit} className="login-form">
+          <div className="login-field">
+            <label>E-mail</label>
             <input
               type="email"
               placeholder="seu@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoFocus
             />
           </div>
 
-          <div className="form-group">
+          <div className="login-field">
             <label>Senha</label>
             <input
               type="password"
@@ -57,10 +71,21 @@ export default function Login() {
             />
           </div>
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={carregando}>
-            {carregando ? 'Entrando...' : 'Entrar'}
+          <button type="submit" className="login-btn" disabled={carregando}>
+            {carregando ? (
+              <span className="login-btn-loading">
+                <span className="login-btn-spinner" />
+                Entrando…
+              </span>
+            ) : (
+              <>Entrar <span className="login-btn-arrow">→</span></>
+            )}
           </button>
         </form>
+
+        <div className="login-footer">
+          <span className="login-footer-dot" /> Sistema operacional · v1.0
+        </div>
       </div>
     </div>
   );
