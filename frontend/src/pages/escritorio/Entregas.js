@@ -266,12 +266,17 @@ export default function Entregas() {
             <tr>
               <th>Cliente</th>
               <th style={{ textAlign: 'center', width: 80 }}>%</th>
-              {dados.ordem_tipos.filter(t => tipos.find(x => x.tipo === t)).map(t => (
-                <th key={t} style={{ textAlign: 'center', width: 90 }}>
-                  {dados.nomes_tipos[t]}
-                  {serproTipos.has(t) && <span className="serpro-tag-mini" title="Via SERPRO">⚡</span>}
-                </th>
-              ))}
+              {dados.ordem_tipos.filter(t => tipos.find(x => x.tipo === t)).map(t => {
+                const isSerpro = serproTipos.has(t);
+                return (
+                  <th key={t} style={{ textAlign: 'center', width: 90 }} className={isSerpro ? 'col-serpro' : 'col-manual'}>
+                    {dados.nomes_tipos[t]}
+                    {isSerpro
+                      ? <span className="serpro-tag-mini" title="Atualizado automaticamente via SERPRO">⚡</span>
+                      : <span className="manual-tag-mini" title="Aguardando marcação manual ou integração futura">◦</span>}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -292,19 +297,26 @@ export default function Entregas() {
                     return <td key={t} style={{ textAlign: 'center' }}><span className="cell-na">—</span></td>;
                   }
                   const isSerpro = e.fonte === 'serpro';
-                  const titleTxt = `${dados.nomes_tipos[t]}: ${e.status}`
-                    + (e.responsavel ? ` · ${e.responsavel}` : '')
-                    + (isSerpro ? ' · alimentado pela SERPRO' : '');
+                  const isColSerpro = serproTipos.has(t);
+                  // Celula "inativa": veio do seed mock E coluna nao tem integracao SERPRO
+                  // -> usuario precisa marcar manual. Renderiza muted pra nao parecer atraso real.
+                  const isInativa = e.fonte === 'mock' && !isColSerpro;
+                  const titleTxt = isInativa
+                    ? `${dados.nomes_tipos[t]}: aguardando marcação manual (sem integração automática). Clique pra marcar como OK.`
+                    : `${dados.nomes_tipos[t]}: ${e.status}`
+                      + (e.responsavel ? ` · ${e.responsavel}` : '')
+                      + (isSerpro ? ' · alimentado pela SERPRO' : '');
                   return (
                     <td key={t} style={{ textAlign: 'center', position: 'relative' }}>
                       <button
-                        className={`cell-status ${e.status} ${isSerpro ? 'cell-serpro' : ''}`}
+                        className={`cell-status ${e.status} ${isSerpro ? 'cell-serpro' : ''} ${isInativa ? 'cell-inativa' : ''}`}
                         onClick={() => toggleStatus(c.id, t, e.status)}
                         title={titleTxt}
                       >
-                        {e.status === 'ok' && '✓'}
-                        {e.status === 'pendente' && '○'}
-                        {e.status === 'atrasado' && '!'}
+                        {isInativa ? '·' :
+                          (e.status === 'ok' && '✓') ||
+                          (e.status === 'pendente' && '○') ||
+                          (e.status === 'atrasado' && '!')}
                       </button>
                       {isSerpro && <span className="cell-serpro-dot" title="Via SERPRO">⚡</span>}
                     </td>
@@ -327,8 +339,8 @@ export default function Entregas() {
           <strong>Como são alimentadas as colunas?</strong>
         </div>
         <ul>
-          <li><span className="serpro-tag-inline">⚡ SERPRO</span> <strong>DCTFWeb</strong> e <strong>PGDAS-D</strong> — snapshot automático (varredura diária ou manual).</li>
-          <li><strong>DAS, DCTF, Folha, eSocial, EFD-Reinf, Balancete</strong> — marcação manual pela equipe. Clique em uma célula pra alternar entre pendente ↔ ok.</li>
+          <li><span className="serpro-tag-inline">⚡ SERPRO</span> <strong>DCTFWeb</strong> e <strong>PGDAS-D</strong> — snapshot automático (varredura diária ou manual). Cabeçalho com ⚡.</li>
+          <li><span className="manual-tag-inline">◦ manual</span> <strong>DAS, DCTF, Folha, eSocial, EFD-Reinf, Balancete</strong> — ainda sem integração automática. Células cinza pálido = aguardando marcação manual (não é atraso real). Clique numa célula pra marcar como ok.</li>
           <li>Para ativar a varredura SERPRO automática diária, setar <code>ENABLE_SERPRO_SNAPSHOT_CRON=true</code> no Render (horário default: 06h).</li>
         </ul>
       </div>

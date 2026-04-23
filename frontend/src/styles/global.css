@@ -2715,3 +2715,58 @@ tbody tr:hover { background: var(--bg-hover); }
 .dominio-config-table td { padding: 8px 10px; font-size: 0.88rem; border-bottom: 1px solid var(--border-subtle); }
 .dominio-config-table td:first-child { color: var(--text-muted); width: 160px; font-weight: 500; }
 .dominio-config-table td code { font-family: var(--font-mono); font-size: 0.8rem; color: var(--secondary); }
+
+
+/* =====================================================
+ * ENTREGAS v3 — diferenciar colunas inativas (sem integracao)
+ * ===================================================== */
+
+/* Header da coluna SERPRO (ativa) */
+.matriz-entregas th.col-serpro {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Header da coluna manual (aguardando integracao) */
+.matriz-entregas th.col-manual {
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.manual-tag-mini {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+.manual-tag-inline {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  letter-spacing: 0.04em;
+  margin-right: 6px;
+}
+
+/* Celula inativa: vem do mock E coluna sem integracao SERPRO */
+.cell-status.cell-inativa {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-subtle);
+  color: var(--text-muted);
+  box-shadow: none;
+  opacity: 0.45;
+  font-weight: 400;
+}
+
+.cell-status.cell-inativa:hover {
+  opacity: 0.9;
+  border-style: solid;
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.05);
+}
