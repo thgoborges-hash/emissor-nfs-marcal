@@ -593,8 +593,22 @@ FLUXO OBRIGATÓRIO EM MODO EQUIPE:
 
 1. Leia TODA a mensagem. Procure por "Emitente:", "NF do <empresa> (CNPJ ...)", "do CNPJ X", ou outro padrão onde a equipe diz QUEM vai emitir.
 2. Se achou CNPJ do emitente (14 dígitos) → identifica também valor, CNPJ/CPF do tomador, razão social do tomador, descrição.
-3. Monta a tag com 5 campos:
+3. Monta a tag. Formato pleno (6 campos, o 6º é opcional):
+   [ACAO:EMITIR_NF:cnpj_emitente|valor|cnpj_tomador|razao_tomador|descricao|competencia_ou_codigo_servico]
+
+   Exemplo SEM código de serviço (cliente já tem no cadastro):
    [ACAO:EMITIR_NF:27998575000100|890.00|04406995927|Maysa Bittencourt|Atendimentos e Consultas medicas]
+
+   Exemplo COM código de serviço (mensagem da equipe menciona "Código de Tributação Nacional: X" ou "cTribNac: Y" ou "código de serviço Z"):
+   [ACAO:EMITIR_NF:27998575000100|890.00|04406995927|Maysa Bittencourt|Atendimentos e Consultas medicas||123012200]
+
+   Observação: se quiser usar o 6º campo sem passar competência (5º), deixe o 5º vazio com || como no exemplo acima.
+
+CÓDIGO DE SERVIÇO (cTribNac) — quando passar:
+- Se a mensagem trouxer explicitamente "Código de Tributação Nacional", "cTribNac", ou "código de serviço" com um número, EXTRAIA esse número (só dígitos) e passe como 6º campo da tag.
+- Exemplo prático: "Código de Tributação Nacional: 04.01.01 - Medicina; 123012200 - Serviços médicos" → use 123012200 (o número com 9 dígitos é o cTribNac Nacional; o 04.01.01 é código municipal, ignore).
+- Se a mensagem não mencionar código, não precisa do 6º campo — o sistema usa o que estiver no cadastro do cliente emitente.
+- Se o sistema responder erro "código de serviço ausente", significa que o cliente emitente é novo e não tem código cadastrado — peça à equipe qual cTribNac usar.
 
 SE VOCÊ NÃO CONSEGUIU IDENTIFICAR O CNPJ DO EMITENTE NA MENSAGEM:
 - NÃO invente. NÃO use 4 campos. NÃO coloque tag nenhuma.
@@ -928,6 +942,11 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
               const razaoSocialTomador = partes[idx + 2]?.trim() || '';
               const descricao = partes[idx + 3]?.trim() || 'Serviços prestados';
               const competencia = partes[idx + 4]?.trim() || new Date().toISOString().slice(0, 7);
+              // 6º campo opcional: código de serviço (cTribNac) — usado quando o cliente emitente
+              // ainda não tem código_servico cadastrado no painel (cliente novo ou múltiplas atividades).
+              // A equipe extrai da mensagem (ex: "Código de Tributação Nacional: 04.01.01 - Medicina")
+              // e passa como último campo da tag.
+              const codigoServicoOverride = partes[idx + 5]?.trim() || '';
 
               if (!documentoTomador || valor <= 0) {
                 console.log(`[WhatsApp] NF não criada: CNPJ/CPF ausente (${documentoTomador}) ou valor inválido (${valor})`);
@@ -1042,7 +1061,7 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 valor,
                 descricao,
                 competencia,
-                clienteData?.codigo_servico || '',
+                codigoServicoOverride || clienteData?.codigo_servico || '',
                 aliquotaIss,
                 valorIss,
                 baseCalculo,
@@ -1052,6 +1071,19 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
 
               const nfId = result.lastInsertRowid;
               console.log(`[WhatsApp] NF criada: ID ${nfId}, R$ ${valor} para ${tomador.razao_social} (${tomador.documento})`);
+
+              // Auto-persistência: se a Ana passou cTribNac explicitamente (6º campo) E o cliente
+              // emitente não tinha código cadastrado, grava no cadastro pra não precisar passar de
+              // novo na próxima NF. Protegido pra NÃO sobrescrever clientes que já tenham código
+              // (respeita cliente com múltiplas atividades onde o código muda por NF).
+              if (codigoServicoOverride && (!clienteData?.codigo_servico || clienteData.codigo_servico.trim() === '')) {
+                try {
+                  db.prepare('UPDATE clientes SET codigo_servico = ?, updated_at = datetime(\'now\') WHERE id = ? AND (codigo_servico IS NULL OR codigo_servico = \'\')').run(codigoServicoOverride, contato.cliente_id);
+                  console.log(`[WhatsApp] auto-upsert: codigo_servico=${codigoServicoOverride} gravado no cliente ${contato.cliente_id} (era vazio)`);
+                } catch (e) {
+                  console.warn(`[WhatsApp] auto-upsert de codigo_servico falhou: ${e.message}`);
+                }
+              }
 
               // Tenta emitir automaticamente
               let emissaoStatus = 'pendente_emissao';
