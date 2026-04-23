@@ -31,6 +31,9 @@ const MAP_STATUS = {
   atrasada: 'atrasado',
   atrasado: 'atrasado',
   pendente: 'pendente',
+  // Quando SERPRO responde 'sem_dados', significa que o cliente NAO e obrigado
+  // aquela obrigacao — marcamos como nao_aplicavel pra nao poluir com falsos alertas.
+  sem_dados: 'nao_aplicavel',
 };
 
 // Consideramos "ativa" (entra na conta do %) quando a fonte e confiavel:
@@ -202,11 +205,11 @@ class EntregasService {
     const clientesComDados = new Set();
     const porTipo = { DCTFWEB: 0, PGDASD: 0 };
 
+    // Nao filtramos por status atual — SERPRO e fonte de verdade, sobrescreve qualquer mock.
     const updateStmt = db.prepare(`
       UPDATE entregas_mensais
       SET status = ?, fonte = 'serpro', updated_at = CURRENT_TIMESTAMP
       WHERE cliente_id = ? AND competencia = ? AND tipo_entrega = ?
-        AND status != 'nao_aplicavel'
     `);
 
     const tx = db.transaction(() => {

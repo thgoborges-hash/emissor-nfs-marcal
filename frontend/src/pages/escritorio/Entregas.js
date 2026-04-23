@@ -276,7 +276,7 @@ export default function Entregas() {
             <tr>
               <th>Cliente</th>
               <th style={{ textAlign: 'center', width: 80 }}>%</th>
-              {dados.ordem_tipos.filter(t => tipos.find(x => x.tipo === t)).map(t => {
+              {dados.ordem_tipos.map(t => {
                 const isSerpro = serproTipos.has(t);
                 return (
                   <th key={t} style={{ textAlign: 'center', width: 90 }} className={isSerpro ? 'col-serpro' : 'col-manual'}>
@@ -308,7 +308,7 @@ export default function Entregas() {
                     </span>
                   )}
                 </td>
-                {dados.ordem_tipos.filter(t => tipos.find(x => x.tipo === t)).map(t => {
+                {dados.ordem_tipos.map(t => {
                   const e = c.entregas[t];
                   if (!e || e.status === 'nao_aplicavel') {
                     return <td key={t} style={{ textAlign: 'center' }}><span className="cell-na">—</span></td>;
