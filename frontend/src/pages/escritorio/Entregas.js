@@ -298,9 +298,11 @@ export default function Entregas() {
                   }
                   const isSerpro = e.fonte === 'serpro';
                   const isColSerpro = serproTipos.has(t);
-                  // Celula "inativa": veio do seed mock E coluna nao tem integracao SERPRO
-                  // -> usuario precisa marcar manual. Renderiza muted pra nao parecer atraso real.
-                  const isInativa = e.fonte === 'mock' && !isColSerpro;
+                  // Celula "inativa" = coluna sem integracao automatica (nao-SERPRO) E nao foi marcada
+                  // pela equipe (fonte != 'manual' com responsavel de verdade). Cobre fonte='mock'
+                  // e tambem linhas antigas com fonte undefined/null.
+                  const marcadaEquipe = e.fonte === 'manual' && e.responsavel;
+                  const isInativa = !isColSerpro && !isSerpro && !marcadaEquipe;
                   const titleTxt = isInativa
                     ? `${dados.nomes_tipos[t]}: aguardando marcação manual (sem integração automática). Clique pra marcar como OK.`
                     : `${dados.nomes_tipos[t]}: ${e.status}`

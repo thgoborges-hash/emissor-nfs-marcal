@@ -33,6 +33,20 @@ function initDatabase() {
     console.warn('[migration] entregas_mensais.fonte:', e.message);
   }
 
+  // Migração: linhas antigas (pré-fix) com fonte='manual' sem responsavel_id são mock
+  try {
+    const r = db.prepare(`
+      UPDATE entregas_mensais
+      SET fonte = 'mock'
+      WHERE fonte = 'manual' AND responsavel_id IS NULL
+    `).run();
+    if (r.changes > 0) {
+      console.log('[migration] entregas_mensais: ' + r.changes + ' linha(s) antigas reclassificadas como fonte=mock');
+    }
+  } catch (e) {
+    console.warn('[migration] reclassificar mock:', e.message);
+  }
+
   // Migração idempotente: adiciona dominio_integration_key em clientes
   try {
     const cols = db.prepare("PRAGMA table_info(clientes)").all();
