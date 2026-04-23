@@ -39,12 +39,12 @@ export default function OperacoesHoje() {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
   const fmtDataHora = (iso) => {
-    if (\!iso) return '';
+    if (!iso) return '';
     const d = new Date(iso);
     return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
-  if (erro && \!dados) return <div className="alert alert-danger">Erro: {erro}</div>;
+  if (erro && !dados) return <div className="alert alert-danger">Erro: {erro}</div>;
 
   const c = dados?.cards || {};
   const dctf = c.dctfweb || { em_dia: 0, atrasada: 0, pendente: 0, sem_dados: 0 };
@@ -120,7 +120,7 @@ export default function OperacoesHoje() {
             {dados ? `Atualizado ${fmtDataHora(dados.geradoEm)} · auto-refresh 1min` : 'Sincronizando dashboard…'}
           </p>
         </div>
-        {\!temRisco && totalCarteira > 0 && (
+        {!temRisco && totalCarteira > 0 && (
           <div className="home-status-chip success">
             <span className="home-status-dot" />
             DCTFWeb · {dctf.em_dia}/{totalCarteira} em dia
@@ -143,7 +143,7 @@ export default function OperacoesHoje() {
               <span className="tile-arrow">→</span>
             </div>
             <div className="tile-body">
-              {t.destaque \!== '' && <div className="tile-destaque">{t.destaque}</div>}
+              {t.destaque !== '' && <div className="tile-destaque">{t.destaque}</div>}
               <div className="tile-title">{t.titulo}</div>
               <div className="tile-sub">{t.sub}</div>
             </div>
@@ -214,7 +214,7 @@ export default function OperacoesHoje() {
         </div>
       )}
 
-      {carregando && \!dados && <div className="home-loading">Carregando…</div>}
+      {carregando && !dados && <div className="home-loading">Carregando…</div>}
     </div>
   );
 }
