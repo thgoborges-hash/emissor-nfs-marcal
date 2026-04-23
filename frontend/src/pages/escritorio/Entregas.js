@@ -131,6 +131,16 @@ export default function Entregas() {
         </button>
       </div>
 
+      {/* Legenda de icones */}
+      <div className="entregas-legenda">
+        <span className="leg-item leg-serpro">⚡<span>SERPRO auto</span></span>
+        <span className="leg-item leg-ok">✓<span>em dia</span></span>
+        <span className="leg-item leg-pend">○<span>pendente</span></span>
+        <span className="leg-item leg-atr">!<span>atrasada</span></span>
+        <span className="leg-item leg-na">—<span>não aplicável</span></span>
+        <span className="leg-item leg-manual">·<span>aguardando manual</span></span>
+      </div>
+
       {/* KPIs principais */}
       <div className="kpi-grid mt-2">
         <div className="kpi-card accent-success">
@@ -287,9 +297,16 @@ export default function Entregas() {
                   <div className="text-muted text-sm" style={{ fontFamily: 'var(--font-mono)' }}>{c.cnpj}</div>
                 </td>
                 <td style={{ textAlign: 'center' }}>
-                  <span className={`pct-pill ${c.pct === 1 ? 'ok' : c.atrasadas > 0 ? 'atr' : 'pend'}`}>
-                    {Math.round(c.pct * 100)}%
-                  </span>
+                  {c.pct === null ? (
+                    <span className="pct-pill pend" title="Nenhuma obrigação ativa acompanhada (sem SERPRO nem marcação manual).">—</span>
+                  ) : (
+                    <span
+                      className={`pct-pill ${c.pct === 1 ? 'ok' : c.atrasadas > 0 ? 'atr' : 'pend'}`}
+                      title={`${c.ok} de ${c.total_ativas} ativa(s) ok`}
+                    >
+                      {Math.round(c.pct * 100)}%
+                    </span>
+                  )}
                 </td>
                 {dados.ordem_tipos.filter(t => tipos.find(x => x.tipo === t)).map(t => {
                   const e = c.entregas[t];
@@ -306,8 +323,9 @@ export default function Entregas() {
                   const titleTxt = isInativa
                     ? `${dados.nomes_tipos[t]}: aguardando marcação manual (sem integração automática). Clique pra marcar como OK.`
                     : `${dados.nomes_tipos[t]}: ${e.status}`
-                      + (e.responsavel ? ` · ${e.responsavel}` : '')
-                      + (isSerpro ? ' · alimentado pela SERPRO' : '');
+                      + (e.resumo ? ` · ${e.resumo}` : '')
+                      + (e.responsavel && !isSerpro ? ` · ${e.responsavel}` : '')
+                      + (isSerpro ? ' · ⚡ SERPRO' : '');
                   return (
                     <td key={t} style={{ textAlign: 'center', position: 'relative' }}>
                       <button

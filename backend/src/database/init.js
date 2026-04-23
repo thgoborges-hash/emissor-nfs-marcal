@@ -47,6 +47,33 @@ function initDatabase() {
     console.warn('[migration] reclassificar mock:', e.message);
   }
 
+  // Migração: desativa clientes óbvios de teste (razão EXEMPLO/MODELO/TESTE
+  // ou CNPJs fictícios conhecidos) pra não poluir a tela Entregas.
+  try {
+    const fakeCnpjs = [
+      '12.345.678/0001-90','55.555.555/0001-91','77.777.777/0001-91',
+      '67.676.767/0001-06','87.878.787/0001-77','91.919.191/0001-45',
+      '98.765.432/0001-98','12.312.312/0001-10',
+    ];
+    const stmt1 = db.prepare(`
+      UPDATE clientes SET ativo = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE ativo = 1 AND (
+        razao_social LIKE '%EXEMPLO%' OR
+        razao_social LIKE '%MODELO%' OR
+        razao_social LIKE '%TESTE%'
+      )
+    `);
+    const r1 = stmt1.run();
+    const stmt2 = db.prepare(`UPDATE clientes SET ativo = 0, updated_at = CURRENT_TIMESTAMP WHERE ativo = 1 AND cnpj = ?`);
+    let r2 = 0;
+    for (const c of fakeCnpjs) { r2 += stmt2.run(c).changes; }
+    if (r1.changes > 0 || r2 > 0) {
+      console.log('[migration] desativados ' + (r1.changes + r2) + ' cliente(s) de teste');
+    }
+  } catch (e) {
+    console.warn('[migration] desativar testes:', e.message);
+  }
+
   // Migração idempotente: adiciona dominio_integration_key em clientes
   try {
     const cols = db.prepare("PRAGMA table_info(clientes)").all();

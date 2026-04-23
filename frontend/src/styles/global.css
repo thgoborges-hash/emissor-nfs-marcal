@@ -2770,3 +2770,38 @@ tbody tr:hover { background: var(--bg-hover); }
   border-color: var(--border);
   background: rgba(255, 255, 255, 0.05);
 }
+
+
+/* =====================================================
+ * ENTREGAS — Legenda de icones
+ * ===================================================== */
+.entregas-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.78rem;
+}
+.leg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-light);
+  font-weight: 500;
+}
+.leg-item span { font-size: 0.75rem; opacity: 0.85; font-weight: 400; }
+
+.leg-serpro { color: var(--primary-hover); background: rgba(139, 92, 246, 0.08); border-color: rgba(139, 92, 246, 0.25); }
+.leg-ok { color: var(--success); background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.25); }
+.leg-pend { color: var(--warning); background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.25); }
+.leg-atr { color: var(--danger); background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.25); }
+.leg-na { color: var(--text-muted); }
+.leg-manual { color: var(--text-muted); opacity: 0.6; }

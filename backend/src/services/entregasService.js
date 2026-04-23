@@ -2,11 +2,11 @@
 // Dashboard Gerencial de Entregas Mensais
 // Agregacoes e matriz cliente x tipo de entrega
 // Merge com snapshot SERPRO (DCTFWEB + PGDASD automaticos)
+// % considera so fontes confiaveis (SERPRO + marcacao manual)
 // =====================================================
 
 const { getDb } = require('../database/init');
 
-// Tipos de entrega e sua relevancia por regime
 const TIPOS_ENTREGA = {
   DCTFWEB:   { nome: 'DCTFWeb',     regimes: ['presumido', 'real', 'simples'], dia_vencimento: 15, serpro: true },
   PGDASD:    { nome: 'PGDAS-D',     regimes: ['simples'],                       dia_vencimento: 20, serpro: true },
@@ -18,58 +18,67 @@ const TIPOS_ENTREGA = {
   EFDREINF:  { nome: 'EFD-Reinf',   regimes: ['presumido', 'real'],             dia_vencimento: 15 },
 };
 
-// Ordem canonica pra exibicao nas colunas da matriz
 const ORDEM_TIPOS = ['PGDASD', 'DAS', 'DCTFWEB', 'DCTF', 'FOLHA', 'ESOCIAL', 'EFDREINF', 'BALANCETE'];
 
-// Mapa: obrigacao no snapshot_obrigacoes -> tipo_entrega aqui
 const MAP_SNAPSHOT_PARA_TIPO = {
   DCTFWEB: 'DCTFWEB',
   PGDASD: 'PGDASD',
 };
 
-// Mapa: status do snapshot -> status da entrega
 const MAP_STATUS = {
   em_dia: 'ok',
   ok: 'ok',
   atrasada: 'atrasado',
   atrasado: 'atrasado',
   pendente: 'pendente',
-  // sem_dados, erro -> nao mexe (deixa o mock/manual)
 };
+
+// Consideramos "ativa" (entra na conta do %) quando a fonte e confiavel:
+// 'serpro' = snapshot retornou dado real
+// 'manual' = equipe marcou a mao
+// 'mock' = seed inicial, NAO conta (seria falso atraso).
+function _isFonteAtiva(fonte) {
+  return fonte === 'serpro' || fonte === 'manual';
+}
 
 class EntregasService {
   dashboard(competencia) {
     const db = getDb();
     const comp = competencia || this._competenciaAtual();
 
-    // Seed mock (pra instalacoes que ainda nao tem entregas cadastradas)
     this._seedMockSeNecessario(comp);
-
-    // Merge do snapshot SERPRO (sobrescreve mock/manual com dados reais quando disponivel)
     const mergeInfo = this._mergeSnapshotSerpro(comp);
 
+    // Pega entregas + junta resumo do snapshot (pra tooltip rico)
     const entregas = db.prepare(`
-      SELECT e.*, c.razao_social as cliente_nome, c.cnpj as cliente_cnpj
+      SELECT e.*, c.razao_social as cliente_nome, c.cnpj as cliente_cnpj,
+             so.resumo as snapshot_resumo,
+             so.competencia as snapshot_competencia
       FROM entregas_mensais e
       INNER JOIN clientes c ON e.cliente_id = c.id
+      LEFT JOIN snapshot_obrigacoes so
+             ON so.cliente_id = e.cliente_id
+            AND so.obrigacao = e.tipo_entrega
+            AND (so.status IN ('em_dia','ok','atrasada','pendente'))
       WHERE e.competencia = ? AND c.ativo = 1
       ORDER BY c.razao_social
     `).all(comp);
 
-    // KPIs
     const total = entregas.length;
     const aplicaveis = entregas.filter(e => e.status !== 'nao_aplicavel');
-    const concluidas = aplicaveis.filter(e => e.status === 'ok').length;
-    const atrasadas = aplicaveis.filter(e => e.status === 'atrasado').length;
-    const pendentes = aplicaveis.filter(e => e.status === 'pendente').length;
-    const pctCompleto = aplicaveis.length > 0 ? concluidas / aplicaveis.length : 0;
+    const ativas = aplicaveis.filter(e => _isFonteAtiva(e.fonte));
+    const concluidas = ativas.filter(e => e.status === 'ok').length;
+    const atrasadas = ativas.filter(e => e.status === 'atrasado').length;
+    const pendentes = ativas.filter(e => e.status === 'pendente').length;
+    const pctCompleto = ativas.length > 0 ? concluidas / ativas.length : 0;
 
     const clientesMap = {};
     entregas.forEach(e => {
       if (!clientesMap[e.cliente_id]) {
         clientesMap[e.cliente_id] = {
           id: e.cliente_id, nome: e.cliente_nome, cnpj: e.cliente_cnpj,
-          entregas: {}, ok: 0, pendentes: 0, atrasadas: 0, total_aplicavel: 0,
+          entregas: {}, ok: 0, pendentes: 0, atrasadas: 0,
+          total_aplicavel: 0, total_ativas: 0,
         };
       }
       const c = clientesMap[e.cliente_id];
@@ -77,25 +86,41 @@ class EntregasService {
         status: e.status,
         data_entrega: e.data_entrega,
         responsavel: e.responsavel_nome,
-        fonte: e.fonte || 'manual',
+        fonte: e.fonte || 'mock',
+        resumo: e.snapshot_resumo || null,
+        competencia_obrigacao: e.snapshot_competencia || null,
       };
       if (e.status !== 'nao_aplicavel') {
         c.total_aplicavel++;
-        if (e.status === 'ok') c.ok++;
-        if (e.status === 'pendente') c.pendentes++;
-        if (e.status === 'atrasado') c.atrasadas++;
+        if (_isFonteAtiva(e.fonte)) {
+          c.total_ativas++;
+          if (e.status === 'ok') c.ok++;
+          if (e.status === 'pendente') c.pendentes++;
+          if (e.status === 'atrasado') c.atrasadas++;
+        }
       }
     });
+
     const clientes = Object.values(clientesMap).map(c => ({
       ...c,
-      pct: c.total_aplicavel > 0 ? c.ok / c.total_aplicavel : 1,
+      // pct considera so as obrigacoes ATIVAS (SERPRO ou manual)
+      // Se o cliente ainda nao tem nada ativo, pct=null (nao ordena pra cima nem pra baixo)
+      pct: c.total_ativas > 0 ? c.ok / c.total_ativas : null,
     }));
-    clientes.sort((a, b) => a.pct - b.pct);
+    // Ordenacao: primeiro com atrasos, depois pct crescente, nulls no fim
+    clientes.sort((a, b) => {
+      if (a.atrasadas !== b.atrasadas) return b.atrasadas - a.atrasadas;
+      if (a.pct === null && b.pct === null) return 0;
+      if (a.pct === null) return 1;
+      if (b.pct === null) return -1;
+      return a.pct - b.pct;
+    });
+
     const clientesOk = clientes.filter(c => c.pct === 1).length;
     const clientesComAtraso = clientes.filter(c => c.atrasadas > 0).length;
 
     const porTipo = ORDEM_TIPOS.map(tipo => {
-      const deste = aplicaveis.filter(e => e.tipo_entrega === tipo);
+      const deste = ativas.filter(e => e.tipo_entrega === tipo);
       const ok = deste.filter(e => e.status === 'ok').length;
       const pend = deste.filter(e => e.status === 'pendente').length;
       const atr = deste.filter(e => e.status === 'atrasado').length;
@@ -108,7 +133,7 @@ class EntregasService {
     }).filter(t => t.total > 0);
 
     const porResp = {};
-    entregas.filter(e => e.status === 'ok' && e.responsavel_nome).forEach(e => {
+    entregas.filter(e => e.status === 'ok' && e.responsavel_nome && _isFonteAtiva(e.fonte)).forEach(e => {
       porResp[e.responsavel_nome] = (porResp[e.responsavel_nome] || 0) + 1;
     });
     const ranking = Object.entries(porResp)
@@ -124,6 +149,7 @@ class EntregasService {
         pct_completo: pctCompleto,
         total_entregas: total,
         aplicaveis: aplicaveis.length,
+        ativas: ativas.length,  // novo: quantas estao sendo acompanhadas de fato
         concluidas, pendentes, atrasadas,
         clientes_total: clientes.length,
         clientes_ok: clientesOk,
@@ -136,7 +162,6 @@ class EntregasService {
       tendencia,
       ranking_responsaveis: ranking,
       clientes,
-      // Cobertura do snapshot SERPRO (pro banner da tela)
       serpro: mergeInfo,
     };
   }
@@ -162,13 +187,8 @@ class EntregasService {
     }
   }
 
-  // -------------------------------------------------
-  // MERGE SNAPSHOT SERPRO → entregas_mensais do mes corrente
-  // -------------------------------------------------
   _mergeSnapshotSerpro(competencia) {
     const db = getDb();
-
-    // Le snapshot recente (<= 7 dias) de DCTFWEB e PGDASD
     const snaps = db.prepare(`
       SELECT so.cliente_id, so.obrigacao, so.status, so.resumo, so.atualizado_em
       FROM snapshot_obrigacoes so
@@ -180,7 +200,6 @@ class EntregasService {
 
     let atualizadas = 0;
     const clientesComDados = new Set();
-    let ultimaAtualizacao = null;
     const porTipo = { DCTFWEB: 0, PGDASD: 0 };
 
     const updateStmt = db.prepare(`
@@ -201,14 +220,10 @@ class EntregasService {
           clientesComDados.add(s.cliente_id);
           porTipo[s.obrigacao] = (porTipo[s.obrigacao] || 0) + 1;
         }
-        if (!ultimaAtualizacao || s.atualizado_em > ultimaAtualizacao) {
-          ultimaAtualizacao = s.atualizado_em;
-        }
       }
     });
     tx();
 
-    // Contagem geral de snapshots (mesmo de outros tipos)
     const resumoRow = db.prepare(`
       SELECT MAX(atualizado_em) as ultima, COUNT(DISTINCT cliente_id) as clientes
       FROM snapshot_obrigacoes
@@ -222,10 +237,6 @@ class EntregasService {
       por_tipo: porTipo,
     };
   }
-
-  // -------------------------------------------------
-  // Internos
-  // -------------------------------------------------
 
   _competenciaAtual() {
     const d = new Date();
@@ -243,22 +254,18 @@ class EntregasService {
     return comps.map(c => {
       const row = db.prepare(`
         SELECT
-          SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) as ok,
-          SUM(CASE WHEN status != 'nao_aplicavel' THEN 1 ELSE 0 END) as aplicaveis
+          SUM(CASE WHEN status = 'ok' AND (fonte = 'serpro' OR fonte = 'manual') THEN 1 ELSE 0 END) as ok,
+          SUM(CASE WHEN status != 'nao_aplicavel' AND (fonte = 'serpro' OR fonte = 'manual') THEN 1 ELSE 0 END) as ativas
         FROM entregas_mensais WHERE competencia = ?
       `).get(c);
-      const aplic = row?.aplicaveis || 0;
+      const at = row?.ativas || 0;
       return {
         competencia: c,
-        pct: aplic > 0 ? (row.ok || 0) / aplic : 0,
+        pct: at > 0 ? (row.ok || 0) / at : 0,
       };
     });
   }
 
-  /**
-   * Gera mock data realistico se a competencia ainda nao tiver entregas cadastradas.
-   * Isso permite o dashboard funcionar visualmente antes das integracoes reais.
-   */
   _seedMockSeNecessario(competencia) {
     const db = getDb();
     const existem = db.prepare('SELECT COUNT(*) as c FROM entregas_mensais WHERE competencia = ?').get(competencia).c;
@@ -299,7 +306,6 @@ class EntregasService {
             stmt.run(cliente.id, competencia, tipo, 'nao_aplicavel', null, null, null);
             continue;
           }
-
           const seed = hash(`${cliente.id}-${competencia}-${tipo}`) % 100;
           let status, dataEntrega = null, responsavel = null;
           const venc = new Date(anoComp, mesComp - 1, meta.dia_vencimento);
@@ -324,8 +330,6 @@ class EntregasService {
       }
     });
     tx();
-
-    console.log(`[Entregas] Mock seed criado pra ${competencia}: ${clientes.length} clientes x ${Object.keys(TIPOS_ENTREGA).length} tipos`);
   }
 }
 
