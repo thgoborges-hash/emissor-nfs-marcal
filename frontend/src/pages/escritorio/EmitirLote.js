@@ -16,7 +16,7 @@ function EmitirLote() {
 
   const lerArquivo = async (acao) => {
     const file = fileRef.current?.files?.[0];
-    if (\!file) { setMensagem({ tipo: 'erro', texto: 'Selecione um arquivo CSV.' }); return; }
+    if (!file) { setMensagem({ tipo: 'erro', texto: 'Selecione um arquivo CSV.' }); return; }
     const fd = new FormData();
     fd.append('arquivo', file);
     setMensagem(null);
@@ -102,7 +102,7 @@ function EmitirLote() {
       <div style={{ marginTop: 20, display: 'flex', gap: 8, alignItems: 'center' }}>
         <input type="file" accept=".csv,text/csv" ref={fileRef} style={{ flex: 1 }} />
         <button onClick={onValidar} style={btnSecondary}>Validar</button>
-        <button onClick={onEmitir} style={btnPrimary} disabled={processando || \!preview}>
+        <button onClick={onEmitir} style={btnPrimary} disabled={processando || !preview}>
           {processando ? 'Enviando…' : 'Emitir em lote'}
         </button>
       </div>
@@ -125,7 +125,7 @@ function EmitirLote() {
         </div>
       )}
 
-      {preview && \!loteAtivo && (
+      {preview && !loteAtivo && (
         <div style={{ marginTop: 20 }}>
           <h3 style={{ color: '#374151' }}>Prévia do CSV</h3>
           <div style={{ fontSize: 14, color: '#4b5563' }}>
