@@ -521,6 +521,8 @@ AÇÕES (inclua no final da resposta — o cliente não vê isso):
 - [ACAO:TRANSFERIR_HUMANO] — passar pro Thiago/equipe
 - [ACAO:CONSULTAR_NF:numero] — consultar NF específica
 - [ACAO:CANCELAR_NF:numero_ou_chave|motivo] — cancela uma NF já emitida (motivo min 15 chars; exige que o emitente tenha A1 válido). Aceita número da NFS-e ou chave de acesso (47 dígitos). Se houver ambiguidade (mesmo número em emitentes diferentes), peça a chave.
+- [ACAO:ATUALIZAR_CLIENTE:cnpj|campo=valor|campo=valor...] — atualiza cadastro do cliente emitente. Campos aceitos: optante_simples (1/0), aliquota_iss (0.02 = 2%, aceita "2%" ou "2"), codigo_servico (ex: 04.01.01), descricao_servico_padrao, regime_especial, incentivo_fiscal, inscricao_municipal, municipio, codigo_municipio (IBGE), uf, cep, logradouro, numero, bairro.
+  Use quando o sistema reclamar de campo faltando no cadastro, ou quando a equipe passar dados pra configurar um cliente novo. Exemplo: "configura o DDA como Simples, ISS 2%" → [ACAO:ATUALIZAR_CLIENTE:27998575000100|optante_simples=1|aliquota_iss=0.02]
 - [ACAO:LISTAR_NFS] — listar NFs do cliente
 - [ACAO:BUSCAR_DANFSE:numero_nf] — buscar e enviar o PDF da DANFSe de uma NF já emitida (quando o cliente pedir o PDF, nota, documento)
 - [ACAO:ENVIAR_GUIA:tipo|referencia] — enviar 2ª via de guia/boleto
@@ -1237,6 +1239,98 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
 
             } catch (err) {
               console.error('[WhatsApp] Erro ao criar NF:', err);
+              acao.feedback = { sucesso: false, erro: err.message };
+            }
+          }
+          break;
+
+        case 'ATUALIZAR_CLIENTE':
+          // Formato: [ACAO:ATUALIZAR_CLIENTE:cnpj|campo=valor|campo=valor...]
+          // Campos permitidos (whitelist): optante_simples, aliquota_iss, codigo_servico,
+          // descricao_servico_padrao, regime_especial, incentivo_fiscal, inscricao_municipal,
+          // codigo_municipio, municipio, uf, cep, logradouro, numero, bairro
+          if (acao.parametro) {
+            try {
+              const atuPartes = acao.parametro.split('|');
+              const cnpjAlvo = (atuPartes[0] || '').replace(/\D/g, '');
+              if (cnpjAlvo.length !== 14) {
+                acao.feedback = { sucesso: false, erro: 'CNPJ inválido — preciso dos 14 dígitos do cliente emitente.' };
+                break;
+              }
+              const cliAlvo = db.prepare(`SELECT id, razao_social, optante_simples, aliquota_iss, codigo_servico FROM clientes WHERE REPLACE(REPLACE(REPLACE(cnpj,'.',''),'/',''),'-','') = ?`).get(cnpjAlvo);
+              if (!cliAlvo) {
+                acao.feedback = { sucesso: false, erro: `Cliente com CNPJ ${cnpjAlvo} não encontrado na carteira.` };
+                break;
+              }
+
+              const CAMPOS_PERMITIDOS = new Set([
+                'optante_simples', 'aliquota_iss', 'codigo_servico', 'descricao_servico_padrao',
+                'regime_especial', 'incentivo_fiscal', 'inscricao_municipal',
+                'codigo_municipio', 'municipio', 'uf', 'cep', 'logradouro', 'numero', 'bairro',
+              ]);
+              const normalizarBool = (v) => {
+                const x = String(v).trim().toLowerCase();
+                if (['1','true','sim','yes','simples','y','t','s'].includes(x)) return 1;
+                if (['0','false','nao','não','no','n','f'].includes(x)) return 0;
+                return null;
+              };
+              const normalizarAliquota = (v) => {
+                const x = String(v).replace('%','').replace(',','.').trim();
+                const n = parseFloat(x);
+                if (isNaN(n)) return null;
+                // Se veio como percentual (ex: "5" ou "5.0"), converte pra fração (0.05)
+                return n > 1 ? n / 100 : n;
+              };
+
+              const updates = {};
+              const erros = [];
+              for (let i = 1; i < atuPartes.length; i++) {
+                const kv = atuPartes[i];
+                const eq = kv.indexOf('=');
+                if (eq < 0) continue;
+                const campo = kv.slice(0, eq).trim().toLowerCase();
+                const valor = kv.slice(eq + 1).trim();
+                if (!CAMPOS_PERMITIDOS.has(campo)) {
+                  erros.push(`campo "${campo}" não permitido (permitidos: ${[...CAMPOS_PERMITIDOS].join(', ')})`);
+                  continue;
+                }
+                if (campo === 'optante_simples' || campo === 'incentivo_fiscal') {
+                  const b = normalizarBool(valor);
+                  if (b === null) { erros.push(`${campo}: valor "${valor}" inválido, use 1/0 ou sim/não`); continue; }
+                  updates[campo] = b;
+                } else if (campo === 'aliquota_iss') {
+                  const a = normalizarAliquota(valor);
+                  if (a === null) { erros.push(`aliquota_iss: valor "${valor}" inválido`); continue; }
+                  updates[campo] = a;
+                } else if (campo === 'uf') {
+                  updates[campo] = valor.toUpperCase().slice(0, 2);
+                } else {
+                  updates[campo] = valor;
+                }
+              }
+
+              if (erros.length > 0) {
+                acao.feedback = { sucesso: false, erro: 'Falhas na validação: ' + erros.join('; ') };
+                break;
+              }
+              if (Object.keys(updates).length === 0) {
+                acao.feedback = { sucesso: false, erro: 'Nenhum campo válido informado.' };
+                break;
+              }
+
+              const setClause = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+              const valuesArr = Object.values(updates);
+              db.prepare(`UPDATE clientes SET ${setClause}, updated_at = datetime('now') WHERE id = ?`).run(...valuesArr, cliAlvo.id);
+              console.log(`[WhatsApp] ATUALIZAR_CLIENTE: cliente ${cliAlvo.id} (${cliAlvo.razao_social}) — ${Object.entries(updates).map(([k,v])=>`${k}=${v}`).join(', ')}`);
+
+              acao.feedback = {
+                sucesso: true,
+                clienteId: cliAlvo.id,
+                razao: cliAlvo.razao_social,
+                atualizados: updates,
+              };
+            } catch (err) {
+              console.error('[WhatsApp] Erro ATUALIZAR_CLIENTE:', err);
               acao.feedback = { sucesso: false, erro: err.message };
             }
           }
