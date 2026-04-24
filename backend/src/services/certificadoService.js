@@ -209,10 +209,62 @@ class CertificadoService {
       throw new Error(`Certificado expirado em ${info.validade.fim}. Faça upload de um novo certificado.`);
     }
 
+    // Converte PFX → PEM (key + cert) pra uso em https.request com key/cert.
+    // Necessário porque OpenSSL 3.x (Render Linux) rejeita alguns PFX modernos quando
+    // passados via opção `pfx`, mas aceita `key`+`cert` em PEM sem problema.
+    let keyPem = null;
+    let certPem = null;
+    try {
+      const pem = this._pfxParaPem(pfxBuffer, senha);
+      keyPem = pem.key;
+      certPem = pem.cert;
+    } catch (err) {
+      console.warn(`[CertificadoService] Conversão PFX→PEM falhou: ${err.message}. Seguirá usando pfx bruto.`);
+    }
+
     return {
       pfxBuffer,
       senha,
       info,
+      keyPem,
+      certPem,
+    };
+  }
+
+  /**
+   * Converte um buffer PFX em PEM {key, cert} via OpenSSL CLI.
+   * Tenta primeiro sem -legacy; se falhar, retry com -legacy (pra PFX antigos).
+   * Lança erro com contexto se ambos falharem.
+   */
+  _pfxParaPem(pfxBuffer, senha) {
+    const { execFileSync } = require('child_process');
+    const os = require('os');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pfx-'));
+    const pfxPath = path.join(tmpDir, 'cert.pfx');
+    fs.writeFileSync(pfxPath, pfxBuffer);
+    const limpar = () => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} };
+    const args = ['pkcs12', '-in', pfxPath, '-nodes', '-passin', `pass:${senha}`];
+    let pemTxt = null;
+    try {
+      pemTxt = execFileSync('openssl', args, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+    } catch (e1) {
+      try {
+        pemTxt = execFileSync('openssl', [...args, '-legacy'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+      } catch (e2) {
+        limpar();
+        const msg1 = (e1.stderr || e1.message || '').toString().slice(0, 200);
+        const msg2 = (e2.stderr || e2.message || '').toString().slice(0, 200);
+        throw new Error(`openssl pkcs12 falhou (padrão: ${msg1}; -legacy: ${msg2})`);
+      }
+    }
+    limpar();
+    const keyMatch = pemTxt.match(/-----BEGIN (?:ENCRYPTED |RSA )?PRIVATE KEY-----[\s\S]+?-----END (?:ENCRYPTED |RSA )?PRIVATE KEY-----/);
+    const certMatches = pemTxt.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g);
+    if (!keyMatch) throw new Error('PEM sem chave privada');
+    if (!certMatches || certMatches.length === 0) throw new Error('PEM sem certificado');
+    return {
+      key: keyMatch[0],
+      cert: certMatches.join('\n'),
     };
   }
 

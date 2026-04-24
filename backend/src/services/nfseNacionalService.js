@@ -55,7 +55,7 @@ class NfseNacionalService {
     // 6. Envia para a API via mTLS
     const endpoint = `${nfseConfig.ambiente.sefin}${nfseConfig.endpoints.enviarDPS}`;
     console.log(`[NFS-e] Enviando para: ${endpoint}`);
-    const resultado = await this._requisicaoMTLS(endpoint, 'POST', payload, cert.pfxBuffer, cert.senha);
+    const resultado = await this._requisicaoMTLS(endpoint, 'POST', payload, cert.pfxBuffer, cert.senha, false, { keyPem: cert.keyPem, certPem: cert.certPem });
     console.log(`[NFS-e] Resposta COMPLETA recebida:`, JSON.stringify(resultado).substring(0, 2000));
     console.log(`[NFS-e] Campos da resposta:`, Object.keys(resultado).join(', '));
 
@@ -125,7 +125,7 @@ class NfseNacionalService {
   async consultarNFSe(chaveAcesso, clienteId, senhaEncrypted) {
     const cert = certificadoService.carregarCertificado(clienteId, senhaEncrypted);
     const endpoint = `${nfseConfig.ambiente.sefin}${nfseConfig.endpoints.consultarNFSe}/${chaveAcesso}`;
-    return await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha);
+    return await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha, false, { keyPem: cert.keyPem, certPem: cert.certPem });
   }
 
   /**
@@ -155,7 +155,7 @@ class NfseNacionalService {
     for (const endpoint of endpoints) {
       try {
         console.log(`[NFS-e] Tentando DANFSe em: ${endpoint}`);
-        const resultado = await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha, true);
+        const resultado = await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha, true, { keyPem: cert.keyPem, certPem: cert.certPem });
         if (resultado && resultado.pdf && resultado.pdf.length > 500) {
           console.log(`[NFS-e] ✅ DANFSe baixado de ${endpoint}: ${resultado.pdf.length} bytes`);
           return resultado;
@@ -196,7 +196,7 @@ class NfseNacionalService {
     };
 
     const endpoint = `${nfseConfig.ambiente.sefin}${nfseConfig.endpoints.enviarEvento}/${chaveAcesso}/eventos`;
-    return await this._requisicaoMTLS(endpoint, 'POST', payload, cert.pfxBuffer, cert.senha);
+    return await this._requisicaoMTLS(endpoint, 'POST', payload, cert.pfxBuffer, cert.senha, false, { keyPem: cert.keyPem, certPem: cert.certPem });
   }
 
   /**
@@ -205,7 +205,7 @@ class NfseNacionalService {
   async consultarParametrosMunicipais(codigoMunicipio, clienteId, senhaEncrypted) {
     const cert = certificadoService.carregarCertificado(clienteId, senhaEncrypted);
     const endpoint = `${nfseConfig.ambiente.sefin}${nfseConfig.endpoints.parametrosMunicipais}/${codigoMunicipio}`;
-    return await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha);
+    return await this._requisicaoMTLS(endpoint, 'GET', null, cert.pfxBuffer, cert.senha, false, { keyPem: cert.keyPem, certPem: cert.certPem });
   }
 
   // ===========================================================================
@@ -453,18 +453,16 @@ class NfseNacionalService {
   /**
    * Faz requisição com mTLS (certificado digital)
    */
-  _requisicaoMTLS(url, method, body, pfxBuffer, senha, isBinary = false) {
+  _requisicaoMTLS(url, method, body, pfxBuffer, senha, isBinary = false, pemCreds = null) {
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
-      console.log(`[NFS-e mTLS] ${method} ${url}`);
+      console.log(`[NFS-e mTLS] ${method} ${url} (auth=${pemCreds ? 'pem' : 'pfx'})`);
 
       const options = {
         hostname: urlObj.hostname,
         port: urlObj.port || 443,
         path: urlObj.pathname + urlObj.search,
         method: method,
-        pfx: pfxBuffer,
-        passphrase: senha,
         rejectUnauthorized: true, // Valida certificado do servidor
         headers: {
           'Accept': isBinary ? 'application/pdf' : 'application/json',
@@ -472,6 +470,16 @@ class NfseNacionalService {
         },
         timeout: nfseConfig.timeout,
       };
+
+      // Preferimos key+cert em PEM porque o OpenSSL 3.x rejeita alguns PFX modernos
+      // quando passados via opção `pfx`. PEM contorna o erro "Unsupported PKCS12 PFX data".
+      if (pemCreds && pemCreds.keyPem && pemCreds.certPem) {
+        options.key = pemCreds.keyPem;
+        options.cert = pemCreds.certPem;
+      } else {
+        options.pfx = pfxBuffer;
+        options.passphrase = senha;
+      }
 
       if (body && (method === 'POST' || method === 'PUT')) {
         const bodyStr = JSON.stringify(body);
