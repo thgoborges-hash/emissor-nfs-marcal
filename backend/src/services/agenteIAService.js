@@ -520,6 +520,7 @@ AÇÕES (inclua no final da resposta — o cliente não vê isso):
 - [ACAO:EMITIR_NF:valor|cnpj_cpf|razao_social|descricao] — emitir NF direto, sem pedir confirmação (CNPJ/CPF só números)
 - [ACAO:TRANSFERIR_HUMANO] — passar pro Thiago/equipe
 - [ACAO:CONSULTAR_NF:numero] — consultar NF específica
+- [ACAO:CANCELAR_NF:numero_ou_chave|motivo] — cancela uma NF já emitida (motivo min 15 chars; exige que o emitente tenha A1 válido). Aceita número da NFS-e ou chave de acesso (47 dígitos). Se houver ambiguidade (mesmo número em emitentes diferentes), peça a chave.
 - [ACAO:LISTAR_NFS] — listar NFs do cliente
 - [ACAO:BUSCAR_DANFSE:numero_nf] — buscar e enviar o PDF da DANFSe de uma NF já emitida (quando o cliente pedir o PDF, nota, documento)
 - [ACAO:ENVIAR_GUIA:tipo|referencia] — enviar 2ª via de guia/boleto
@@ -672,6 +673,14 @@ FORMATO DE RESPOSTA: copie EXATAMENTE o template abaixo, sem reformatar, sem ree
 📝 *DAS MEI*
 • CNPJ do MEI: _____
 • Ano: ____
+
+--- CANCELAR NF ---
+
+📝 *CANCELAR NF*
+• Número da NF (ou chave de acesso 47 dígitos): _____
+• Motivo do cancelamento: _____ (mínimo 15 caracteres)
+
+(Se houver risco de ambiguidade, prefira a chave de acesso.)
 
 --- DARF ---
 
@@ -1228,6 +1237,88 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
 
             } catch (err) {
               console.error('[WhatsApp] Erro ao criar NF:', err);
+              acao.feedback = { sucesso: false, erro: err.message };
+            }
+          }
+          break;
+
+        case 'CANCELAR_NF':
+          // Formato: [ACAO:CANCELAR_NF:numero_ou_chave|motivo]
+          // - numero_ou_chave: número da NFS-e (4+ dígitos) OU chave de acesso (47+ dígitos)
+          // - motivo: texto livre (exigido pela RFB, min 15 chars; se menor, completa)
+          if (acao.parametro) {
+            try {
+              const cancPartes = acao.parametro.split('|');
+              const alvo = (cancPartes[0] || '').trim();
+              let motivo = (cancPartes[1] || '').trim();
+
+              if (!alvo) {
+                acao.feedback = { sucesso: false, erro: 'Informe o número da NF ou chave de acesso.' };
+                break;
+              }
+
+              // Motivo min 15 chars (exigência do padrão nacional); se menor, preenche
+              if (!motivo) motivo = 'Cancelamento solicitado pelo emitente';
+              if (motivo.length < 15) motivo = motivo.padEnd(15, '.');
+
+              // Busca a NF: chave (>=40 dígitos) tem prioridade; senão tenta por número
+              const alvoLimpo = alvo.replace(/\D/g, '');
+              let nf = null;
+              if (alvoLimpo.length >= 40) {
+                nf = db.prepare(`SELECT id, cliente_id, numero_nfse, chave_acesso, status FROM notas_fiscais WHERE chave_acesso = ? LIMIT 1`).get(alvoLimpo);
+              } else if (alvoLimpo.length >= 1) {
+                const matches = db.prepare(`SELECT id, cliente_id, numero_nfse, chave_acesso, status FROM notas_fiscais WHERE numero_nfse = ? ORDER BY id DESC`).all(alvoLimpo);
+                if (matches.length === 1) nf = matches[0];
+                else if (matches.length > 1) {
+                  acao.feedback = { sucesso: false, erro: `Achei ${matches.length} NFs com o número ${alvoLimpo}. Me passa a chave de acesso completa (47 dígitos) pra eu cancelar a certa.` };
+                  break;
+                }
+              }
+
+              if (!nf) {
+                acao.feedback = { sucesso: false, erro: `NF não encontrada (${alvo}). Confere o número ou manda a chave.` };
+                break;
+              }
+              if (nf.status === 'cancelada') {
+                acao.feedback = { sucesso: false, erro: `NF ${nf.numero_nfse} já está cancelada.` };
+                break;
+              }
+              if (!nf.chave_acesso) {
+                acao.feedback = { sucesso: false, erro: `NF ${nf.numero_nfse} não tem chave de acesso no sistema — pode não ter sido autorizada ainda.` };
+                break;
+              }
+
+              const clienteEmit = db.prepare('SELECT id, razao_social, certificado_a1_senha_encrypted FROM clientes WHERE id = ?').get(nf.cliente_id);
+              if (!clienteEmit || !clienteEmit.certificado_a1_senha_encrypted) {
+                acao.feedback = { sucesso: false, erro: `Cliente emitente (ID ${nf.cliente_id}) sem certificado A1 configurado — não dá pra assinar o cancelamento.` };
+                break;
+              }
+
+              console.log(`[WhatsApp] CANCELAR_NF: NF ${nf.id}, num=${nf.numero_nfse}, chave=${nf.chave_acesso}, emit=${clienteEmit.razao_social}`);
+              const nfseService = require('./nfseNacionalService');
+              let resultadoCanc;
+              try {
+                resultadoCanc = await nfseService.cancelarNFSe(nf.chave_acesso, motivo, clienteEmit.id, clienteEmit.certificado_a1_senha_encrypted);
+              } catch (errCanc) {
+                const msg = errCanc.mensagem || errCanc.message || JSON.stringify(errCanc).substring(0, 400);
+                console.error(`[WhatsApp] Erro ao cancelar NF ${nf.id}:`, msg);
+                acao.feedback = { sucesso: false, erro: `SEFIN rejeitou: ${msg}` };
+                break;
+              }
+
+              db.prepare(`UPDATE notas_fiscais SET status = 'cancelada', data_cancelamento = datetime('now'), observacoes = COALESCE(observacoes || ' | ', '') || ? WHERE id = ?`).run('Cancelamento ANA: ' + motivo, nf.id);
+              console.log(`[WhatsApp] NF ${nf.id} (num ${nf.numero_nfse}) cancelada com sucesso pelo emitente ${clienteEmit.razao_social}`);
+
+              acao.feedback = {
+                sucesso: true,
+                nfId: nf.id,
+                numero: nf.numero_nfse,
+                chaveAcesso: nf.chave_acesso,
+                emitente: clienteEmit.razao_social,
+                motivo,
+              };
+            } catch (err) {
+              console.error('[WhatsApp] Erro ao processar CANCELAR_NF:', err);
               acao.feedback = { sucesso: false, erro: err.message };
             }
           }
