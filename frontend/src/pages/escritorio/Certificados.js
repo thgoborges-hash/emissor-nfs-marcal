@@ -134,8 +134,8 @@ function Certificados() {
           <tbody>
             {clientes.map((c) => (
               <tr key={c.id} style={{ borderBottom: '1px solid #eee' }}>
-                <td style={tdStyle}>{c.razao_social}</td>
-                <td style={tdStyle}>{c.cnpj}</td>
+                <td style={tdStyleCliente}>{c.razao_social}</td>
+                <td style={tdStyleCnpj}>{c.cnpj}</td>
                 <td style={tdStyle}>{statusBadge(c.status)}</td>
                 <td style={tdStyle}>
                   {c.certificado_validade || '-'}
@@ -256,6 +256,17 @@ const thStyle = {
 
 const tdStyle = {
   padding: '12px 16px', fontSize: '14px',
+  color: '#1a1a1a',
+};
+
+const tdStyleCliente = {
+  padding: '12px 16px', fontSize: '14px',
+  color: '#0f172a', fontWeight: 600,
+};
+
+const tdStyleCnpj = {
+  padding: '12px 16px', fontSize: '14px',
+  color: '#334155', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 };
 
 const labelStyle = {
