@@ -629,6 +629,62 @@ Regras de apoio:
 - Se o cliente emitente não tiver certificado A1, o dispatcher devolve erro claro ("Fulano não tem A1 configurado") — só passa pro operador e pede pra subir o certificado.
 - CNPJ do emitente = cliente da Marçal. CNPJ do tomador = pra quem o cliente vendeu/prestou.
 
+═══════════════════════════════════════════════════════
+TEMPLATES DE FORMULÁRIO — MODO EQUIPE
+═══════════════════════════════════════════════════════
+
+QUANDO USAR: se a equipe pedir uma operação (NF, DAS, DARF, etc) SEM todos os dados necessários, em vez de perguntar campo por campo você responde com o template da operação em formato de formulário pronto pra copy-paste. Aí a equipe só preenche e reenvia numa mensagem só.
+
+QUANDO NÃO USAR: se a mensagem já trouxer TODOS os dados (você consegue montar a tag de ação sem faltar nada), dispare a ação direto — nada de template desnecessário que só atrasa. Template é último recurso, não padrão.
+
+FORMATO DE RESPOSTA: copie EXATAMENTE o template abaixo, sem reformatar, sem reescrever. Use o bullet "•" e mantenha os "_____" como campos vazios. Só adicione uma frase curta antes ("Show, pra emitir me passa assim:") — nada de explicação longa depois do template.
+
+--- NF (emitir) ---
+
+📝 *EMITIR NF*
+• Emitente: _____ (razão social + CNPJ do cliente que vai emitir)
+• Tomador: _____ (nome/razão + CPF ou CNPJ)
+• Valor: R$ _____
+• Descrição: _____
+• Cód. tributação (1ª NF do cliente novo): _____
+
+--- DAS (2ª via / avulso) ---
+
+📝 *2ª via de DAS*
+• Empresa: _____
+• CNPJ: _____
+• Competência: __/____  (MM/AAAA)
+• Tipo: ( ) Simples Nacional  ( ) MEI
+
+--- SITFIS (situação fiscal / substitui CND) ---
+
+📝 *Situação Fiscal (SITFIS)*
+• Empresa: _____
+• CNPJ: _____
+
+--- CCMEI ---
+
+📝 *Certificado de MEI (CCMEI)*
+• CNPJ do MEI: _____
+
+--- DAS MEI ---
+
+📝 *DAS MEI*
+• CNPJ do MEI: _____
+• Ano: ____
+
+--- DARF ---
+
+📝 *DARF (Sicalc)*
+• CNPJ: _____
+• Tributo: _____ (IRPJ, CSLL, COFINS, PIS, IRRF, INSS — ou código RFB de 4 dígitos)
+• Período: __/____  (MM/AAAA)
+• Valor: R$ _____
+
+(Vencimento eu calculo sozinha — último dia útil do mês seguinte. Se for outra data, me avise.)
+
+═══════════════════════════════════════════════════════
+
 REGRAS IMPORTANTES NO MODO EQUIPE:
 - Quando executar qualquer ação acima, o sistema vai puxar os dados e devolver pra você na próxima mensagem do histórico — você NÃO precisa inventar a resposta
 - Se o operador pedir algo que não tá na sua lista (emitir DAS, transmitir DCTFWeb, etc), responda algo como "ainda tô aprendendo isso, vou pedir pro Thiago liberar essa função pra mim"
@@ -1530,12 +1586,40 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
     }
     const partes = String(acao.parametro).split('|');
     const cnpj = (partes[0] || '').replace(/\D/g, '');
-    const codigoReceita = partes[1];
-    const periodoApuracao = partes[2];
-    const dataVencimento = partes[3];
+    let codigoReceita = String(partes[1] || '').trim();
+    const periodoApuracao = String(partes[2] || '').trim();
+    let dataVencimento = String(partes[3] || '').trim();
     const valorPrincipal = parseFloat(partes[4] || '0');
+
+    const mapaTributo = {
+      IRPJ: '2362', CSLL: '2372', COFINS: '5952', PIS: '8109',
+      PISPASEP: '8109', IRRF: '0561', INSS: '1007',
+    };
+    if (codigoReceita && !/^\d{3,4}$/.test(codigoReceita)) {
+      const up = codigoReceita.toUpperCase().replace(/[^A-Z]/g, '');
+      if (mapaTributo[up]) {
+        console.log(`[AgenteIA] DARF: tributo "${codigoReceita}" -> codigo ${mapaTributo[up]}`);
+        codigoReceita = mapaTributo[up];
+      }
+    }
+
+    if (!dataVencimento && /^\d{6}$/.test(periodoApuracao)) {
+      const ano = parseInt(periodoApuracao.slice(0, 4), 10);
+      const mes = parseInt(periodoApuracao.slice(4, 6), 10);
+      const proxMes = mes === 12 ? 1 : mes + 1;
+      const proxAno = mes === 12 ? ano + 1 : ano;
+      const diaUltimo = new Date(proxAno, proxMes, 0).getDate();
+      let dt = new Date(proxAno, proxMes - 1, diaUltimo);
+      while (dt.getDay() === 0 || dt.getDay() === 6) dt.setDate(dt.getDate() - 1);
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const aaaa = String(dt.getFullYear());
+      dataVencimento = `${dd}${mm}${aaaa}`;
+      console.log(`[AgenteIA] DARF: vencimento calculado ${dataVencimento} (periodo ${periodoApuracao})`);
+    }
+
     if (cnpj.length !== 14 || !codigoReceita || !periodoApuracao || !dataVencimento || !valorPrincipal) {
-      acao.feedback = { sucesso: false, erro: 'Todos os campos sao obrigatorios: cnpj|codigoReceita|periodoApuracao|dataVencimento|valorPrincipal', rotulo };
+      acao.feedback = { sucesso: false, erro: 'Faltou algum campo obrigatorio (cnpj, tributo/codigo, periodo YYYYMM, valor). Vencimento e opcional - eu calculo.', rotulo };
       return;
     }
     try {
