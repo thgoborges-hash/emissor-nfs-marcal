@@ -79,13 +79,17 @@ async function _coletarPorCliente(cliente) {
     const r = await integraContadorService.consultarRelacaoDCTFWeb(cnpj, periodoApuracaoAlvo);
     const dados = (r && r.dados) || r;
     const parsed = typeof dados === 'string' ? tryJson(dados) : dados;
-    const declaracoes = Array.isArray(parsed) ? parsed : (parsed && (parsed.declaracoes || parsed.lista)) || [];
-    const classif = _classificarDctfweb(declaracoes);
+    // Passa parsed direto — CONSDECCOMPLETA33 retorna um objeto com PDFByteArrayBase64
+    // ou campos de declaracao transmitida. O classificador sabe lidar com objeto ou lista.
+    const classif = _classificarDctfweb(parsed);
+    const resumoDadosRaw = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? { keys: Object.keys(parsed), temPDF: !!(parsed.PDFByteArrayBase64 && parsed.PDFByteArrayBase64.length > 100) }
+      : { total: Array.isArray(parsed) ? parsed.length : 0 };
     _gravarSnapshot(cliente.id, 'DCTFWEB', {
       competencia: classif.competenciaAlvo,
       status: classif.status,
       resumo: classif.resumo,
-      dadosRaw: { total: declaracoes.length, alvo: classif.competenciaAlvo, amostra: declaracoes.slice(0, 3) },
+      dadosRaw: { alvo: classif.competenciaAlvo, ...resumoDadosRaw },
     });
   } catch (err) {
     _gravarSnapshot(cliente.id, 'DCTFWEB', { status: 'erro', erro: err.message });
@@ -245,6 +249,16 @@ async function rodarSnapshotCompleto() {
   }
   const totalMin = ((Date.now() - inicio) / 60000).toFixed(1);
   console.log(`[SerproSnap] Concluido em ${totalMin}min. Sucessos: ${sucessos}, Erros: ${erros}`);
+
+  // Após varredura, dispara alertas diários pro grupo Staff (se configurado)
+  try {
+    const alertasService = require('./alertasService');
+    const resultado = await alertasService.enviarAlertasDiarios();
+    console.log(`[SerproSnap] Alertas: ${JSON.stringify(resultado)}`);
+  } catch (err) {
+    console.warn('[SerproSnap] Falha ao enviar alertas:', err.message);
+  }
+
   return { total: clientes.length, sucessos, erros, duracaoMin: totalMin };
 }
 
