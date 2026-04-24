@@ -5,6 +5,8 @@
 
 const https = require('https');
 const { getDb } = require('../database/init');
+const anexoCacheService = require('./anexoCacheService');
+const certificadoService = require('./certificadoService');
 const cnpjService = require('./cnpjService');
 const integraContadorService = require('./integraContadorService');
 
@@ -521,6 +523,7 @@ AÇÕES (inclua no final da resposta — o cliente não vê isso):
 - [ACAO:TRANSFERIR_HUMANO] — passar pro Thiago/equipe
 - [ACAO:CONSULTAR_NF:numero] — consultar NF específica
 - [ACAO:CANCELAR_NF:numero_ou_chave|motivo] — cancela uma NF já emitida (motivo min 15 chars; exige que o emitente tenha A1 válido). Aceita número da NFS-e ou chave de acesso (47 dígitos). Se houver ambiguidade (mesmo número em emitentes diferentes), peça a chave.
+- [ACAO:CADASTRAR_A1:cnpj|senha] — cadastra o certificado digital A1 do cliente. Pré-requisito: o arquivo .pfx deve ter sido ENVIADO como documento no WhatsApp momentos antes dessa mensagem (TTL 30min). Se não houver anexo recente, o sistema avisa. Exemplo: "A1 do DDA CNPJ 27.998.575/0001-00, senha: 123456" (após anexar o .pfx) → [ACAO:CADASTRAR_A1:27998575000100|123456]
 - [ACAO:ATUALIZAR_CLIENTE:cnpj|campo=valor|campo=valor...] — atualiza cadastro do cliente emitente. Campos aceitos: optante_simples (1/0), aliquota_iss (0.02 = 2%, aceita "2%" ou "2"), codigo_servico (ex: 04.01.01), descricao_servico_padrao, regime_especial, incentivo_fiscal, inscricao_municipal, municipio, codigo_municipio (IBGE), uf, cep, logradouro, numero, bairro.
   Use quando o sistema reclamar de campo faltando no cadastro, ou quando a equipe passar dados pra configurar um cliente novo. Exemplo: "configura o DDA como Simples, ISS 2%" → [ACAO:ATUALIZAR_CLIENTE:27998575000100|optante_simples=1|aliquota_iss=0.02]
 - [ACAO:LISTAR_NFS] — listar NFs do cliente
@@ -675,6 +678,14 @@ FORMATO DE RESPOSTA: copie EXATAMENTE o template abaixo, sem reformatar, sem ree
 📝 *DAS MEI*
 • CNPJ do MEI: _____
 • Ano: ____
+
+--- CADASTRAR A1 ---
+
+📝 *CADASTRAR CERTIFICADO A1*
+• CNPJ do cliente: _____
+• Senha do certificado: _____
+
+⚠️ *Antes de enviar isso*, anexe o arquivo .pfx como documento na mesma conversa (máx 30 min antes).
 
 --- CANCELAR NF ---
 
@@ -1239,6 +1250,87 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
 
             } catch (err) {
               console.error('[WhatsApp] Erro ao criar NF:', err);
+              acao.feedback = { sucesso: false, erro: err.message };
+            }
+          }
+          break;
+
+        case 'CADASTRAR_A1':
+          // Formato: [ACAO:CADASTRAR_A1:cnpj|senha]
+          // A equipe deve ter anexado o arquivo .pfx nos últimos 30min na mesma conversa.
+          if (acao.parametro) {
+            try {
+              const a1Partes = acao.parametro.split('|');
+              const cnpjA1 = (a1Partes[0] || '').replace(/\D/g, '');
+              const senhaA1 = (a1Partes.slice(1).join('|') || '').trim(); // senha pode ter pipes
+
+              if (cnpjA1.length !== 14) {
+                acao.feedback = { sucesso: false, erro: 'CNPJ inválido — precisa dos 14 dígitos do cliente dono do certificado.' };
+                break;
+              }
+              if (!senhaA1) {
+                acao.feedback = { sucesso: false, erro: 'Senha do certificado ausente. Formato: [ACAO:CADASTRAR_A1:cnpj|senha].' };
+                break;
+              }
+
+              const cliA1 = db.prepare(`SELECT id, razao_social FROM clientes WHERE REPLACE(REPLACE(REPLACE(cnpj,'.',''),'/',''),'-','') = ?`).get(cnpjA1);
+              if (!cliA1) {
+                acao.feedback = { sucesso: false, erro: `Cliente com CNPJ ${cnpjA1} não encontrado na carteira. Cadastre o cliente antes de subir o A1.` };
+                break;
+              }
+
+              const anexo = anexoCacheService.buscarUltimo(conversaId);
+              if (!anexo || !anexo.url) {
+                acao.feedback = { sucesso: false, erro: 'Não achei arquivo .pfx anexado nessa conversa (ou expirou, TTL 30min). Reenvie o certificado como documento e já emenda a mensagem "CADASTRAR_A1".' };
+                break;
+              }
+
+              // Baixa o arquivo do URL Z-API
+              const pfxBuffer = await new Promise((resolve, reject) => {
+                const req = https.get(anexo.url, (res) => {
+                  if (res.statusCode !== 200) {
+                    reject(new Error(`Download do anexo falhou (HTTP ${res.statusCode})`));
+                    return;
+                  }
+                  const chunks = [];
+                  res.on('data', c => chunks.push(c));
+                  res.on('end', () => resolve(Buffer.concat(chunks)));
+                });
+                req.on('error', reject);
+                req.setTimeout(20000, () => req.destroy(new Error('Download timeout')));
+              });
+
+              if (pfxBuffer.length < 100) {
+                acao.feedback = { sucesso: false, erro: 'Arquivo baixado é muito pequeno — anexo corrompido ou URL inválida.' };
+                break;
+              }
+
+              // Valida + salva (certificadoService faz ambos)
+              let infoCert;
+              try {
+                const resultSalvar = certificadoService.salvarCertificado(cliA1.id, pfxBuffer, senhaA1);
+                infoCert = resultSalvar.info;
+              } catch (errCert) {
+                acao.feedback = { sucesso: false, erro: `Certificado inválido: ${errCert.message}` };
+                break;
+              }
+
+              console.log(`[WhatsApp] CADASTRAR_A1: cliente ${cliA1.id} (${cliA1.razao_social}) — A1 válido até ${infoCert.validade?.fim}, CNPJ cert=${infoCert.cnpj}`);
+
+              // Limpa o cache após uso (evita re-cadastro acidental)
+              anexoCacheService.esquecer(conversaId);
+
+              acao.feedback = {
+                sucesso: true,
+                clienteId: cliA1.id,
+                razao: cliA1.razao_social,
+                titular: infoCert.titular,
+                cnpjCert: infoCert.cnpj,
+                validade: infoCert.validade?.fim,
+                diasRestantes: infoCert.diasRestantes,
+              };
+            } catch (err) {
+              console.error('[WhatsApp] Erro CADASTRAR_A1:', err);
               acao.feedback = { sucesso: false, erro: err.message };
             }
           }
