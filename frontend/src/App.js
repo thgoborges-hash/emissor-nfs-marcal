@@ -10,6 +10,7 @@ import Aprovacoes from './pages/escritorio/Aprovacoes';
 import TodasNotas from './pages/escritorio/TodasNotas';
 import GestaoClientes from './pages/escritorio/GestaoClientes';
 import EmitirNFEscritorio from './pages/escritorio/EmitirNFEscritorio';
+import EmitirLote from './pages/escritorio/EmitirLote';
 import Certificados from './pages/escritorio/Certificados';
 import WhatsAppPainel from './pages/escritorio/WhatsApp';
 import PainelAna from './pages/escritorio/PainelAna';
@@ -61,6 +62,7 @@ function App() {
             <Route path="notas" element={<TodasNotas />} />
             <Route path="clientes" element={<GestaoClientes />} />
             <Route path="emitir" element={<EmitirNFEscritorio />} />
+            <Route path="emitir-lote" element={<EmitirLote />} />
             <Route path="certificados" element={<Certificados />} />
             <Route path="certificado-serpro" element={<CertificadoSerpro />} />
             <Route path="integra-contador" element={<IntegraContador />} />

@@ -11,6 +11,7 @@ const TABS = [
       { to: '/escritorio/notas', label: 'Todas' },
       { to: '/escritorio/aprovacoes', label: 'Aprovações' },
       { to: '/escritorio/emitir', label: 'Emitir nova' },
+      { to: '/escritorio/emitir-lote', label: 'Emitir em lote' },
     ],
   },
   {

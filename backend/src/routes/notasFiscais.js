@@ -1,6 +1,9 @@
 const express = require('express');
 const { getDb } = require('../database/init');
 const { autenticado, apenasEscritorio } = require('../middleware/auth');
+const loteNfseService = require('../services/loteNfseService');
+const multer = require('multer');
+const uploadCSVLote = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const nfseNacionalService = require('../services/nfseNacionalService');
 const danfsePdfService = require('../services/danfsePdfService');
 let QRCode;
@@ -659,7 +662,7 @@ async function gerarHtmlDanfse(nota) {
     const dpsNum = nota.numero_dps || '-';
 
     return `
-<\!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -1187,6 +1190,56 @@ router.get('/relatorios/ranking-tomadores', autenticado, apenasEscritorio, (req,
   } catch (err) {
     console.error('Erro no ranking de tomadores:', err);
     res.status(500).json({ erro: 'Erro interno do servidor' });
+  }
+});
+
+// ==============================================================
+// EMISSÃO EM LOTE — upload CSV, preview, disparo e status
+// ==============================================================
+
+// Preview do CSV (parse + validação, sem persistir nada)
+router.post('/lote/preview', autenticado, apenasEscritorio, uploadCSVLote.single('arquivo'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ erro: 'Arquivo CSV não enviado (campo "arquivo").' });
+    const texto = req.file.buffer.toString('utf-8');
+    const resultado = loteNfseService.parseCSV(texto);
+    res.json(resultado);
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+});
+
+// Cria lote + inicia processamento em background. Retorna loteId imediatamente.
+router.post('/lote/emitir', autenticado, apenasEscritorio, uploadCSVLote.single('arquivo'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ erro: 'Arquivo CSV não enviado (campo "arquivo").' });
+    const texto = req.file.buffer.toString('utf-8');
+    const { registros, erros } = loteNfseService.parseCSV(texto);
+    if (erros.length > 0 && req.body.ignorarErros !== 'true') {
+      return res.status(400).json({ erro: 'CSV com erros — corrija e tente novamente, ou envie ignorarErros=true pra processar só as linhas válidas.', erros });
+    }
+    const registrosValidos = registros.filter(r => !erros.find(e => e.linha === r.linha));
+    const resultado = loteNfseService.criarLote({ registros: registrosValidos, criadoPor: req.usuario.nome });
+    // dispara em background (não aguarda)
+    setImmediate(() => {
+      loteNfseService.processarLote(resultado.loteId).catch(err =>
+        console.error(`[Lote ${resultado.loteId}] Falha no worker:`, err)
+      );
+    });
+    res.json({ ok: true, ...resultado, errosParse: erros });
+  } catch (err) {
+    console.error('[Lote] Erro ao emitir:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// Status do lote (polling a cada poucos segundos na tela)
+router.get('/lote/:loteId', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const s = loteNfseService.statusLote(req.params.loteId);
+    res.json(s);
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
   }
 });
 
