@@ -119,7 +119,7 @@ function tryJson(s) { try { return JSON.parse(s); } catch (e) { return s; } }
  *   - Se nao, e hoje <= dia 15 => 'pendente' (dentro do prazo)
  *   - Se nao ha historico nenhum => 'sem_dados' (provavelmente nao obrigado)
  */
-function _classificarDctfweb(declaracoes) {
+function _classificarDctfweb(resposta) {
   const hoje = new Date();
   const ano = hoje.getFullYear();
   const mes = hoje.getMonth() + 1;
@@ -130,46 +130,56 @@ function _classificarDctfweb(declaracoes) {
   const nomeMes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][mesAlvo - 1];
   const rotuloCompet = `${nomeMes}/${anoAlvo}`;
 
-  // Se o retorno e objeto unico (CONSULTAR_DEC_COMPLETA retorna 1 declaracao),
-  // trata como lista de 1 item ANTES de checar vazio.
-  if (!Array.isArray(declaracoes) && typeof declaracoes === 'object' && declaracoes && Object.keys(declaracoes).length > 0) {
-    declaracoes = [declaracoes];
-  }
-  if (!Array.isArray(declaracoes) || declaracoes.length === 0) {
-    return {
-      status: 'sem_dados',
-      resumo: 'Nenhuma DCTFWeb no historico (verifique se esta obrigado)',
-      competenciaAlvo,
-    };
+  // CONSDECCOMPLETA33 retorna a declaracao COMPLETA em um objeto (nao lista).
+  // Campos que indicam declaracao transmitida:
+  //   - PDFByteArrayBase64 (PDF da declaracao)
+  //   - numeroDeclaracao / numero / numeroRecibo
+  //   - situacao (TRANSMITIDA, ATIVA, etc.)
+  //   - codigoReceita / valorTotal
+  // Se qualquer um desses existe com conteudo -> transmitida.
+  if (resposta && typeof resposta === 'object' && !Array.isArray(resposta)) {
+    const temPDF = resposta.PDFByteArrayBase64 && String(resposta.PDFByteArrayBase64).length > 100;
+    const temNumero = resposta.numeroDeclaracao || resposta.numero || resposta.numeroRecibo;
+    const temSituacao = resposta.situacao || resposta.status;
+    const temValor = typeof resposta.valorTotal !== 'undefined' || typeof resposta.valor !== 'undefined';
+
+    if (temPDF || temNumero || temValor) {
+      const situ = temSituacao || 'TRANSMITIDA';
+      return {
+        status: 'em_dia',
+        resumo: `DCTFWeb ${rotuloCompet} ${String(situ).toLowerCase()}`,
+        competenciaAlvo,
+      };
+    }
+
+    // Retorno nao vazio mas sem campos esperados: talvez erro estruturado
+    if (Object.keys(resposta).length > 0 && !temSituacao) {
+      // Pode ser mensagem de erro tipo "Declaracao nao encontrada" ou "Sem movimento"
+      // Trata como nao transmitida e aplica regra de prazo abaixo
+    }
   }
 
-  // Objeto unico ja normalizado acima
-  // trata como lista de 1 item
-  if (!Array.isArray(declaracoes) && typeof declaracoes === 'object' && declaracoes) {
-    declaracoes = [declaracoes];
-  }
-  // Normaliza e procura declaracao do mes alvo
-  const match = declaracoes.find(d => {
-    const comp = String(d.periodoApuracao || d.competencia || d.periodo || '').replace(/\D/g, '');
-    if (comp.length >= 6 && comp.slice(0, 6) === competenciaAlvo) return true;
-    return false;
-  });
-
-  if (match && String(match.situacao || match.status || '').toUpperCase() !== 'CANCELADA') {
-    const situ = match.situacao || match.status || 'TRANSMITIDA';
-    return {
-      status: 'em_dia',
-      resumo: `DCTFWeb ${rotuloCompet} ${String(situ).toLowerCase()}`,
-      competenciaAlvo,
-    };
+  // Compat com endpoint antigo (lista de declaracoes)
+  if (Array.isArray(resposta) && resposta.length > 0) {
+    const match = resposta.find(d => {
+      const comp = String(d.periodoApuracao || d.competencia || d.periodo || '').replace(/\D/g, '');
+      return comp.length >= 6 && comp.slice(0, 6) === competenciaAlvo;
+    });
+    if (match) {
+      return {
+        status: 'em_dia',
+        resumo: `DCTFWeb ${rotuloCompet} ${String(match.situacao || 'transmitida').toLowerCase()}`,
+        competenciaAlvo,
+      };
+    }
   }
 
-  // Nao encontrou: verifica prazo
+  // Nao transmitida ou resposta vazia — aplica regra de prazo
   const dia = hoje.getDate();
   if (dia > 15) {
     return {
       status: 'atrasada',
-      resumo: `DCTFWeb ${rotuloCompet} NAO transmitida (prazo: dia 15 venceu)`,
+      resumo: `DCTFWeb ${rotuloCompet} nao transmitida (prazo: dia 15 venceu)`,
       competenciaAlvo,
     };
   }
