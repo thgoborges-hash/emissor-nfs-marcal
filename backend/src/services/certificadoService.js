@@ -245,27 +245,65 @@ class CertificadoService {
     const limpar = () => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} };
     const args = ['pkcs12', '-in', pfxPath, '-nodes', '-passin', `pass:${senha}`];
     let pemTxt = null;
+    let opensslErr = null;
     try {
       pemTxt = execFileSync('openssl', args, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
     } catch (e1) {
       try {
         pemTxt = execFileSync('openssl', [...args, '-legacy'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
       } catch (e2) {
-        limpar();
-        const msg1 = (e1.stderr || e1.message || '').toString().slice(0, 200);
-        const msg2 = (e2.stderr || e2.message || '').toString().slice(0, 200);
-        throw new Error(`openssl pkcs12 falhou (padrão: ${msg1}; -legacy: ${msg2})`);
+        // openssl CLI indisponível ou falhou — usa fallback via forge (mesma lib que
+        // já abre o PFX em validarCertificado com sucesso).
+        opensslErr = `${(e1.stderr || e1.message || '').toString().slice(0, 100)} / ${(e2.stderr || e2.message || '').toString().slice(0, 100)}`;
       }
     }
     limpar();
-    const keyMatch = pemTxt.match(/-----BEGIN (?:ENCRYPTED |RSA )?PRIVATE KEY-----[\s\S]+?-----END (?:ENCRYPTED |RSA )?PRIVATE KEY-----/);
-    const certMatches = pemTxt.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g);
-    if (!keyMatch) throw new Error('PEM sem chave privada');
-    if (!certMatches || certMatches.length === 0) throw new Error('PEM sem certificado');
-    return {
-      key: keyMatch[0],
-      cert: certMatches.join('\n'),
-    };
+
+    if (pemTxt) {
+      const keyMatch = pemTxt.match(/-----BEGIN (?:ENCRYPTED |RSA )?PRIVATE KEY-----[\s\S]+?-----END (?:ENCRYPTED |RSA )?PRIVATE KEY-----/);
+      const certMatches = pemTxt.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g);
+      if (!keyMatch) throw new Error('PEM sem chave privada');
+      if (!certMatches || certMatches.length === 0) throw new Error('PEM sem certificado');
+      return {
+        key: keyMatch[0],
+        cert: certMatches.join('\n'),
+      };
+    }
+
+    // Fallback forge: openssl CLI indisponível (caso comum no Render Alpine).
+    console.log(`[CertificadoService] openssl CLI indisponível (${opensslErr || 'sem stderr'}), usando fallback forge`);
+    try {
+      const p12Asn1 = forge.asn1.fromDer(pfxBuffer.toString('binary'));
+      const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, senha);
+
+      // Extrai chave privada
+      const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
+      const keyBag = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag];
+      if (!keyBag || keyBag.length === 0) {
+        // Tenta keyBag não criptografada
+        const altBags = p12.getBags({ bagType: forge.pki.oids.keyBag });
+        const altKeyBag = altBags[forge.pki.oids.keyBag];
+        if (!altKeyBag || altKeyBag.length === 0) {
+          throw new Error('Chave privada não encontrada no PFX');
+        }
+        keyBag[0] = altKeyBag[0];
+      }
+      const privateKey = keyBag[0].key;
+      const keyPem = forge.pki.privateKeyToPem(privateKey);
+
+      // Extrai cadeia de certificados
+      const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
+      const certBag = certBags[forge.pki.oids.certBag];
+      if (!certBag || certBag.length === 0) {
+        throw new Error('Certificado não encontrado no PFX');
+      }
+      const certPemList = certBag.map(b => forge.pki.certificateToPem(b.cert));
+      const certPem = certPemList.join('\n');
+
+      return { key: keyPem, cert: certPem };
+    } catch (forgeErr) {
+      throw new Error(`PFX→PEM falhou (openssl: ${opensslErr || 'n/a'}; forge: ${forgeErr.message})`);
+    }
   }
 
   /**
