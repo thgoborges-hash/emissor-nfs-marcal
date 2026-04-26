@@ -5,3 +5,6 @@ data/
 frontend/build/
 backend/public/
 .DS_Store
+
+# Tabela cTribNac é estática e precisa ir pro repo (resto de data/ é runtime)
+!backend/src/data/codigos_servico_nacional.json

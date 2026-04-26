@@ -1,0 +1,4770 @@
+[
+  {
+    "codigo": "010101",
+    "descricao": "Análise e desenvolvimento de sistemas",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "analise",
+      "aplicativo",
+      "aplicativos",
+      "desenvolvimento",
+      "sistema",
+      "sistemas",
+      "software",
+      "ti"
+    ],
+    "cnae_afins": [
+      "6201",
+      "6202"
+    ]
+  },
+  {
+    "codigo": "010201",
+    "descricao": "Programação",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "codar",
+      "codificacao",
+      "programacao"
+    ],
+    "cnae_afins": [
+      "6201",
+      "6202"
+    ]
+  },
+  {
+    "codigo": "010301",
+    "descricao": "Processamento de dados, textos, imagens, vídeos, páginas eletrônicas, aplicativos e sistemas de informação, entre outros formatos, e congêneres",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "aplicativos",
+      "dados",
+      "eletronicas",
+      "etl",
+      "imagens",
+      "paginas",
+      "processamento",
+      "textos",
+      "videos"
+    ],
+    "cnae_afins": [
+      "6311",
+      "6209"
+    ]
+  },
+  {
+    "codigo": "010302",
+    "descricao": "Armazenamento ou hospedagem de dados, textos, imagens, vídeos, páginas eletrônicas, aplicativos e sistemas de informação, entre outros formatos, e congêneres",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "armazenamento",
+      "cloud",
+      "dados",
+      "datacenter",
+      "eletronicas",
+      "hospedagem",
+      "hosting",
+      "imagens",
+      "paginas",
+      "saas",
+      "textos",
+      "videos"
+    ],
+    "cnae_afins": [
+      "6311"
+    ]
+  },
+  {
+    "codigo": "010401",
+    "descricao": "Elaboração de programas de computadores, inclusive de jogos eletrônicos, independentemente da arquitetura construtiva da máquina em que o programa será executado, incluindo tablets, smartphones e congêneres",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "aplicativo",
+      "aplicativos",
+      "app",
+      "arquitetura",
+      "computadores",
+      "construtiva",
+      "desenvolvimento",
+      "desenvolvimento programa",
+      "elaboracao",
+      "eletronico",
+      "eletronicos",
+      "independentemente",
+      "jogo",
+      "jogo eletronico",
+      "jogos",
+      "programa",
+      "programas",
+      "sistema",
+      "software"
+    ],
+    "cnae_afins": [
+      "6201",
+      "6202"
+    ]
+  },
+  {
+    "codigo": "010501",
+    "descricao": "Licenciamento ou cessão de direito de uso de programas de computação",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "cessao",
+      "computacao",
+      "direito",
+      "licenca",
+      "licenca software",
+      "licenciamento",
+      "programas",
+      "saas",
+      "software"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "010601",
+    "descricao": "Assessoria e consultoria em informática",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "assessoria",
+      "consultoria",
+      "consultoria informatica",
+      "consultoria ti",
+      "informatica"
+    ],
+    "cnae_afins": [
+      "6202",
+      "6204",
+      "6209"
+    ]
+  },
+  {
+    "codigo": "010701",
+    "descricao": "Suporte técnico em informática, inclusive instalação, configuração e manutenção de programas de computação e bancos de dados",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "computacao",
+      "configuracao",
+      "helpdesk",
+      "informatica",
+      "instalacao",
+      "manutencao",
+      "manutencao software",
+      "programas",
+      "software",
+      "suporte",
+      "suporte tecnico",
+      "tecnico"
+    ],
+    "cnae_afins": [
+      "6202",
+      "9511"
+    ]
+  },
+  {
+    "codigo": "010801",
+    "descricao": "Planejamento, confecção, manutenção e atualização de páginas eletrônicas",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "atualizacao",
+      "confeccao",
+      "eletronicas",
+      "manutencao",
+      "pagina",
+      "pagina web",
+      "paginas",
+      "planejamento",
+      "portal",
+      "site",
+      "website"
+    ],
+    "cnae_afins": [
+      "6201",
+      "6311"
+    ]
+  },
+  {
+    "codigo": "010901",
+    "descricao": "Disponibilização, sem cessão definitiva, de conteúdos de áudio por meio da internet (exceto a distribuição de conteúdos pelas prestadoras de Serviço de Acesso Condicionado)",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "audio",
+      "cessao",
+      "conteudos",
+      "definitiva",
+      "disponibilizacao",
+      "distribuicao",
+      "exceto",
+      "internet",
+      "podcast",
+      "streaming",
+      "streaming audio"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "010902",
+    "descricao": "Disponibilização, sem cessão definitiva, de conteúdos de vídeo, imagem e texto por meio da internet, respeitada a imunidade de livros, jornais e periódicos",
+    "grupo": "Informática",
+    "palavras_chave": [
+      "cessao",
+      "conteudos",
+      "definitiva",
+      "demanda",
+      "disponibilizacao",
+      "imagem",
+      "internet",
+      "ondemand",
+      "streaming",
+      "streaming video",
+      "texto",
+      "video",
+      "video sob demanda"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "020101",
+    "descricao": "Serviços de pesquisas e desenvolvimento de qualquer natureza",
+    "grupo": "Pesquisa & Desenvolvimento",
+    "palavras_chave": [
+      "desenvolvimento",
+      "inovacao",
+      "p&d",
+      "pd",
+      "pesquisa",
+      "pesquisas"
+    ],
+    "cnae_afins": [
+      "7210",
+      "7220",
+      "7490"
+    ]
+  },
+  {
+    "codigo": "030201",
+    "descricao": "Cessão de direito de uso de marcas e de sinais de propaganda",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "cessao",
+      "direito",
+      "marca",
+      "marcas",
+      "propaganda",
+      "sinais"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "030301",
+    "descricao": "Exploração de salões de festas, centro de convenções, stands e congêneres, para realização de eventos ou negócios de qualquer natureza",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "centro",
+      "centro convencao",
+      "convencao",
+      "convencoes",
+      "eventos",
+      "exploracao",
+      "festa",
+      "festas",
+      "realizacao",
+      "salao",
+      "salao festa",
+      "saloes",
+      "stand",
+      "stands"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "030302",
+    "descricao": "Exploração de escritórios virtuais e congêneres, para realização de eventos ou negócios de qualquer natureza",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "coworking",
+      "escritorio",
+      "escritorio virtual",
+      "escritorios",
+      "eventos",
+      "exploracao",
+      "negocios",
+      "realizacao",
+      "virtuais",
+      "virtual"
+    ],
+    "cnae_afins": [
+      "6822",
+      "8230"
+    ]
+  },
+  {
+    "codigo": "030303",
+    "descricao": "Exploração de quadras esportivas, estádios, ginásios, canchas e congêneres, para realização de eventos ou negócios de qualquer natureza",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "canchas",
+      "esportivas",
+      "estadio",
+      "estadios",
+      "eventos",
+      "exploracao",
+      "ginasio",
+      "ginasios",
+      "quadra",
+      "quadras",
+      "realizacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "030304",
+    "descricao": "Exploração de auditórios, casas de espetáculos e congêneres, para realização de eventos ou negócios de qualquer natureza",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "auditorio",
+      "auditorios",
+      "casa",
+      "casa espetaculo",
+      "casas",
+      "espetaculo",
+      "espetaculos",
+      "eventos",
+      "exploracao",
+      "negocios",
+      "realizacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "030305",
+    "descricao": "Exploração de parques de diversões e congêneres, para realização de eventos ou negócios de qualquer natureza",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "diversao",
+      "diversoes",
+      "eventos",
+      "exploracao",
+      "negocios",
+      "parque",
+      "parque diversao",
+      "parques",
+      "realizacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "030401",
+    "descricao": "Locação, sublocação, arrendamento, direito de passagem ou permissão de uso, compartilhado ou não, de ferrovia",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "arrendamento",
+      "compartilhado",
+      "direito",
+      "ferrovia",
+      "locacao",
+      "passagem",
+      "permissao",
+      "sublocacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "030402",
+    "descricao": "Locação, sublocação, arrendamento, direito de passagem ou permissão de uso, compartilhado ou não, de rodovia",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "arrendamento",
+      "compartilhado",
+      "direito",
+      "locacao",
+      "passagem",
+      "permissao",
+      "rodovia",
+      "sublocacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "030403",
+    "descricao": "Locação, sublocação, arrendamento, direito de passagem ou permissão de uso, compartilhado ou não, de postes, cabos, dutos e condutos de qualquer natureza",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "arrendamento",
+      "compartilhado",
+      "direito",
+      "locacao",
+      "passagem",
+      "permissao",
+      "postes",
+      "sublocacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "030501",
+    "descricao": "Cessão de andaimes, palcos, coberturas e outras estruturas de uso temporário",
+    "grupo": "Cessão de Direitos & Locação",
+    "palavras_chave": [
+      "andaimes",
+      "cessao",
+      "coberturas",
+      "estruturas",
+      "palcos",
+      "temporario"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "040101",
+    "descricao": "Medicina",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "atendimento",
+      "atendimento medico",
+      "clinica",
+      "clinica medica",
+      "consulta",
+      "consulta medica",
+      "honorario medico",
+      "medica",
+      "medicas",
+      "medicina",
+      "medico",
+      "medicos"
+    ],
+    "cnae_afins": [
+      "8630",
+      "8650"
+    ]
+  },
+  {
+    "codigo": "040102",
+    "descricao": "Biomedicina",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "biomedicina",
+      "biomedico"
+    ],
+    "cnae_afins": [
+      "8630"
+    ]
+  },
+  {
+    "codigo": "040201",
+    "descricao": "Análises clínicas e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "analise",
+      "analise clinica",
+      "analises",
+      "clinica",
+      "clinicas",
+      "exame",
+      "exame laboratorial",
+      "laboratorial",
+      "laboratorio"
+    ],
+    "cnae_afins": [
+      "8640"
+    ]
+  },
+  {
+    "codigo": "040202",
+    "descricao": "Patologia e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "anatomopatologico",
+      "histopatologia",
+      "patologia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "040203",
+    "descricao": "Eletricidade médica (eletroestimulação de nervos e musculos, cardioversão, etc) e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "cardioversao",
+      "eletricidade",
+      "eletricidade medica",
+      "eletrocardiograma",
+      "eletroestimulacao",
+      "medica",
+      "musculos",
+      "nervos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "040204",
+    "descricao": "Radioterapia, quimioterapia e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "quimioterapia",
+      "radioterapia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "040205",
+    "descricao": "Ultra-sonografia, ressonância magnética, radiologia, tomografia e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "magnetica",
+      "radiologia",
+      "raio",
+      "raio x",
+      "ressonancia",
+      "sonografia",
+      "tomografia",
+      "ultra",
+      "ultrassom",
+      "ultrassonografia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "040301",
+    "descricao": "Hospitais e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "hospitais",
+      "hospital",
+      "internacao"
+    ],
+    "cnae_afins": [
+      "8610"
+    ]
+  },
+  {
+    "codigo": "040302",
+    "descricao": "Laboratórios e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "analise",
+      "laboratorio",
+      "laboratorio analise",
+      "laboratorios"
+    ],
+    "cnae_afins": [
+      "8640"
+    ]
+  },
+  {
+    "codigo": "040303",
+    "descricao": "Clínicas, sanatórios, manicômios, casas de saúde, prontos-socorros, ambulatórios e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "ambulatorio",
+      "ambulatorios",
+      "casas",
+      "clinica",
+      "clinicas",
+      "clinico",
+      "manicomios",
+      "pronto",
+      "pronto socorro",
+      "prontos",
+      "sanatorios",
+      "saude",
+      "socorro",
+      "socorros"
+    ],
+    "cnae_afins": [
+      "8630",
+      "8650"
+    ]
+  },
+  {
+    "codigo": "040401",
+    "descricao": "Instrumentação cirúrgica",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "cirurgica",
+      "instrumentacao",
+      "instrumentacao cirurgica"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "040501",
+    "descricao": "Acupuntura",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "acupuntura"
+    ],
+    "cnae_afins": [
+      "8650"
+    ]
+  },
+  {
+    "codigo": "040601",
+    "descricao": "Enfermagem, inclusive serviços auxiliares",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "auxiliares",
+      "enfermagem",
+      "enfermeiro",
+      "tecnico",
+      "tecnico enfermagem"
+    ],
+    "cnae_afins": [
+      "8650",
+      "8712"
+    ]
+  },
+  {
+    "codigo": "040701",
+    "descricao": "Serviços farmacêuticos",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "farmaceutico",
+      "farmaceuticos",
+      "farmacia",
+      "manipulacao"
+    ],
+    "cnae_afins": [
+      "4771",
+      "4772"
+    ]
+  },
+  {
+    "codigo": "040801",
+    "descricao": "Terapia ocupacional",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "ocupacional",
+      "terapia",
+      "terapia ocupacional",
+      "to"
+    ],
+    "cnae_afins": [
+      "8650"
+    ]
+  },
+  {
+    "codigo": "040802",
+    "descricao": "Fisioterapia",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "fisio",
+      "fisioterapia"
+    ],
+    "cnae_afins": [
+      "8650"
+    ]
+  },
+  {
+    "codigo": "040803",
+    "descricao": "Fonoaudiologia",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "fono",
+      "fonoaudiologia"
+    ],
+    "cnae_afins": [
+      "8650"
+    ]
+  },
+  {
+    "codigo": "040901",
+    "descricao": "Terapias de qualquer espécie destinadas ao tratamento físico, orgânico e mental",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "destinadas",
+      "especie",
+      "fisico",
+      "mental",
+      "organico",
+      "psicoterapia",
+      "terapia",
+      "terapias",
+      "tratamento",
+      "tratamento mental"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "041001",
+    "descricao": "Nutrição",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "dieta",
+      "nutricao",
+      "nutricionista"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "041101",
+    "descricao": "Obstetrícia",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "gestante",
+      "obstetricia",
+      "parto"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "041201",
+    "descricao": "Odontologia",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "consulta dentaria",
+      "dental",
+      "dentaria",
+      "dentario",
+      "dentarios",
+      "dente",
+      "dentes",
+      "dentista",
+      "odonto",
+      "odontologia",
+      "odontologica",
+      "odontologico",
+      "tratamento dentario"
+    ],
+    "cnae_afins": [
+      "8630"
+    ]
+  },
+  {
+    "codigo": "041301",
+    "descricao": "Ortóptica",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "ortoptica"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "041401",
+    "descricao": "Próteses sob encomenda",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "encomenda",
+      "protese",
+      "proteses"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "041501",
+    "descricao": "Psicanálise",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "psicanalise"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "041601",
+    "descricao": "Psicologia",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "consulta",
+      "consulta psicologica",
+      "psi",
+      "psicologia",
+      "psicologica",
+      "psicologico",
+      "psicologo"
+    ],
+    "cnae_afins": [
+      "8650"
+    ]
+  },
+  {
+    "codigo": "041701",
+    "descricao": "Casas de repouso e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "casa",
+      "casa repouso",
+      "casas",
+      "repouso"
+    ],
+    "cnae_afins": [
+      "8711",
+      "8720"
+    ]
+  },
+  {
+    "codigo": "041702",
+    "descricao": "Casas de recuperação e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "casas",
+      "recuperacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "041703",
+    "descricao": "Creches e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "creche",
+      "creches"
+    ],
+    "cnae_afins": [
+      "8512"
+    ]
+  },
+  {
+    "codigo": "041704",
+    "descricao": "Asilos e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "asilo",
+      "asilos",
+      "idoso"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "041801",
+    "descricao": "Inseminação artificial, fertilização in vitro e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "artificial",
+      "assistida",
+      "fertilizacao",
+      "fiv",
+      "inseminacao",
+      "reproducao",
+      "reproducao assistida",
+      "vitro"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "041901",
+    "descricao": "Bancos de sangue, leite, pele, olhos, óvulos, sêmen e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "banco",
+      "banco sangue",
+      "bancos",
+      "doacao",
+      "leite",
+      "olhos",
+      "ovulos",
+      "pele",
+      "sangue",
+      "semen"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "042001",
+    "descricao": "Coleta de sangue, leite, tecidos, sêmen, órgãos e materiais biológicos de qualquer espécie",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "biologicos",
+      "coleta",
+      "coleta sangue",
+      "leite",
+      "materiais",
+      "orgaos",
+      "sangue",
+      "semen",
+      "tecidos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "042101",
+    "descricao": "Unidade de atendimento, assistência ou tratamento móvel e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "ambulancia",
+      "assistencia",
+      "atendimento",
+      "movel",
+      "tratamento",
+      "unidade",
+      "uti movel"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "042201",
+    "descricao": "Planos de medicina de grupo ou individual e convênios para prestação de assistência médica, hospitalar, odontológica e congêneres",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "assistencia",
+      "convenio",
+      "convenio medico",
+      "convenios",
+      "grupo",
+      "individual",
+      "medica",
+      "medicina",
+      "medico",
+      "plano",
+      "plano saude",
+      "planos",
+      "prestacao",
+      "saude"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "042301",
+    "descricao": "Outros planos de saúde que se cumpram através de serviços de terceiros contratados, credenciados, cooperados ou apenas pagos pelo operador do plano mediante indicação do beneficiário",
+    "grupo": "Saúde",
+    "palavras_chave": [
+      "atraves",
+      "contratados",
+      "cooperados",
+      "credenciado",
+      "credenciados",
+      "cumpram",
+      "plano",
+      "plano saude credenciado",
+      "planos",
+      "saude",
+      "terceiros"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "050101",
+    "descricao": "Medicina veterinária",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "medicina",
+      "veterinaria",
+      "veterinario"
+    ],
+    "cnae_afins": [
+      "7500"
+    ]
+  },
+  {
+    "codigo": "050102",
+    "descricao": "Zootecnia",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "zootecnia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "050201",
+    "descricao": "Hospitais e congêneres, na área veterinária",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "area",
+      "hospitais",
+      "veterinaria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "050202",
+    "descricao": "Clínicas, ambulatórios, prontos-socorros e congêneres, na área veterinária",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "ambulatorios",
+      "area",
+      "clinicas",
+      "prontos",
+      "socorros",
+      "veterinaria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "050301",
+    "descricao": "Laboratórios de análise na área veterinária",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "analise",
+      "area",
+      "laboratorios",
+      "veterinaria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "050401",
+    "descricao": "Inseminação artificial, fertilização in vitro e congêneres na área veterinária",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "area",
+      "artificial",
+      "fertilizacao",
+      "inseminacao",
+      "veterinaria",
+      "vitro"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "050501",
+    "descricao": "Bancos de sangue e de órgãos e congêneres na área veterinária",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "area",
+      "bancos",
+      "orgaos",
+      "sangue",
+      "veterinaria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "050601",
+    "descricao": "Coleta de sangue, leite, tecidos, sêmen, órgãos e materiais biológicos de qualquer espécie na área veterinária",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "biologicos",
+      "coleta",
+      "leite",
+      "materiais",
+      "orgaos",
+      "sangue",
+      "semen",
+      "tecidos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "050701",
+    "descricao": "Unidade de atendimento, assistência ou tratamento móvel e congêneres na área veterinária",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "area",
+      "assistencia",
+      "atendimento",
+      "movel",
+      "tratamento",
+      "unidade",
+      "veterinaria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "050801",
+    "descricao": "Guarda, tratamento, amestramento, embelezamento, alojamento e congêneres de animais",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "adestramento",
+      "alojamento",
+      "amestramento",
+      "animais",
+      "banho",
+      "banho tosa",
+      "embelezamento",
+      "guarda",
+      "pet shop",
+      "petshop",
+      "shop",
+      "tosa",
+      "tratamento"
+    ],
+    "cnae_afins": [
+      "9609",
+      "7500"
+    ]
+  },
+  {
+    "codigo": "050901",
+    "descricao": "Planos de atendimento e assistência médico-veterinária",
+    "grupo": "Veterinária",
+    "palavras_chave": [
+      "assistencia",
+      "atendimento",
+      "medico",
+      "planos",
+      "veterinaria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "060101",
+    "descricao": "Barbearia, cabeleireiros, manicuros, pedicuros e congêneres",
+    "grupo": "Cuidados Pessoais",
+    "palavras_chave": [
+      "barbearia",
+      "beleza",
+      "cabeleireiro",
+      "cabeleireiros",
+      "manicure",
+      "manicuros",
+      "pedicure",
+      "pedicuros",
+      "salao",
+      "salao beleza"
+    ],
+    "cnae_afins": [
+      "9602"
+    ]
+  },
+  {
+    "codigo": "060201",
+    "descricao": "Esteticistas, tratamento de pele, depilação e congêneres",
+    "grupo": "Cuidados Pessoais",
+    "palavras_chave": [
+      "depilacao",
+      "estetica",
+      "esteticista",
+      "esteticistas",
+      "pele",
+      "tratamento",
+      "tratamento pele"
+    ],
+    "cnae_afins": [
+      "9602"
+    ]
+  },
+  {
+    "codigo": "060301",
+    "descricao": "Banhos, duchas, sauna, massagens e congêneres",
+    "grupo": "Cuidados Pessoais",
+    "palavras_chave": [
+      "banhos",
+      "duchas",
+      "massagem",
+      "massagens",
+      "sauna"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "060401",
+    "descricao": "Ginástica, dança, esportes, natação, artes marciais e demais atividades físicas",
+    "grupo": "Cuidados Pessoais",
+    "palavras_chave": [
+      "academia",
+      "academias",
+      "artes",
+      "atividades",
+      "crossfit",
+      "danca",
+      "esportes",
+      "fisicas",
+      "ginastica",
+      "judo",
+      "luta",
+      "luta marcial",
+      "marciais",
+      "marcial",
+      "muay",
+      "muay thai",
+      "natacao",
+      "personal",
+      "personal trainer",
+      "pilates",
+      "thai",
+      "trainer"
+    ],
+    "cnae_afins": [
+      "8591",
+      "9311",
+      "9313"
+    ]
+  },
+  {
+    "codigo": "060501",
+    "descricao": "Centros de emagrecimento, spa e congêneres",
+    "grupo": "Cuidados Pessoais",
+    "palavras_chave": [
+      "centros",
+      "emagrecimento",
+      "spa"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "060601",
+    "descricao": "Aplicação de tatuagens, piercings e congêneres",
+    "grupo": "Cuidados Pessoais",
+    "palavras_chave": [
+      "aplicacao",
+      "piercing",
+      "piercings",
+      "tatuagem",
+      "tatuagens"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070101",
+    "descricao": "Engenharia e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "civil",
+      "engenharia",
+      "engenheiro",
+      "engenheiro civil"
+    ],
+    "cnae_afins": [
+      "7111",
+      "7112",
+      "7119"
+    ]
+  },
+  {
+    "codigo": "070102",
+    "descricao": "Agronomia e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "agronomia",
+      "agronomo"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070103",
+    "descricao": "Agrimensura e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "agrimensura"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070104",
+    "descricao": "Arquitetura, urbanismo e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "arquiteto",
+      "arquitetonico",
+      "arquitetura",
+      "projeto",
+      "projeto arquitetonico",
+      "urbanismo"
+    ],
+    "cnae_afins": [
+      "7111"
+    ]
+  },
+  {
+    "codigo": "070105",
+    "descricao": "Geologia e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "geologia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070106",
+    "descricao": "Paisagismo e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "paisagismo"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070201",
+    "descricao": "Execução, por administração, de obras de construção civil, hidráulica ou elétrica e de outras obras semelhantes",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "administracao",
+      "civil",
+      "construcao",
+      "construcao civil administracao",
+      "eletrica",
+      "execucao",
+      "hidraulica",
+      "obra",
+      "obra administracao",
+      "obras",
+      "semelhantes"
+    ],
+    "cnae_afins": [
+      "4120",
+      "4221",
+      "4292"
+    ]
+  },
+  {
+    "codigo": "070202",
+    "descricao": "Execução, por empreitada ou subempreitada, de obras de construção civil, hidráulica ou elétrica e de outras obras semelhantes",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "civil",
+      "construcao",
+      "construcao civil empreitada",
+      "construtora",
+      "eletrica",
+      "empreitada",
+      "execucao",
+      "hidraulica",
+      "obra",
+      "obra empreitada",
+      "obras",
+      "subempreitada"
+    ],
+    "cnae_afins": [
+      "4120",
+      "4221",
+      "4292"
+    ]
+  },
+  {
+    "codigo": "070301",
+    "descricao": "Elaboração de planos diretores, estudos de viabilidade, estudos organizacionais e outros, relacionados com obras e serviços de engenharia",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "diretores",
+      "elaboracao",
+      "estudos",
+      "obras",
+      "organizacionais",
+      "planos",
+      "relacionados",
+      "viabilidade"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070302",
+    "descricao": "Elaboração de anteprojetos, projetos básicos e projetos executivos para trabalhos de engenharia",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "anteprojetos",
+      "basicos",
+      "elaboracao",
+      "engenharia",
+      "executivos",
+      "projetos",
+      "trabalhos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070401",
+    "descricao": "Demolição",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "demolicao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070501",
+    "descricao": "Reparação, conservação e reforma de edifícios e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "conservacao",
+      "construcao",
+      "edificio",
+      "edificios",
+      "manutencao",
+      "manutencao predial",
+      "predial",
+      "reforma",
+      "reforma edificio",
+      "reforma predial",
+      "reformar",
+      "reformas",
+      "reparacao"
+    ],
+    "cnae_afins": [
+      "4399"
+    ]
+  },
+  {
+    "codigo": "070502",
+    "descricao": "Reparação, conservação e reforma de estradas, pontes, portos e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "conservacao",
+      "estrada",
+      "estradas",
+      "pontes",
+      "portos",
+      "reforma",
+      "reforma estrada",
+      "reparacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070601",
+    "descricao": "Colocação e instalação de tapetes, carpetes, cortinas e congêneres, com material fornecido pelo tomador do serviço",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "carpetes",
+      "colocacao",
+      "cortinas",
+      "fornecido",
+      "instalacao",
+      "material",
+      "tapetes",
+      "tomador"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070602",
+    "descricao": "Colocação e instalação de assoalhos, revestimentos de parede, vidros, divisórias, placas de gesso e congêneres, com material fornecido pelo tomador do serviço",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "assoalhos",
+      "colocacao",
+      "divisorias",
+      "instalacao",
+      "parede",
+      "placas",
+      "revestimentos",
+      "vidros"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070701",
+    "descricao": "Recuperação, raspagem, polimento e lustração de pisos e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "lustracao",
+      "pisos",
+      "polimento",
+      "raspagem",
+      "recuperacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070801",
+    "descricao": "Calafetação",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "calafetacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070901",
+    "descricao": "Varrição, coleta e remoção de lixo, rejeitos e outros resíduos quaisquer",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "coleta",
+      "lixo",
+      "rejeitos",
+      "remocao",
+      "residuos",
+      "varricao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "070902",
+    "descricao": "Incineração, tratamento, reciclagem, separação e destinação final de lixo, rejeitos e outros resíduos quaisquer",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "destinacao",
+      "final",
+      "incineracao",
+      "lixo",
+      "reciclagem",
+      "rejeitos",
+      "separacao",
+      "tratamento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "071001",
+    "descricao": "Limpeza, manutenção e conservação de vias e logradouros públicos, parques, jardins e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "conservacao",
+      "jardins",
+      "limpeza",
+      "limpeza publica",
+      "logradouro",
+      "logradouros",
+      "manutencao",
+      "manutencao logradouro",
+      "parques",
+      "publica",
+      "publicos",
+      "vias"
+    ],
+    "cnae_afins": [
+      "8121",
+      "8129"
+    ]
+  },
+  {
+    "codigo": "071002",
+    "descricao": "Limpeza, manutenção e conservação de imóveis, chaminés, piscinas e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "chamines",
+      "conservacao",
+      "diarista",
+      "faxina",
+      "imoveis",
+      "imovel",
+      "limpeza",
+      "limpeza imovel",
+      "manutencao",
+      "piscinas"
+    ],
+    "cnae_afins": [
+      "8121",
+      "8129"
+    ]
+  },
+  {
+    "codigo": "071101",
+    "descricao": "Decoração",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "decoracao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "071102",
+    "descricao": "Jardinagem, inclusive corte e poda de árvores",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "arvores",
+      "corte",
+      "jardinagem",
+      "poda"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "071201",
+    "descricao": "Controle e tratamento de efluentes de qualquer natureza e de agentes físicos, químicos e biológicos",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "agentes",
+      "biologicos",
+      "controle",
+      "efluentes",
+      "fisicos",
+      "quimicos",
+      "tratamento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "071301",
+    "descricao": "Dedetização, desinfecção, desinsetização, imunização, higienização, desratização, pulverização e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "controle",
+      "controle pragas",
+      "dedetizacao",
+      "desinfeccao",
+      "desinsetizacao",
+      "desratizacao",
+      "higienizacao",
+      "imunizacao",
+      "pragas",
+      "pulverizacao"
+    ],
+    "cnae_afins": [
+      "8122"
+    ]
+  },
+  {
+    "codigo": "071601",
+    "descricao": "Florestamento, reflorestamento, semeadura, adubação, reparação de solo, plantio, silagem, colheita, corte e descascamento de árvores, silvicultura, exploração florestal e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "adubacao",
+      "florestamento",
+      "plantio",
+      "reflorestamento",
+      "reparacao",
+      "semeadura",
+      "silagem",
+      "solo"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "071701",
+    "descricao": "Escoramento, contenção de encostas e serviços congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "contencao",
+      "encostas",
+      "escoramento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "071801",
+    "descricao": "Limpeza e dragagem de rios, portos, canais, baías, lagos, lagoas, represas, açudes e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "baias",
+      "canais",
+      "dragagem",
+      "lagoas",
+      "lagos",
+      "limpeza",
+      "portos",
+      "rios"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "071901",
+    "descricao": "Acompanhamento e fiscalização da execução de obras de engenharia, arquitetura e urbanismo",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "acompanhamento",
+      "arquitetura",
+      "engenharia",
+      "execucao",
+      "fiscalizacao",
+      "obras",
+      "urbanismo"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "072001",
+    "descricao": "Aerofotogrametria (inclusive interpretação), cartografia, mapeamento e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "aerofotogrametria",
+      "cartografia",
+      "interpretacao",
+      "mapeamento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "072002",
+    "descricao": "Levantamentos batimétricos, geográficos, geodésicos, geológicos, geofísicos e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "batimetricos",
+      "geodesicos",
+      "geofisicos",
+      "geograficos",
+      "geologicos",
+      "levantamentos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "072003",
+    "descricao": "Levantamentos topográficos e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "levantamentos",
+      "topograficos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "072101",
+    "descricao": "Pesquisa, perfuração, cimentação, mergulho, perfilagem, concretação, testemunhagem, pescaria, estimulação e outros serviços relacionados com a exploração e explotação de petróleo, gás natural e de outros recursos minerais",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "cimentacao",
+      "concretacao",
+      "mergulho",
+      "perfilagem",
+      "perfuracao",
+      "pescaria",
+      "pesquisa",
+      "testemunhagem"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "072201",
+    "descricao": "Nucleação e bombardeamento de nuvens e congêneres",
+    "grupo": "Engenharia & Arquitetura",
+    "palavras_chave": [
+      "bombardeamento",
+      "nucleacao",
+      "nuvens"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "080101",
+    "descricao": "Ensino regular pré-escolar, fundamental e médio",
+    "grupo": "Educação",
+    "palavras_chave": [
+      "colegio",
+      "ensino",
+      "ensino fundamental",
+      "ensino medio",
+      "escola",
+      "escolar",
+      "fundamental",
+      "medio",
+      "pre escola",
+      "regular"
+    ],
+    "cnae_afins": [
+      "8511",
+      "8512",
+      "8513",
+      "8520"
+    ]
+  },
+  {
+    "codigo": "080102",
+    "descricao": "Ensino regular superior",
+    "grupo": "Educação",
+    "palavras_chave": [
+      "ensino",
+      "ensino superior",
+      "faculdade",
+      "regular",
+      "superior",
+      "universidade"
+    ],
+    "cnae_afins": [
+      "8531",
+      "8532"
+    ]
+  },
+  {
+    "codigo": "080201",
+    "descricao": "Instrução, treinamento, orientação pedagógica e educacional, avaliação de conhecimentos de qualquer natureza",
+    "grupo": "Educação",
+    "palavras_chave": [
+      "aula",
+      "aula particular",
+      "aulas",
+      "avaliacao",
+      "conhecimentos",
+      "curso",
+      "educacional",
+      "idioma",
+      "ingles",
+      "instrucao",
+      "instrutor",
+      "orientacao",
+      "particular",
+      "pedagogica",
+      "treinamento"
+    ],
+    "cnae_afins": [
+      "8550",
+      "8593",
+      "8599"
+    ]
+  },
+  {
+    "codigo": "090101",
+    "descricao": "Hospedagem em hotéis, hotelaria marítima e congêneres",
+    "grupo": "Hospedagem & Turismo",
+    "palavras_chave": [
+      "hospedagem",
+      "hoteis",
+      "hotel",
+      "hotelaria",
+      "maritima"
+    ],
+    "cnae_afins": [
+      "5510"
+    ]
+  },
+  {
+    "codigo": "090102",
+    "descricao": "Hospedagem em pensões, albergues, pousadas, hospedarias, ocupação por temporada com fornecimento de serviços e congêneres",
+    "grupo": "Hospedagem & Turismo",
+    "palavras_chave": [
+      "albergues",
+      "fornecimento",
+      "hospedagem",
+      "hospedarias",
+      "ocupacao",
+      "pensoes",
+      "pousadas",
+      "temporada"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "090103",
+    "descricao": "Hospedagem em motéis e congêneres",
+    "grupo": "Hospedagem & Turismo",
+    "palavras_chave": [
+      "hospedagem",
+      "moteis",
+      "motel"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "090104",
+    "descricao": "Hospedagem em apart-service condominiais, flat, apart-hotéis, hotéis residência, residence-service, suite service e congêneres",
+    "grupo": "Hospedagem & Turismo",
+    "palavras_chave": [
+      "apart",
+      "condominiais",
+      "flat",
+      "hospedagem",
+      "hoteis",
+      "residence",
+      "residencia",
+      "service"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "090201",
+    "descricao": "Agenciamento e intermediação de programas de turismo, passeios, viagens, excursões, hospedagens e congêneres",
+    "grupo": "Hospedagem & Turismo",
+    "palavras_chave": [
+      "agenciamento",
+      "excursoes",
+      "hospedagens",
+      "intermediacao",
+      "passeios",
+      "programas",
+      "turismo",
+      "viagens"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "090202",
+    "descricao": "Organização, promoção e execução de programas de turismo, passeios, viagens, excursões, hospedagens e congêneres",
+    "grupo": "Hospedagem & Turismo",
+    "palavras_chave": [
+      "excursoes",
+      "execucao",
+      "organizacao",
+      "passeios",
+      "programas",
+      "promocao",
+      "turismo",
+      "viagens"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "090301",
+    "descricao": "Guias de turismo",
+    "grupo": "Hospedagem & Turismo",
+    "palavras_chave": [
+      "guias",
+      "turismo"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100101",
+    "descricao": "Agenciamento, corretagem ou intermediação de câmbio",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "cambio",
+      "corretagem",
+      "intermediacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100102",
+    "descricao": "Agenciamento, corretagem ou intermediação de seguros",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "corretagem",
+      "intermediacao",
+      "seguros"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100103",
+    "descricao": "Agenciamento, corretagem ou intermediação de cartões de crédito",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "cartoes",
+      "corretagem",
+      "credito",
+      "intermediacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100104",
+    "descricao": "Agenciamento, corretagem ou intermediação de planos de saúde",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "corretagem",
+      "intermediacao",
+      "planos",
+      "saude"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100105",
+    "descricao": "Agenciamento, corretagem ou intermediação de planos de previdência privada",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "corretagem",
+      "intermediacao",
+      "planos",
+      "previdencia",
+      "privada"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100201",
+    "descricao": "Agenciamento, corretagem ou intermediação de títulos em geral e valores mobiliários",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "corretagem",
+      "intermediacao",
+      "mobiliarios",
+      "titulos",
+      "valores"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100202",
+    "descricao": "Agenciamento, corretagem ou intermediação de contratos quaisquer",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "contratos",
+      "corretagem",
+      "intermediacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100301",
+    "descricao": "Agenciamento, corretagem ou intermediação de direitos de propriedade industrial, artística ou literária",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "artistica",
+      "corretagem",
+      "direitos",
+      "industrial",
+      "intermediacao",
+      "literaria",
+      "propriedade"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100401",
+    "descricao": "Agenciamento, corretagem ou intermediação de contratos de arrendamento mercantil (leasing)",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "arrendamento",
+      "contratos",
+      "corretagem",
+      "intermediacao",
+      "leasing",
+      "mercantil"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100402",
+    "descricao": "Agenciamento, corretagem ou intermediação de contratos de franquia (franchising)",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "contratos",
+      "corretagem",
+      "franchising",
+      "franquia",
+      "intermediacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100403",
+    "descricao": "Agenciamento, corretagem ou intermediação de faturização (factoring)",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "corretagem",
+      "factoring",
+      "faturizacao",
+      "intermediacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100501",
+    "descricao": "Agenciamento, corretagem ou intermediação de bens móveis ou imóveis, não abrangidos em outros itens ou subitens, por quaisquer meios",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "abrangidos",
+      "agenciamento",
+      "bens",
+      "corretagem",
+      "corretor",
+      "corretor imovel",
+      "imobiliaria",
+      "imobiliarias",
+      "imoveis",
+      "imovel",
+      "intermediacao",
+      "itens",
+      "moveis"
+    ],
+    "cnae_afins": [
+      "6821",
+      "6822"
+    ]
+  },
+  {
+    "codigo": "100502",
+    "descricao": "Agenciamento, corretagem ou intermediação de bens móveis ou imóveis realizados no âmbito de Bolsas de Mercadorias e Futuros, por quaisquer meios",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "ambito",
+      "bens",
+      "corretagem",
+      "imoveis",
+      "intermediacao",
+      "moveis",
+      "realizados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100601",
+    "descricao": "Agenciamento marítimo",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "maritimo"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100701",
+    "descricao": "Agenciamento de notícias",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agenciamento",
+      "noticias"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "100801",
+    "descricao": "Agenciamento de publicidade e propaganda, inclusive o agenciamento de veiculação por quaisquer meios",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "agencia",
+      "agencia propaganda",
+      "agencia publicidade",
+      "agenciamento",
+      "propaganda",
+      "publicidade",
+      "veiculacao"
+    ],
+    "cnae_afins": [
+      "7311",
+      "7312"
+    ]
+  },
+  {
+    "codigo": "100901",
+    "descricao": "Representação de qualquer natureza, inclusive comercial",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "comercial",
+      "representacao",
+      "representacao comercial",
+      "representante",
+      "representante comercial"
+    ],
+    "cnae_afins": [
+      "4611",
+      "4619"
+    ]
+  },
+  {
+    "codigo": "101001",
+    "descricao": "Distribuição de bens de terceiros",
+    "grupo": "Intermediação",
+    "palavras_chave": [
+      "bens",
+      "distribuicao",
+      "terceiros"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "110101",
+    "descricao": "Guarda e estacionamento de veículos terrestres automotores",
+    "grupo": "Guarda & Segurança",
+    "palavras_chave": [
+      "automotores",
+      "estacionamento",
+      "garagem",
+      "guarda",
+      "terrestres",
+      "veiculos"
+    ],
+    "cnae_afins": [
+      "5223",
+      "5212"
+    ]
+  },
+  {
+    "codigo": "110102",
+    "descricao": "Guarda e estacionamento de aeronaves e de embarcações",
+    "grupo": "Guarda & Segurança",
+    "palavras_chave": [
+      "aeronaves",
+      "embarcacoes",
+      "estacionamento",
+      "guarda"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "110201",
+    "descricao": "Vigilância, segurança ou monitoramento de bens, pessoas e semoventes",
+    "grupo": "Guarda & Segurança",
+    "palavras_chave": [
+      "bens",
+      "monitoramento",
+      "patrimonial",
+      "pessoas",
+      "porteiro",
+      "seguranca",
+      "seguranca patrimonial",
+      "semoventes",
+      "vigia",
+      "vigilancia"
+    ],
+    "cnae_afins": [
+      "8011",
+      "8012",
+      "8020"
+    ]
+  },
+  {
+    "codigo": "110301",
+    "descricao": "Escolta, inclusive de veículos e cargas",
+    "grupo": "Guarda & Segurança",
+    "palavras_chave": [
+      "cargas",
+      "escolta",
+      "veiculos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "110401",
+    "descricao": "Armazenamento, depósito, guarda de bens de qualquer espécie",
+    "grupo": "Guarda & Segurança",
+    "palavras_chave": [
+      "armazenamento",
+      "bens",
+      "deposito",
+      "especie",
+      "estoque",
+      "guarda",
+      "logistica"
+    ],
+    "cnae_afins": [
+      "5211",
+      "5212"
+    ]
+  },
+  {
+    "codigo": "110402",
+    "descricao": "Carga, descarga, arrumação de bens de qualquer espécie",
+    "grupo": "Guarda & Segurança",
+    "palavras_chave": [
+      "arrumacao",
+      "bens",
+      "carga",
+      "descarga",
+      "especie"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "120101",
+    "descricao": "Espetáculos teatrais",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "espetaculos",
+      "teatrais",
+      "teatro"
+    ],
+    "cnae_afins": [
+      "9001"
+    ]
+  },
+  {
+    "codigo": "120201",
+    "descricao": "Exibições cinematográficas",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "cinema",
+      "cinematograficas",
+      "exibicoes"
+    ],
+    "cnae_afins": [
+      "5914"
+    ]
+  },
+  {
+    "codigo": "120301",
+    "descricao": "Espetáculos circenses",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "circenses",
+      "espetaculos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "120401",
+    "descricao": "Programas de auditório",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "auditorio",
+      "programas"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "120501",
+    "descricao": "Parques de diversões, centros de lazer e congêneres",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "centros",
+      "diversoes",
+      "lazer",
+      "parques"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "120601",
+    "descricao": "Boates, taxi-dancing e congêneres",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "boates",
+      "dancing",
+      "taxi"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "120701",
+    "descricao": "Shows, ballet, danças, desfiles, bailes, óperas, concertos, recitais, festivais e congêneres",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "bailes",
+      "ballet",
+      "concerto",
+      "concertos",
+      "dancas",
+      "desfiles",
+      "operas",
+      "recitais",
+      "show",
+      "shows"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "120801",
+    "descricao": "Feiras, exposições, congressos e congêneres",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "congressos",
+      "exposicoes",
+      "feiras"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "120901",
+    "descricao": "Bilhares",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "bilhares"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "120902",
+    "descricao": "Boliches",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "boliches"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "120903",
+    "descricao": "Diversões eletrônicas ou não",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "diversoes",
+      "eletronicas"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "121001",
+    "descricao": "Corridas e competições de animais",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "animais",
+      "competicoes",
+      "corridas"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "121101",
+    "descricao": "Competições esportivas ou de destreza física ou intelectual, com ou sem a participação do espectador",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "competicoes",
+      "destreza",
+      "espectador",
+      "esportivas",
+      "fisica",
+      "intelectual",
+      "participacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "121201",
+    "descricao": "Execução de música",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "execucao",
+      "musica"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "121301",
+    "descricao": "Produção, mediante ou sem encomenda prévia, de eventos, espetáculos, entrevistas, shows, ballet, danças, desfiles, bailes, teatros, óperas, concertos, recitais, festivais e congêneres",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "encomenda",
+      "entrevistas",
+      "espetaculos",
+      "eventos",
+      "mediante",
+      "previa",
+      "producao",
+      "shows"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "121401",
+    "descricao": "Fornecimento de música para ambientes fechados ou não, mediante transmissão por qualquer processo",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "ambientes",
+      "fechados",
+      "fornecimento",
+      "mediante",
+      "musica",
+      "processo",
+      "transmissao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "121501",
+    "descricao": "Desfiles de blocos carnavalescos ou folclóricos, trios elétricos e congêneres",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "blocos",
+      "carnavalescos",
+      "desfiles",
+      "eletricos",
+      "folcloricos",
+      "trios"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "121601",
+    "descricao": "Exibição de filmes, entrevistas, musicais, espetáculos, shows, concertos, desfiles, óperas, competições esportivas, de destreza intelectual ou congêneres",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "concertos",
+      "desfiles",
+      "entrevistas",
+      "espetaculos",
+      "exibicao",
+      "filmes",
+      "musicais",
+      "shows"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "121701",
+    "descricao": "Recreação e animação, inclusive em festas e eventos de qualquer natureza",
+    "grupo": "Diversões & Lazer",
+    "palavras_chave": [
+      "animacao",
+      "eventos",
+      "festa",
+      "festa infantil",
+      "festas",
+      "infantil",
+      "monitor",
+      "monitor festa",
+      "recreacao"
+    ],
+    "cnae_afins": [
+      "9329"
+    ]
+  },
+  {
+    "codigo": "130201",
+    "descricao": "Fonografia ou gravação de sons, inclusive trucagem, dublagem, mixagem e congêneres",
+    "grupo": "Reprografia & Mídia",
+    "palavras_chave": [
+      "dublagem",
+      "fonografia",
+      "gravacao",
+      "mixagem",
+      "sons",
+      "trucagem"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "130301",
+    "descricao": "Fotografia e cinematografia, inclusive revelação, ampliação, cópia, reprodução, trucagem e congêneres",
+    "grupo": "Reprografia & Mídia",
+    "palavras_chave": [
+      "ampliacao",
+      "cinematografia",
+      "copia",
+      "filmagem",
+      "fotografia",
+      "fotografo",
+      "reproducao",
+      "revelacao",
+      "trucagem"
+    ],
+    "cnae_afins": [
+      "7420",
+      "5912"
+    ]
+  },
+  {
+    "codigo": "130401",
+    "descricao": "Reprografia, microfilmagem e digitalização",
+    "grupo": "Reprografia & Mídia",
+    "palavras_chave": [
+      "digitalizacao",
+      "microfilmagem",
+      "reprografia",
+      "xerox"
+    ],
+    "cnae_afins": [
+      "1813",
+      "8219"
+    ]
+  },
+  {
+    "codigo": "130501",
+    "descricao": "Composição gráfica, inclusive confecção de impressos gráficos, fotocomposição, clicheria, zincografia, litografia e fotolitografia",
+    "grupo": "Reprografia & Mídia",
+    "palavras_chave": [
+      "clicheria",
+      "composicao",
+      "confeccao",
+      "fotocomposicao",
+      "grafica",
+      "graficos",
+      "impressao",
+      "impressos",
+      "panfleto",
+      "zincografia"
+    ],
+    "cnae_afins": [
+      "1811",
+      "1813"
+    ]
+  },
+  {
+    "codigo": "140101",
+    "descricao": "Lubrificação, limpeza, lustração, revisão, carga e recarga, conserto, restauração, blindagem, manutenção e conservação de máquinas, veículos, aparelhos, equipamentos, motores, elevadores ou de qualquer objeto",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "carga",
+      "conserto",
+      "limpeza",
+      "lubrificacao",
+      "lustracao",
+      "manutencao",
+      "manutencao mecanica",
+      "mecanica",
+      "oficina",
+      "recarga",
+      "restauracao",
+      "revisao"
+    ],
+    "cnae_afins": [
+      "3311",
+      "3312",
+      "3313",
+      "3314"
+    ]
+  },
+  {
+    "codigo": "140201",
+    "descricao": "Assistência técnica",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "assistencia",
+      "assistencia tecnica",
+      "tecnica"
+    ],
+    "cnae_afins": [
+      "9511",
+      "9521"
+    ]
+  },
+  {
+    "codigo": "140301",
+    "descricao": "Recondicionamento de motores",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "motores",
+      "recondicionamento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "140401",
+    "descricao": "Recauchutagem ou regeneração de pneus",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "pneus",
+      "recauchutagem",
+      "regeneracao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "140501",
+    "descricao": "Restauração, recondicionamento, acondicionamento, pintura, beneficiamento, lavagem, secagem, tingimento, galvanoplastia, anodização, corte, recorte, plastificação, costura, acabamento, polimento e congêneres de objetos quaisquer",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "acondicionamento",
+      "beneficiamento",
+      "imovel",
+      "lavagem",
+      "pintura",
+      "pintura imovel",
+      "pintura predial",
+      "pinturas",
+      "predial",
+      "recondicionamento",
+      "restauracao",
+      "secagem",
+      "tingimento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "140601",
+    "descricao": "Instalação e montagem de aparelhos, máquinas e equipamentos, inclusive montagem industrial, prestados ao usuário final, exclusivamente com material por ele fornecido",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "aparelhos",
+      "equipamento",
+      "equipamentos",
+      "industrial",
+      "instalacao",
+      "instalacao equipamento",
+      "maquinas",
+      "montagem",
+      "montagem equipamento",
+      "prestados",
+      "usuario"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "140701",
+    "descricao": "Colocação de molduras e congêneres",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "colocacao",
+      "molduras"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "140801",
+    "descricao": "Encadernação, gravação e douração de livros, revistas e congêneres",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "douracao",
+      "encadernacao",
+      "gravacao",
+      "livros",
+      "revistas"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "140901",
+    "descricao": "Alfaiataria e costura, quando o material for fornecido pelo usuário final, exceto aviamento",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "ajuste",
+      "ajuste roupa",
+      "alfaiataria",
+      "costura",
+      "exceto",
+      "final",
+      "fornecido",
+      "material",
+      "quando",
+      "roupa",
+      "usuario"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "141001",
+    "descricao": "Tinturaria e lavanderia",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "lavanderia",
+      "tinturaria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "141101",
+    "descricao": "Tapeçaria e reforma de estofamentos em geral",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "estofamentos",
+      "reforma",
+      "tapecaria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "141201",
+    "descricao": "Funilaria e lanternagem",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "funilaria",
+      "lanternagem"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "141301",
+    "descricao": "Carpintaria",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "carpintaria",
+      "marcenaria",
+      "marceneiro"
+    ],
+    "cnae_afins": [
+      "4330",
+      "2542"
+    ]
+  },
+  {
+    "codigo": "141302",
+    "descricao": "Serralheria",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "serralheiro",
+      "serralheria"
+    ],
+    "cnae_afins": [
+      "2511",
+      "2512"
+    ]
+  },
+  {
+    "codigo": "141401",
+    "descricao": "Guincho intramunicipal",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "guincho",
+      "intramunicipal"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "141402",
+    "descricao": "Guindaste e içamento",
+    "grupo": "Serviços a Bens",
+    "palavras_chave": [
+      "guindaste",
+      "icamento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150101",
+    "descricao": "Administração de fundos quaisquer e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "administracao",
+      "fundos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150102",
+    "descricao": "Administração de consórcio e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "administracao",
+      "consorcio"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150103",
+    "descricao": "Administração de cartão de crédito ou débito e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "administracao",
+      "cartao",
+      "credito",
+      "debito"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150104",
+    "descricao": "Administração de carteira de clientes e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "administracao",
+      "carteira",
+      "clientes"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150105",
+    "descricao": "Administração de cheques pré-datados e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "administracao",
+      "cheques",
+      "datados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150201",
+    "descricao": "Abertura de conta-corrente no País, bem como a manutenção da referida conta ativa e inativa",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abertura",
+      "ativa",
+      "como",
+      "conta",
+      "corrente",
+      "manutencao",
+      "pais",
+      "referida"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150202",
+    "descricao": "Abertura de conta-corrente no exterior, bem como a manutenção da referida conta ativa e inativa",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abertura",
+      "ativa",
+      "como",
+      "conta",
+      "corrente",
+      "exterior",
+      "manutencao",
+      "referida"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150203",
+    "descricao": "Abertura de conta de investimentos e aplicação no País",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abertura",
+      "aplicacao",
+      "conta",
+      "investimentos",
+      "pais"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150204",
+    "descricao": "Abertura de conta de investimentos e aplicação no exterior",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abertura",
+      "aplicacao",
+      "conta",
+      "exterior",
+      "investimentos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150205",
+    "descricao": "Abertura de caderneta de poupança no País",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abertura",
+      "caderneta",
+      "pais",
+      "poupanca"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150206",
+    "descricao": "Abertura de caderneta de poupança no exterior",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abertura",
+      "caderneta",
+      "exterior",
+      "poupanca"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150207",
+    "descricao": "Abertura de contas em geral no País, não abrangida em outro subitem",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abertura",
+      "abrangida",
+      "contas",
+      "pais",
+      "subitem"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150208",
+    "descricao": "Abertura de contas em geral no exterior, não abrangida em outro subitem",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abertura",
+      "abrangida",
+      "contas",
+      "exterior",
+      "subitem"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150301",
+    "descricao": "Locação de cofres particulares",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cofres",
+      "locacao",
+      "particulares"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150302",
+    "descricao": "Manutenção de cofres particulares",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cofres",
+      "manutencao",
+      "particulares"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150303",
+    "descricao": "Locação de terminais eletrônicos",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "eletronicos",
+      "locacao",
+      "terminais"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150304",
+    "descricao": "Manutenção de terminais eletrônicos",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "eletronicos",
+      "manutencao",
+      "terminais"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150305",
+    "descricao": "Locação de terminais de atendimento",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "atendimento",
+      "locacao",
+      "terminais"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150306",
+    "descricao": "Manutenção de terminais de atendimento",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "atendimento",
+      "manutencao",
+      "terminais"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150307",
+    "descricao": "Locação de bens e equipamentos em geral",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "bens",
+      "equipamentos",
+      "locacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150308",
+    "descricao": "Manutenção de bens e equipamentos em geral",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "bens",
+      "equipamentos",
+      "manutencao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150401",
+    "descricao": "Fornecimento ou emissão de atestados em geral, inclusive atestado de idoneidade, atestado de capacidade financeira e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "atestado",
+      "atestados",
+      "capacidade",
+      "emissao",
+      "financeira",
+      "fornecimento",
+      "idoneidade"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150501",
+    "descricao": "Cadastro, elaboração de ficha cadastral, renovação cadastral e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cadastral",
+      "cadastro",
+      "elaboracao",
+      "ficha",
+      "renovacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150502",
+    "descricao": "Inclusão no Cadastro de Emitentes de Cheques sem Fundos - CCF",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cadastro",
+      "cheques",
+      "emitentes",
+      "fundos",
+      "inclusao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150503",
+    "descricao": "Exclusão no Cadastro de Emitentes de Cheques sem Fundos - CCF",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cadastro",
+      "cheques",
+      "emitentes",
+      "exclusao",
+      "fundos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150504",
+    "descricao": "Inclusão em quaisquer outros bancos cadastrais",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "bancos",
+      "cadastrais",
+      "inclusao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150505",
+    "descricao": "Exclusão em quaisquer outros bancos cadastrais",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "bancos",
+      "cadastrais",
+      "exclusao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150601",
+    "descricao": "Emissão, reemissão e fornecimento de avisos, comprovantes e documentos em geral",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "avisos",
+      "comprovantes",
+      "documentos",
+      "emissao",
+      "fornecimento",
+      "reemissao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150602",
+    "descricao": "Abono de firmas",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abono",
+      "firmas"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150603",
+    "descricao": "Coleta e entrega de documentos, bens e valores",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "bens",
+      "coleta",
+      "documentos",
+      "entrega",
+      "valores"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150604",
+    "descricao": "Comunicação com outra agência ou com a administração central",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "administracao",
+      "agencia",
+      "central",
+      "comunicacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150605",
+    "descricao": "Licenciamento eletrônico de veículos",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "eletronico",
+      "licenciamento",
+      "veiculos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150606",
+    "descricao": "Transferência de veículos",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "transferencia",
+      "veiculos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150607",
+    "descricao": "Agenciamento fiduciário ou depositário",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "agenciamento",
+      "depositario",
+      "fiduciario"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150608",
+    "descricao": "Devolução de bens em custódia",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "bens",
+      "custodia",
+      "devolucao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150701",
+    "descricao": "Acesso, movimentação, atendimento e consulta a contas em geral, por qualquer meio ou processo",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "acesso",
+      "atendimento",
+      "consulta",
+      "contas",
+      "movimentacao",
+      "processo"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150702",
+    "descricao": "Acesso a terminais de atendimento, inclusive vinte e quatro horas",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "acesso",
+      "atendimento",
+      "horas",
+      "quatro",
+      "terminais",
+      "vinte"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150703",
+    "descricao": "Acesso a outro banco e à rede compartilhada",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "acesso",
+      "banco",
+      "compartilhada",
+      "rede"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150704",
+    "descricao": "Fornecimento de saldo, extrato e demais informações relativas a contas em geral",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "contas",
+      "extrato",
+      "fornecimento",
+      "informacoes",
+      "relativas",
+      "saldo"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150801",
+    "descricao": "Emissão, reemissão, alteração, cessão, substituição, cancelamento e registro de contrato de crédito",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "alteracao",
+      "cancelamento",
+      "cessao",
+      "contrato",
+      "emissao",
+      "reemissao",
+      "registro",
+      "substituicao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150802",
+    "descricao": "Estudo, análise e avaliação de operações de crédito",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "analise",
+      "avaliacao",
+      "credito",
+      "estudo",
+      "operacoes"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150803",
+    "descricao": "Emissão, concessão, alteração ou contratação de aval, fiança, anuência e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "alteracao",
+      "anuencia",
+      "aval",
+      "concessao",
+      "contratacao",
+      "emissao",
+      "fianca"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150804",
+    "descricao": "Serviços relativos à abertura de crédito, para quaisquer fins",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "abertura",
+      "credito",
+      "fins",
+      "relativos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "150901",
+    "descricao": "Arrendamento mercantil (leasing) de quaisquer bens, inclusive cessão de direitos e obrigações",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "arrendamento",
+      "bens",
+      "cessao",
+      "direitos",
+      "leasing",
+      "mercantil",
+      "obrigacoes"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151001",
+    "descricao": "Serviços relacionados a cobranças em geral, de títulos quaisquer",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "boleto",
+      "cobranca",
+      "cobranca boleto",
+      "cobrancas",
+      "relacionados",
+      "tarifa",
+      "tarifa cobranca",
+      "titulos"
+    ],
+    "cnae_afins": [
+      "8291",
+      "6422"
+    ]
+  },
+  {
+    "codigo": "151002",
+    "descricao": "Serviços relacionados a recebimentos em geral",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "recebimentos",
+      "relacionados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151003",
+    "descricao": "Serviços relacionados a pagamentos em geral",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "pagamentos",
+      "relacionados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151004",
+    "descricao": "Serviços relacionados a fornecimento de posição de cobrança, recebimento ou pagamento",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cobranca",
+      "fornecimento",
+      "pagamento",
+      "posicao",
+      "recebimento",
+      "relacionados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151005",
+    "descricao": "Serviços relacionados a emissão de carnês, fichas de compensação, impressos e documentos em geral",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "carnes",
+      "compensacao",
+      "documentos",
+      "emissao",
+      "fichas",
+      "impressos",
+      "relacionados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151101",
+    "descricao": "Devolução de títulos, protesto de títulos, sustação de protesto, manutenção de títulos",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "devolucao",
+      "manutencao",
+      "protesto",
+      "sustacao",
+      "titulos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151201",
+    "descricao": "Custódia em geral, inclusive de títulos e valores mobiliários",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "custodia",
+      "mobiliarios",
+      "titulos",
+      "valores"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151301",
+    "descricao": "Serviços relacionados a operações de câmbio em geral",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cambio",
+      "operacoes",
+      "relacionados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151302",
+    "descricao": "Serviços relacionados a emissão de registro de exportação ou de crédito",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "credito",
+      "emissao",
+      "exportacao",
+      "registro",
+      "relacionados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151303",
+    "descricao": "Serviços relacionados a cobrança ou depósito no exterior",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cobranca",
+      "deposito",
+      "exterior",
+      "relacionados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151304",
+    "descricao": "Serviços relacionados a emissão, fornecimento e cancelamento de cheques de viagem",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cancelamento",
+      "cheques",
+      "emissao",
+      "fornecimento",
+      "relacionados",
+      "viagem"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151305",
+    "descricao": "Serviços relacionados a fornecimento, transferência, cancelamento e demais serviços relativos a carta de crédito de importação, exportação e garantias recebidas",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cancelamento",
+      "carta",
+      "credito",
+      "fornecimento",
+      "importacao",
+      "relacionados",
+      "relativos",
+      "transferencia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151306",
+    "descricao": "Serviços relacionados a envio e recebimento de mensagens em geral relacionadas a operações de câmbio",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cambio",
+      "envio",
+      "mensagens",
+      "operacoes",
+      "recebimento",
+      "relacionadas",
+      "relacionados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151401",
+    "descricao": "Fornecimento, emissão, reemissão de cartão magnético, cartão de crédito, cartão de débito, cartão salário e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cartao",
+      "credito",
+      "debito",
+      "emissao",
+      "fornecimento",
+      "magnetico",
+      "reemissao",
+      "salario"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151402",
+    "descricao": "Renovação de cartão magnético, cartão de crédito, cartão de débito, cartão salário e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cartao",
+      "credito",
+      "debito",
+      "magnetico",
+      "renovacao",
+      "salario"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151403",
+    "descricao": "Manutenção de cartão magnético, cartão de crédito, cartão de débito, cartão salário e congêneres",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cartao",
+      "credito",
+      "debito",
+      "magnetico",
+      "manutencao",
+      "salario"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151501",
+    "descricao": "Compensação de cheques e títulos quaisquer",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "cheques",
+      "compensacao",
+      "titulos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151502",
+    "descricao": "Serviços relacionados a depósito, inclusive depósito identificado, a saque de contas quaisquer",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "contas",
+      "deposito",
+      "identificado",
+      "relacionados",
+      "saque"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151601",
+    "descricao": "Emissão, reemissão, liquidação, alteração, cancelamento e baixa de ordens de pagamento, ordens de crédito e similares",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "alteracao",
+      "baixa",
+      "cancelamento",
+      "emissao",
+      "liquidacao",
+      "ordens",
+      "pagamento",
+      "reemissao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151602",
+    "descricao": "Serviços relacionados à transferência de valores, dados, fundos, pagamentos e similares, inclusive entre contas em geral",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "dados",
+      "entre",
+      "fundos",
+      "pagamentos",
+      "relacionados",
+      "similares",
+      "transferencia",
+      "valores"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151701",
+    "descricao": "Emissão e fornecimento de cheques quaisquer, avulso ou por talão",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "avulso",
+      "cheques",
+      "emissao",
+      "fornecimento",
+      "talao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151702",
+    "descricao": "Devolução de cheques quaisquer, avulso ou por talão",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "avulso",
+      "cheques",
+      "devolucao",
+      "talao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151703",
+    "descricao": "Sustação, cancelamento e oposição de cheques quaisquer, avulso ou por talão",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "avulso",
+      "cancelamento",
+      "cheques",
+      "oposicao",
+      "sustacao",
+      "talao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151801",
+    "descricao": "Serviços relacionados a crédito imobiliário, de avaliação e vistoria de imóvel ou obra",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "avaliacao",
+      "credito",
+      "imobiliario",
+      "imovel",
+      "obra",
+      "relacionados",
+      "vistoria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151802",
+    "descricao": "Serviços relacionados a crédito imobiliário, de análise técnica e jurídica",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "analise",
+      "credito",
+      "imobiliario",
+      "juridica",
+      "relacionados",
+      "tecnica"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151803",
+    "descricao": "Serviços relacionados a crédito imobiliário, de emissão, reemissão, alteração, transferência e renegociação de contrato",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "alteracao",
+      "credito",
+      "emissao",
+      "imobiliario",
+      "reemissao",
+      "relacionados",
+      "renegociacao",
+      "transferencia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151804",
+    "descricao": "Serviços relacionados a crédito imobiliário, de emissão e reemissão do termo de quitação",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "credito",
+      "emissao",
+      "imobiliario",
+      "quitacao",
+      "reemissao",
+      "relacionados",
+      "termo"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "151805",
+    "descricao": "Demais serviços relacionados a crédito imobiliário",
+    "grupo": "Bancários",
+    "palavras_chave": [
+      "credito",
+      "imobiliario",
+      "relacionados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "160101",
+    "descricao": "Serviços de transporte coletivo municipal rodoviário de passageiros",
+    "grupo": "Transporte Municipal",
+    "palavras_chave": [
+      "coletivo",
+      "municipal",
+      "passageiros",
+      "rodoviario",
+      "transporte"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "160102",
+    "descricao": "Serviços de transporte coletivo municipal metroviário de passageiros",
+    "grupo": "Transporte Municipal",
+    "palavras_chave": [
+      "coletivo",
+      "metroviario",
+      "municipal",
+      "passageiros",
+      "transporte"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "160103",
+    "descricao": "Serviços de transporte coletivo municipal ferroviário de passageiros",
+    "grupo": "Transporte Municipal",
+    "palavras_chave": [
+      "coletivo",
+      "ferroviario",
+      "municipal",
+      "passageiros",
+      "transporte"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "160104",
+    "descricao": "Serviços de transporte coletivo municipal aquaviário de passageiros",
+    "grupo": "Transporte Municipal",
+    "palavras_chave": [
+      "aquaviario",
+      "coletivo",
+      "municipal",
+      "passageiros",
+      "transporte"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "160201",
+    "descricao": "Outros serviços de transporte de natureza municipal",
+    "grupo": "Transporte Municipal",
+    "palavras_chave": [
+      "carga",
+      "delivery",
+      "entrega",
+      "frete",
+      "frete municipal",
+      "motoboy",
+      "municipal",
+      "transporte",
+      "transporte municipal"
+    ],
+    "cnae_afins": [
+      "4930",
+      "5320",
+      "5229"
+    ]
+  },
+  {
+    "codigo": "170101",
+    "descricao": "Assessoria ou consultoria de qualquer natureza, não contida em outros itens desta lista",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "assessor",
+      "assessoria",
+      "consulta",
+      "consulta empresarial",
+      "consultor",
+      "consultoria",
+      "contida",
+      "desta",
+      "empresarial",
+      "itens",
+      "lista"
+    ],
+    "cnae_afins": [
+      "7020",
+      "7490"
+    ]
+  },
+  {
+    "codigo": "170102",
+    "descricao": "Análise, exame, pesquisa, coleta, compilação e fornecimento de dados e informações de qualquer natureza, inclusive cadastro e similares",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "analise",
+      "coleta",
+      "compilacao",
+      "dados",
+      "exame",
+      "fornecimento",
+      "informacoes",
+      "pesquisa"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170201",
+    "descricao": "Datilografia, digitação, estenografia e congêneres",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "datilografia",
+      "digitacao",
+      "estenografia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170202",
+    "descricao": "Expediente, secretaria em geral, apoio e infra-estrutura administrativa e congêneres",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "administrativa",
+      "apoio",
+      "estrutura",
+      "expediente",
+      "infra",
+      "secretaria"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170203",
+    "descricao": "Resposta audível e congêneres",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "audivel",
+      "resposta"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170204",
+    "descricao": "Redação, edição, revisão e congêneres",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "edicao",
+      "redacao",
+      "revisao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170205",
+    "descricao": "Interpretação, tradução e congêneres",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "interpretacao",
+      "interprete",
+      "traducao",
+      "tradutor"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170301",
+    "descricao": "Planejamento, coordenação, programação ou organização técnica",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "coordenacao",
+      "organizacao",
+      "planejamento",
+      "programacao",
+      "tecnica"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170302",
+    "descricao": "Planejamento, coordenação, programação ou organização financeira",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "coordenacao",
+      "financeira",
+      "organizacao",
+      "planejamento",
+      "programacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170303",
+    "descricao": "Planejamento, coordenação, programação ou organização administrativa",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "administrativa",
+      "coordenacao",
+      "organizacao",
+      "planejamento",
+      "programacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170401",
+    "descricao": "Recrutamento, agenciamento, seleção e colocação de mão-de-obra",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "agenciamento",
+      "agenciamento mao obra",
+      "colocacao",
+      "obra",
+      "recrutamento",
+      "selecao",
+      "selecao rh"
+    ],
+    "cnae_afins": [
+      "7810",
+      "7820"
+    ]
+  },
+  {
+    "codigo": "170501",
+    "descricao": "Fornecimento de mão-de-obra, mesmo em caráter temporário, inclusive de empregados ou trabalhadores, avulsos ou temporários, contratados pelo prestador de serviço",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "avulsos",
+      "carater",
+      "empregados",
+      "fornecimento",
+      "mao obra temporaria",
+      "mesmo",
+      "obra",
+      "temporaria",
+      "temporario",
+      "trabalhador",
+      "trabalhador temporario",
+      "trabalhadores"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "170601",
+    "descricao": "Propaganda e publicidade, inclusive promoção de vendas, planejamento de campanhas ou sistemas de publicidade, elaboração de desenhos, textos e demais materiais publicitários",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "campanha",
+      "campanhas",
+      "elaboracao",
+      "marketing",
+      "planejamento",
+      "promocao",
+      "propaganda",
+      "publicidade",
+      "sistemas",
+      "vendas"
+    ],
+    "cnae_afins": [
+      "7311",
+      "7312"
+    ]
+  },
+  {
+    "codigo": "170801",
+    "descricao": "Franquia (franchising)",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "franchising",
+      "franquia"
+    ],
+    "cnae_afins": [
+      "6499",
+      "7740"
+    ]
+  },
+  {
+    "codigo": "170901",
+    "descricao": "Perícias, laudos, exames técnicos e análises técnicas",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "analises",
+      "exames",
+      "laudo",
+      "laudo tecnico",
+      "laudos",
+      "pericia",
+      "pericias",
+      "perito",
+      "tecnicas",
+      "tecnico",
+      "tecnicos"
+    ],
+    "cnae_afins": [
+      "7490",
+      "7112"
+    ]
+  },
+  {
+    "codigo": "171001",
+    "descricao": "Planejamento, organização e administração de feiras, exposições, e congêneres",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "administracao",
+      "exposicao",
+      "exposicoes",
+      "feira",
+      "feiras",
+      "organizacao",
+      "organizacao exposicao",
+      "organizacao feira",
+      "planejamento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "171002",
+    "descricao": "Planejamento, organização e administração de congressos e congêneres",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "administracao",
+      "congresso",
+      "congressos",
+      "organizacao",
+      "organizacao congresso",
+      "planejamento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "171101",
+    "descricao": "Organização de festas e recepções",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "evento",
+      "festa",
+      "festas",
+      "organizacao",
+      "recepcao",
+      "recepcoes"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "171102",
+    "descricao": "Bufê",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "bufe",
+      "buffet"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "171201",
+    "descricao": "Administração em geral, inclusive de bens e negócios de terceiros",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "administracao",
+      "administracao bens",
+      "administracao predial",
+      "bens",
+      "negocios",
+      "predial",
+      "terceiros"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "171301",
+    "descricao": "Leilão e congêneres",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "leilao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "171401",
+    "descricao": "Advocacia",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "advocacia",
+      "advocaticia",
+      "advocaticio",
+      "advocaticios",
+      "advogada",
+      "advogado",
+      "honorario advocaticio",
+      "juridico"
+    ],
+    "cnae_afins": [
+      "6911"
+    ]
+  },
+  {
+    "codigo": "171501",
+    "descricao": "Arbitragem de qualquer espécie, inclusive jurídica",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "arbitragem",
+      "especie",
+      "juridica"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "171601",
+    "descricao": "Auditoria",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "auditor",
+      "auditora",
+      "auditoria"
+    ],
+    "cnae_afins": [
+      "6920"
+    ]
+  },
+  {
+    "codigo": "171701",
+    "descricao": "Análise de Organização e Métodos",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "analise",
+      "metodos",
+      "organizacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "171801",
+    "descricao": "Atuária e cálculos técnicos de qualquer natureza",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "atuaria",
+      "calculos",
+      "tecnicos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "171901",
+    "descricao": "Contabilidade, inclusive serviços técnicos e auxiliares",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "auxiliares",
+      "balanco",
+      "contabeis",
+      "contabil",
+      "contabilidade",
+      "contador",
+      "contadoria",
+      "demonstrativo",
+      "escrituracao",
+      "honorario contabil",
+      "tecnicos"
+    ],
+    "cnae_afins": [
+      "6920"
+    ]
+  },
+  {
+    "codigo": "172001",
+    "descricao": "Consultoria e assessoria econômica ou financeira",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "assessoria",
+      "assessoria economica",
+      "consultor",
+      "consultor financeiro",
+      "consultoria",
+      "consultoria economica",
+      "consultoria financeira",
+      "economica",
+      "financeira",
+      "financeiro"
+    ],
+    "cnae_afins": [
+      "6619",
+      "7020"
+    ]
+  },
+  {
+    "codigo": "172101",
+    "descricao": "Estatística",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "estatistica"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "172201",
+    "descricao": "Cobrança em geral",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "cobranca"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "172301",
+    "descricao": "Assessoria, análise, avaliação, atendimento, consulta, cadastro, seleção, gerenciamento de informações, administração de contas a receber ou a pagar e em geral, relacionados a operações de faturização (factoring)",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "analise",
+      "assessoria",
+      "atendimento",
+      "avaliacao",
+      "cadastro",
+      "consulta",
+      "gerenciamento",
+      "selecao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "172401",
+    "descricao": "Apresentação de palestras, conferências, seminários e congêneres",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "apresentacao",
+      "conferencias",
+      "palestra",
+      "palestrante",
+      "palestras",
+      "seminario",
+      "seminarios"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "172501",
+    "descricao": "Inserção de textos, desenhos e outros materiais de propaganda e publicidade, em qualquer meio",
+    "grupo": "Apoio Técnico/Administrativo",
+    "palavras_chave": [
+      "desenhos",
+      "insercao",
+      "materiais",
+      "propaganda",
+      "publicidade",
+      "textos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "180101",
+    "descricao": "Serviços de regulação de sinistros vinculados a contratos de seguros e congêneres",
+    "grupo": "Regulação de Sinistros",
+    "palavras_chave": [
+      "contratos",
+      "regulacao",
+      "seguros",
+      "sinistros",
+      "vinculados"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "180102",
+    "descricao": "Serviços de inspeção e avaliação de riscos para cobertura de contratos de seguros e congêneres",
+    "grupo": "Regulação de Sinistros",
+    "palavras_chave": [
+      "avaliacao",
+      "cobertura",
+      "contratos",
+      "inspecao",
+      "riscos",
+      "seguros"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "180103",
+    "descricao": "Serviços de prevenção e gerência de riscos seguráveis e congêneres",
+    "grupo": "Regulação de Sinistros",
+    "palavras_chave": [
+      "gerencia",
+      "prevencao",
+      "riscos",
+      "seguraveis"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "190101",
+    "descricao": "Serviços de distribuição e venda de bilhetes e demais produtos de loteria, cartões, pules ou cupons de apostas, sorteios, prêmios, inclusive os decorrentes de títulos de capitalização e congêneres",
+    "grupo": "Loterias & Apostas",
+    "palavras_chave": [
+      "bilhetes",
+      "cartoes",
+      "cupons",
+      "distribuicao",
+      "loteria",
+      "produtos",
+      "pules",
+      "venda"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "190102",
+    "descricao": "Serviços de distribuição e venda de bingos e congêneres",
+    "grupo": "Loterias & Apostas",
+    "palavras_chave": [
+      "bingos",
+      "distribuicao",
+      "venda"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "200101",
+    "descricao": "Serviços portuários, ferroportuários (prestado em terra)",
+    "grupo": "Portuário & Aeroportuário",
+    "palavras_chave": [
+      "ferroportuarios",
+      "portuarios",
+      "prestado",
+      "terra"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "200102",
+    "descricao": "Serviços portuários, ferroportuários (prestado em águas marinhas)",
+    "grupo": "Portuário & Aeroportuário",
+    "palavras_chave": [
+      "aguas",
+      "ferroportuarios",
+      "marinhas",
+      "portuarios",
+      "prestado"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "200201",
+    "descricao": "Serviços aeroportuários, utilização de aeroporto, movimentação de passageiros e mercadorias",
+    "grupo": "Portuário & Aeroportuário",
+    "palavras_chave": [
+      "aeroporto",
+      "aeroportuarios",
+      "mercadorias",
+      "movimentacao",
+      "passageiros",
+      "utilizacao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "200301",
+    "descricao": "Serviços de terminais rodoviários, ferroviários, metroviários, movimentação de passageiros, mercadorias",
+    "grupo": "Portuário & Aeroportuário",
+    "palavras_chave": [
+      "ferroviarios",
+      "mercadorias",
+      "metroviarios",
+      "movimentacao",
+      "passageiros",
+      "rodoviarios",
+      "terminais"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "210101",
+    "descricao": "Serviços de registros públicos, cartorários e notariais",
+    "grupo": "Cartórios & Registros",
+    "palavras_chave": [
+      "cartorarios",
+      "cartorio",
+      "notariais",
+      "publico",
+      "publicos",
+      "registro",
+      "registro publico",
+      "registros",
+      "tabeliao"
+    ],
+    "cnae_afins": [
+      "6911"
+    ]
+  },
+  {
+    "codigo": "220101",
+    "descricao": "Serviços de exploração de rodovia mediante cobrança de preço ou pedágio dos usuários",
+    "grupo": "Exploração de Rodovias",
+    "palavras_chave": [
+      "cobranca",
+      "exploracao",
+      "mediante",
+      "pedagio",
+      "preco",
+      "rodovia",
+      "usuarios"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "230101",
+    "descricao": "Serviços de programação e comunicação visual e congêneres",
+    "grupo": "Design & Comunicação Visual",
+    "palavras_chave": [
+      "comunicacao",
+      "comunicacao visual",
+      "design",
+      "designer",
+      "designers",
+      "identidade",
+      "identidade visual",
+      "logomarca",
+      "programacao",
+      "visual"
+    ],
+    "cnae_afins": [
+      "7410",
+      "7420",
+      "7311"
+    ]
+  },
+  {
+    "codigo": "230102",
+    "descricao": "Serviços de desenho industrial e congêneres",
+    "grupo": "Design & Comunicação Visual",
+    "palavras_chave": [
+      "desenho",
+      "industrial"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "240101",
+    "descricao": "Serviços de chaveiros, confecção de carimbos e congêneres",
+    "grupo": "Chaveiros & Sinalização",
+    "palavras_chave": [
+      "carimbos",
+      "chaveiros",
+      "confeccao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "240102",
+    "descricao": "Serviços de placas, sinalização visual, banners, adesivos e congêneres",
+    "grupo": "Chaveiros & Sinalização",
+    "palavras_chave": [
+      "adesivos",
+      "banners",
+      "placas",
+      "sinalizacao",
+      "visual"
+    ],
+    "cnae_afins": [
+      "3299",
+      "1813"
+    ]
+  },
+  {
+    "codigo": "250101",
+    "descricao": "Funerais, inclusive fornecimento de caixão, urna ou esquifes; aluguel de capela; transporte do corpo cadavérico; fornecimento de flores, coroas e outros paramentos",
+    "grupo": "Serviços Funerários",
+    "palavras_chave": [
+      "aluguel",
+      "caixao",
+      "capela",
+      "esquifes",
+      "fornecimento",
+      "funerais",
+      "transporte",
+      "urna"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "250201",
+    "descricao": "Translado intramunicipal de corpos e partes de corpos cadavéricos",
+    "grupo": "Serviços Funerários",
+    "palavras_chave": [
+      "cadavericos",
+      "corpos",
+      "intramunicipal",
+      "partes",
+      "translado"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "250202",
+    "descricao": "Cremação de corpos e partes de corpos cadavéricos",
+    "grupo": "Serviços Funerários",
+    "palavras_chave": [
+      "cadavericos",
+      "corpos",
+      "cremacao",
+      "partes"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "250301",
+    "descricao": "Planos ou convênio funerários",
+    "grupo": "Serviços Funerários",
+    "palavras_chave": [
+      "convenio",
+      "funerarios",
+      "planos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "250401",
+    "descricao": "Manutenção e conservação de jazigos e cemitérios",
+    "grupo": "Serviços Funerários",
+    "palavras_chave": [
+      "cemiterios",
+      "conservacao",
+      "jazigos",
+      "manutencao"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "250501",
+    "descricao": "Cessão de uso de espaços em cemitérios para sepultamento",
+    "grupo": "Serviços Funerários",
+    "palavras_chave": [
+      "cemiterios",
+      "cessao",
+      "espacos",
+      "sepultamento"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "260101",
+    "descricao": "Serviços de coleta, remessa ou entrega de correspondências, documentos, objetos, bens ou valores, inclusive pelos correios e suas agências franqueadas",
+    "grupo": "Coleta & Entrega",
+    "palavras_chave": [
+      "bens",
+      "coleta",
+      "correspondencia",
+      "correspondencias",
+      "courier",
+      "documento",
+      "documentos",
+      "entrega",
+      "entrega correspondencia",
+      "entrega documento",
+      "motoboy",
+      "objetos",
+      "remessa",
+      "valores"
+    ],
+    "cnae_afins": [
+      "5320",
+      "5310"
+    ]
+  },
+  {
+    "codigo": "260102",
+    "descricao": "Serviços de courrier e congêneres",
+    "grupo": "Coleta & Entrega",
+    "palavras_chave": [
+      "courrier"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "270101",
+    "descricao": "Serviços de assistência social",
+    "grupo": "Assistência Social",
+    "palavras_chave": [
+      "assistencia",
+      "social"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "280101",
+    "descricao": "Serviços de avaliação de bens e serviços de qualquer natureza",
+    "grupo": "Avaliação & Perícia",
+    "palavras_chave": [
+      "avaliacao",
+      "bens"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "290101",
+    "descricao": "Serviços de biblioteconomia",
+    "grupo": "Biblioteconomia",
+    "palavras_chave": [
+      "biblioteconomia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "300101",
+    "descricao": "Serviços de biologia e biotecnologia",
+    "grupo": "Biologia & Química",
+    "palavras_chave": [
+      "biologia",
+      "biotecnologia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "300102",
+    "descricao": "Serviços de química",
+    "grupo": "Biologia & Química",
+    "palavras_chave": [
+      "quimica"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "310101",
+    "descricao": "Serviços técnicos em edificações e congêneres",
+    "grupo": "Técnicos Especializados",
+    "palavras_chave": [
+      "edificacoes",
+      "tecnicos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "310102",
+    "descricao": "Serviços técnicos em eletrônica, eletrotécnica e congêneres",
+    "grupo": "Técnicos Especializados",
+    "palavras_chave": [
+      "eletronica",
+      "eletrotecnica",
+      "tecnicos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "310103",
+    "descricao": "Serviços técnicos em mecânica e congêneres",
+    "grupo": "Técnicos Especializados",
+    "palavras_chave": [
+      "mecanica",
+      "tecnicos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "310104",
+    "descricao": "Serviços técnicos em telecomunicações e congêneres",
+    "grupo": "Técnicos Especializados",
+    "palavras_chave": [
+      "tecnicos",
+      "telecomunicacoes"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "320101",
+    "descricao": "Serviços de desenhos técnicos",
+    "grupo": "Desenho Técnico",
+    "palavras_chave": [
+      "desenhos",
+      "tecnicos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "330101",
+    "descricao": "Serviços de desembaraço aduaneiro, comissários, despachantes e congêneres",
+    "grupo": "Desembaraço Aduaneiro",
+    "palavras_chave": [
+      "aduaneiro",
+      "comex",
+      "comissarios",
+      "desembaraco",
+      "desembaraco aduaneiro",
+      "despachante",
+      "despachantes"
+    ],
+    "cnae_afins": [
+      "5250",
+      "8211"
+    ]
+  },
+  {
+    "codigo": "340101",
+    "descricao": "Serviços de investigações particulares, detetives e congêneres",
+    "grupo": "Investigações & Detetives",
+    "palavras_chave": [
+      "detetives",
+      "investigacoes",
+      "particulares"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "350101",
+    "descricao": "Serviços de reportagem e jornalismo",
+    "grupo": "Reportagem & Jornalismo",
+    "palavras_chave": [
+      "jornalismo",
+      "reportagem"
+    ],
+    "cnae_afins": [
+      "6391",
+      "7311"
+    ]
+  },
+  {
+    "codigo": "350102",
+    "descricao": "Serviços de assessoria de imprensa",
+    "grupo": "Reportagem & Jornalismo",
+    "palavras_chave": [
+      "assessoria",
+      "imprensa"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "350103",
+    "descricao": "Serviços de relações públicas",
+    "grupo": "Reportagem & Jornalismo",
+    "palavras_chave": [
+      "publicas",
+      "relacoes"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "360101",
+    "descricao": "Serviços de meteorologia",
+    "grupo": "Meteorologia",
+    "palavras_chave": [
+      "meteorologia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "370101",
+    "descricao": "Serviços de artistas, atletas, modelos e manequins",
+    "grupo": "Artes & Modelos",
+    "palavras_chave": [
+      "artistas",
+      "atletas",
+      "manequins",
+      "modelos"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "380101",
+    "descricao": "Serviços de museologia",
+    "grupo": "Museologia",
+    "palavras_chave": [
+      "museologia"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "390101",
+    "descricao": "Serviços de ourivesaria e lapidação (quando o material for fornecido pelo tomador do serviço)",
+    "grupo": "Ourivesaria",
+    "palavras_chave": [
+      "fornecido",
+      "lapidacao",
+      "material",
+      "ourivesaria",
+      "quando",
+      "tomador"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "400101",
+    "descricao": "Obras de arte sob encomenda",
+    "grupo": "Obras de Arte",
+    "palavras_chave": [
+      "arte",
+      "encomenda",
+      "obras"
+    ],
+    "cnae_afins": []
+  },
+  {
+    "codigo": "990101",
+    "descricao": "Serviços sem a incidência de ISSQN e ICMS",
+    "grupo": "Sem Incidência",
+    "palavras_chave": [
+      "icms",
+      "incidencia",
+      "isencao",
+      "issqn",
+      "sem incidencia"
+    ],
+    "cnae_afins": []
+  }
+]
