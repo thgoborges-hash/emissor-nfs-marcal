@@ -35,9 +35,11 @@ class XmlSignerService {
       signatureAlgorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
     });
 
-    // Referência ao elemento infDPS (pelo local-name, compatível com namespaces)
+    // Detecta nome do elemento a assinar pelo conteúdo do XML
+    // (DPS usa infDPS, eventos como cancelamento usam infPedReg)
+    const elementoAssinar = xml.includes('<infPedReg') ? 'infPedReg' : 'infDPS';
     sig.addReference({
-      xpath: "//*[local-name(.)='infDPS']",
+      xpath: `//*[local-name(.)='${elementoAssinar}']`,
       digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256',
       transforms: [
         'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
