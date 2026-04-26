@@ -315,17 +315,22 @@ class NfseNacionalService {
             <pTotTribSN>${fmt(parseFloat(pTotTribSN))}</pTotTribSN>
           </totTrib>`;
     } else {
-      // Não Optante:
-      //  - E0713 proíbe <pTotTribSN> e <indTotTrib> (são exclusivos do Simples Nacional).
-      //  - RNG6110: <trib> não pode ficar vazio - precisa de <tribFed> ou <totTrib>.
-      // Solução: sempre mandar <totTrib> com <pTotTrib> (percentual aproximado de tributos
-      // segundo Lei 12.741/2012). Quando há retenção, soma o que foi retido como aproximação;
-      // quando não há, manda 0.00 (legal — sem tributos federais retidos pelo prestador).
+      // Não Optante (XSD TCTribTotal):
+      //  - E0713 proíbe <pTotTribSN> e <indTotTrib> pra este caso.
+      //  - <pTotTrib> é complexType TCTribTotalPercent — precisa dos 3 sub-elementos
+      //    (pTotTribFed, pTotTribEst, pTotTribMun) em formato decimal com 2 casas.
+      // Calcula percentual aproximado de tributos federais (Lei 12.741/2012) sobre o
+      // valor do serviço; estaduais e municipais ficam em 0.00 (não há retenção
+      // específica pelo prestador nesta NFS-e).
       const vTotFed = (parseFloat(nota.valor_ir) || 0) + (parseFloat(nota.valor_csll) || 0) + (parseFloat(nota.valor_inss) || 0);
       const vServ = parseFloat(nota.valor_servico) || 0;
-      const pTotAprox = vServ > 0 ? (vTotFed / vServ) * 100 : 0;
+      const pTotFed = vServ > 0 ? (vTotFed / vServ) * 100 : 0;
       totTribXml = `<totTrib>
-            <pTotTrib>${fmt(pTotAprox)}</pTotTrib>
+            <pTotTrib>
+              <pTotTribFed>${fmt(pTotFed)}</pTotTribFed>
+              <pTotTribEst>0.00</pTotTribEst>
+              <pTotTribMun>0.00</pTotTribMun>
+            </pTotTrib>
           </totTrib>`;
     }
 
