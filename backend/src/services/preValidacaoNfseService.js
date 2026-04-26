@@ -44,7 +44,7 @@ class PreValidacaoNfseService {
     // =========================================================
     // 4. VALIDAÇÃO DE REGIME TRIBUTÁRIO E TRIBUTOS
     // =========================================================
-    this._validarRegimeTributario(nota, cliente, erros, avisos);
+    this._validarRegimeTributario(nota, cliente, erros, correcoes, avisos);
 
     // Resumo
     const valido = erros.length === 0;
@@ -329,7 +329,7 @@ class PreValidacaoNfseService {
   // VALIDAÇÃO DE REGIME TRIBUTÁRIO
   // ===========================================================================
 
-  _validarRegimeTributario(nota, cliente, erros, avisos) {
+  _validarRegimeTributario(nota, cliente, erros, correcoes, avisos) {
     const opSimpNac = String(cliente.optante_simples || cliente.regime_simples_nacional || '1');
     const isSimplesNacional = opSimpNac === '2' || opSimpNac === '3';
 
@@ -339,33 +339,59 @@ class PreValidacaoNfseService {
         avisos.push(`Simples Nacional: percentual total de tributos não configurado (usando padrão 6.00%). Configure no cadastro do cliente se for diferente.`);
       }
 
-      // [B] regApTribSN obrigatório quando Simples Nacional (1=Receita, 2=Lucro, 3=Presumido, 4=Real, etc).
-      // Default '1' (Receita bruta) é o caso mais comum e seguro pra ME/EPP.
+      // [B] regApTribSN: default '1' (Receita Bruta — caso mais comum em ME/EPP).
+      // Auto-cadastra no cliente pra próximas NFs nem precisar pensar.
       const regApTribSN = String(cliente.reg_ap_trib_sn || '1');
       if (!/^[1-6]$/.test(regApTribSN)) {
-        erros.push(`Simples Nacional: reg_ap_trib_sn inválido ("${cliente.reg_ap_trib_sn}"). Cadastre 1-6 no cliente (1=Receita Bruta, mais comum).`);
+        // Valor cadastrado é inválido — corrige pra '1' e avisa
+        try {
+          const db = getDb();
+          db.prepare(`UPDATE clientes SET reg_ap_trib_sn = '1', updated_at = datetime('now') WHERE id = ?`).run(cliente.id);
+          cliente.reg_ap_trib_sn = '1';
+          correcoes.push(`Cliente: reg_ap_trib_sn corrigido de "${cliente.reg_ap_trib_sn}" para "1" (Receita Bruta — padrão ME/EPP)`);
+        } catch (e) { /* ok */ }
+      } else if (!cliente.reg_ap_trib_sn) {
+        // Não cadastrado — auto-cadastra com '1'
+        try {
+          const db = getDb();
+          db.prepare(`UPDATE clientes SET reg_ap_trib_sn = '1', updated_at = datetime('now') WHERE id = ? AND (reg_ap_trib_sn IS NULL OR reg_ap_trib_sn = '')`).run(cliente.id);
+          cliente.reg_ap_trib_sn = '1';
+          correcoes.push(`Cliente: reg_ap_trib_sn cadastrado automaticamente como "1" (Receita Bruta). Ajuste em /escritorio/clientes/${cliente.id} se for outro regime.`);
+        } catch (e) { /* ok */ }
       }
 
-      // [C] CST PIS/COFINS — valida contra enum oficial pra Simples Nacional (default '00').
+      // [C] CST PIS/COFINS — default '00' já é o caso comum pro Simples.
       const cst = String(nota.cst_piscofins || '00');
       const CSTS_VALIDOS = ['00','01','04','49','50','51','52','53','54','55','56','60','61','62','63','64','65','66','67','70','71','72','73','74','75','98','99'];
       if (!CSTS_VALIDOS.includes(cst)) {
-        erros.push(`Simples Nacional: CST PIS/COFINS inválido ("${cst}"). Valores aceitos: ${CSTS_VALIDOS.slice(0,6).join(', ')}, ...`);
+        erros.push(`Simples Nacional: CST PIS/COFINS "${cst}" inválido. Valores aceitos: ${CSTS_VALIDOS.slice(0,6).join(', ')}, ...`);
       }
     } else {
-      // [A] Regime normal - alíquota ISS é OBRIGATÓRIA. Sem ela o XML manda <pAliq>0.00</pAliq>
-      // e a SEFIN rejeita pra serviços que NÃO têm imunidade/isenção.
+      // [A] Regime normal — alíquota ISS é obrigatória. Estratégia em 3 níveis:
+      //   1) usa o que veio na nota (passou pela equipe)
+      //   2) usa o cadastro do cliente (cliente.aliquota_iss)
+      //   3) aplica DEFAULT 5% (caso comum: serviços profissionais — LC 116) + auto-cadastra no cliente
+      const ALIQUOTA_PADRAO = 0.05;  // 5% — máximo LC 116, típico pra serviços profissionais
       if (!nota.aliquota_iss || nota.aliquota_iss <= 0) {
-        // Permite override via cliente.aliquota_iss_padrao se cadastrada
         if (cliente.aliquota_iss && cliente.aliquota_iss > 0) {
+          // Nível 2: cadastro do cliente
           nota.aliquota_iss = cliente.aliquota_iss;
           try {
             const db = getDb();
             db.prepare('UPDATE notas_fiscais SET aliquota_iss = ? WHERE id = ?').run(cliente.aliquota_iss, nota.id);
-            avisos.push(`Nota: alíquota ISS preenchida do cadastro do cliente (${(cliente.aliquota_iss*100).toFixed(2)}%)`);
+            correcoes.push(`Nota: alíquota ISS preenchida do cadastro do cliente (${(cliente.aliquota_iss*100).toFixed(2)}%)`);
           } catch (e) { /* ok */ }
         } else {
-          erros.push('Nota: alíquota ISS ausente e cliente é Não Optante do Simples. Cadastre a alíquota padrão no cliente (campo aliquota_iss).');
+          // Nível 3: default 5% + auto-cadastra no cliente
+          nota.aliquota_iss = ALIQUOTA_PADRAO;
+          try {
+            const db = getDb();
+            db.prepare('UPDATE notas_fiscais SET aliquota_iss = ? WHERE id = ?').run(ALIQUOTA_PADRAO, nota.id);
+            db.prepare(`UPDATE clientes SET aliquota_iss = ?, updated_at = datetime('now')
+                        WHERE id = ? AND (aliquota_iss IS NULL OR aliquota_iss <= 0)`).run(ALIQUOTA_PADRAO, cliente.id);
+            cliente.aliquota_iss = ALIQUOTA_PADRAO;
+            correcoes.push(`Nota: alíquota ISS aplicada por padrão (5%) e cadastrada no cliente. Ajuste em /escritorio/clientes/${cliente.id} se a alíquota do município for diferente.`);
+          } catch (e) { /* ok */ }
         }
       }
     }
