@@ -34,6 +34,13 @@ class NfseNacionalService {
     // 2. Gera o XML da DPS
     const { xml: dpsXml, idDPS } = this._gerarDpsXml(nota, cliente, tomador);
     console.log(`[NFS-e] XML DPS gerado (${dpsXml.length} chars), idDPS: ${idDPS}`);
+    // DEBUG: imprime trecho do <prest> e logo abaixo trecho do <serv> pra rastrear IM/cTribNac no XML
+    const _idxPrest = dpsXml.indexOf('<prest>');
+    const _idxPrestEnd = dpsXml.indexOf('</prest>') + '</prest>'.length;
+    if (_idxPrest >= 0) console.log('[NFS-e DEBUG XML <prest>]', dpsXml.substring(_idxPrest, _idxPrestEnd).replace(/\n\s+/g, ' '));
+    const _idxTrib = dpsXml.indexOf('<trib>');
+    const _idxTribEnd = dpsXml.indexOf('</trib>') + '</trib>'.length;
+    if (_idxTrib >= 0) console.log('[NFS-e DEBUG XML <trib>]', dpsXml.substring(_idxTrib, _idxTribEnd).replace(/\n\s+/g, ' '));
 
     // 3. Assina o XML (referência aponta para o Id do infDPS)
     const dpsXmlAssinado = xmlSignerService.assinarXml(
