@@ -381,13 +381,8 @@ class NfseNacionalService {
       <trib>
         <tribMun>
           <tribISSQN>1</tribISSQN>
-          ${!isSimplesNacional ? `<BM>
-            <nBM>1</nBM>
-            <vBC>${fmt(baseCalculo)}</vBC>
-            <pAliq>${fmt(aliquotaPercent)}</pAliq>
-            <vISS>${fmt(baseCalculo * (aliquotaPercent / 100))}</vISS>
-          </BM>` : ''}
           <tpRetISSQN>${nota.iss_retido ? '2' : '1'}</tpRetISSQN>
+          ${!isSimplesNacional && aliquotaPercent > 0 ? `<pAliq>${fmt(aliquotaPercent)}</pAliq>` : ''}
         </tribMun>
         ${tribFedXml}
         ${totTribXml}
