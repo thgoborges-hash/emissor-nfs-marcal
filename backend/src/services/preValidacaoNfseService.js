@@ -290,9 +290,28 @@ class PreValidacaoNfseService {
       erros.push('Nota: valor do serviço inválido ou zero');
     }
 
-    // Data de competência
+    // Data de competência — aceita YYYY-MM ou YYYY-MM-DD; normaliza pra YYYY-MM-DD
     if (!nota.data_competencia) {
       erros.push('Nota: data de competência ausente');
+    } else {
+      const dt = String(nota.data_competencia).trim();
+      const mYM  = /^(\d{4})-(\d{2})$/.exec(dt);
+      const mYMD = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dt);
+      let ano, mes, dia;
+      if (mYMD) { ano=+mYMD[1]; mes=+mYMD[2]; dia=+mYMD[3]; }
+      else if (mYM) { ano=+mYM[1]; mes=+mYM[2]; dia=1; }
+      if (!ano || mes < 1 || mes > 12 || dia < 1 || dia > 31 || ano < 2020 || ano > 2099) {
+        erros.push(`Nota: data de competência inválida ("${dt}"). Use formato AAAA-MM ou AAAA-MM-DD.`);
+      } else if (mYM) {
+        // Normaliza pra YYYY-MM-DD pra evitar XML com 'YYYY-MM-01' ambíguo no parser
+        const norm = `${ano}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+        nota.data_competencia = norm;
+        try {
+          const db = getDb();
+          db.prepare('UPDATE notas_fiscais SET data_competencia = ? WHERE id = ?').run(norm, nota.id);
+          correcoes.push(`Nota: data de competência normalizada (${dt} → ${norm})`);
+        } catch (e) { /* ok */ }
+      }
     }
 
     // Número DPS
@@ -319,10 +338,35 @@ class PreValidacaoNfseService {
       if (!nota.percentual_total_tributos_sn && !cliente.percentual_tributos_sn) {
         avisos.push(`Simples Nacional: percentual total de tributos não configurado (usando padrão 6.00%). Configure no cadastro do cliente se for diferente.`);
       }
+
+      // [B] regApTribSN obrigatório quando Simples Nacional (1=Receita, 2=Lucro, 3=Presumido, 4=Real, etc).
+      // Default '1' (Receita bruta) é o caso mais comum e seguro pra ME/EPP.
+      const regApTribSN = String(cliente.reg_ap_trib_sn || '1');
+      if (!/^[1-6]$/.test(regApTribSN)) {
+        erros.push(`Simples Nacional: reg_ap_trib_sn inválido ("${cliente.reg_ap_trib_sn}"). Cadastre 1-6 no cliente (1=Receita Bruta, mais comum).`);
+      }
+
+      // [C] CST PIS/COFINS — valida contra enum oficial pra Simples Nacional (default '00').
+      const cst = String(nota.cst_piscofins || '00');
+      const CSTS_VALIDOS = ['00','01','04','49','50','51','52','53','54','55','56','60','61','62','63','64','65','66','67','70','71','72','73','74','75','98','99'];
+      if (!CSTS_VALIDOS.includes(cst)) {
+        erros.push(`Simples Nacional: CST PIS/COFINS inválido ("${cst}"). Valores aceitos: ${CSTS_VALIDOS.slice(0,6).join(', ')}, ...`);
+      }
     } else {
-      // Regime normal - alíquota ISS
+      // [A] Regime normal - alíquota ISS é OBRIGATÓRIA. Sem ela o XML manda <pAliq>0.00</pAliq>
+      // e a SEFIN rejeita pra serviços que NÃO têm imunidade/isenção.
       if (!nota.aliquota_iss || nota.aliquota_iss <= 0) {
-        avisos.push('Nota: alíquota ISS não informada. O campo pAliq ficará zerado no XML.');
+        // Permite override via cliente.aliquota_iss_padrao se cadastrada
+        if (cliente.aliquota_iss && cliente.aliquota_iss > 0) {
+          nota.aliquota_iss = cliente.aliquota_iss;
+          try {
+            const db = getDb();
+            db.prepare('UPDATE notas_fiscais SET aliquota_iss = ? WHERE id = ?').run(cliente.aliquota_iss, nota.id);
+            avisos.push(`Nota: alíquota ISS preenchida do cadastro do cliente (${(cliente.aliquota_iss*100).toFixed(2)}%)`);
+          } catch (e) { /* ok */ }
+        } else {
+          erros.push('Nota: alíquota ISS ausente e cliente é Não Optante do Simples. Cadastre a alíquota padrão no cliente (campo aliquota_iss).');
+        }
       }
     }
   }
