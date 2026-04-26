@@ -315,21 +315,18 @@ class NfseNacionalService {
             <pTotTribSN>${fmt(parseFloat(pTotTribSN))}</pTotTribSN>
           </totTrib>`;
     } else {
-      // Não Optante: SEFIN rejeita E0713 quando enviamos indTotTrib=0 ou pTotTribSN.
-      // Se houver retenções federais, informa via <vTotTrib> com valores exatos.
-      // Caso contrário, omite o bloco <totTrib> (opcional pra Não Optante sem retenção).
+      // Não Optante:
+      //  - E0713 proíbe <pTotTribSN> e <indTotTrib> (são exclusivos do Simples Nacional).
+      //  - RNG6110: <trib> não pode ficar vazio - precisa de <tribFed> ou <totTrib>.
+      // Solução: sempre mandar <totTrib> com <pTotTrib> (percentual aproximado de tributos
+      // segundo Lei 12.741/2012). Quando há retenção, soma o que foi retido como aproximação;
+      // quando não há, manda 0.00 (legal — sem tributos federais retidos pelo prestador).
       const vTotFed = (parseFloat(nota.valor_ir) || 0) + (parseFloat(nota.valor_csll) || 0) + (parseFloat(nota.valor_inss) || 0);
-      if (vTotFed > 0) {
-        totTribXml = `<totTrib>
-            <vTotTrib>
-              <vTotTribFed>${fmt(vTotFed)}</vTotTribFed>
-              <vTotTribEst>0.00</vTotTribEst>
-              <vTotTribMun>0.00</vTotTribMun>
-            </vTotTrib>
+      const vServ = parseFloat(nota.valor_servico) || 0;
+      const pTotAprox = vServ > 0 ? (vTotFed / vServ) * 100 : 0;
+      totTribXml = `<totTrib>
+            <pTotTrib>${fmt(pTotAprox)}</pTotTrib>
           </totTrib>`;
-      } else {
-        totTribXml = '';
-      }
     }
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
