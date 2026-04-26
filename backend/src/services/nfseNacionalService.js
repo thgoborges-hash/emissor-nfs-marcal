@@ -397,7 +397,9 @@ class NfseNacionalService {
         <tribMun>
           <tribISSQN>1</tribISSQN>
           <tpRetISSQN>${nota.iss_retido ? '2' : '1'}</tpRetISSQN>
-          ${!isSimplesNacional && aliquotaPercent > 0 ? `<pAliq>${fmt(aliquotaPercent)}</pAliq>` : ''}
+          ${/* pAliq OMITIDO de propósito: a SEFIN rejeita (E0617) quando o municipio
+               de incidência está ATIVO no Sistema Nacional NFS-e e o prestador é
+               Não Optante — porque o município é quem fornece a alíquota. */ ''}
         </tribMun>
         ${tribFedXml}
         ${totTribXml}
