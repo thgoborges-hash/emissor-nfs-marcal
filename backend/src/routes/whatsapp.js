@@ -9,6 +9,7 @@ const { autenticado, apenasEscritorio, gerarToken } = require('../middleware/aut
 const whatsappService = require('../services/whatsappService');
 const agenteIA = require('../services/agenteIAService');
 const horarioComercial = require('../services/horarioComercialService');
+const anexoCacheService = require('../services/anexoCacheService');
 
 // Detecta qual provider usar: 'zapi', 'evolution', 'blip' ou 'meta' (padrão)
 const WHATSAPP_PROVIDER = process.env.WHATSAPP_PROVIDER || 'meta';
@@ -757,6 +758,21 @@ async function processarMensagemZapi(body) {
   );
 
   console.log(`[Z-API] Mensagem recebida (${isGroup ? 'GRUPO' : 'privado'}) de ${pushName || chaveArmazenamento}: ${texto.substring(0, 80)}`);
+
+  // Se a mensagem é um documento (PDF, .pfx, etc), registra a URL no cache pra
+  // ações tipo CADASTRAR_A1 conseguirem baixar nos próximos 30min.
+  if (body.document?.documentUrl) {
+    try {
+      anexoCacheService.registrar(conversaId, {
+        url: body.document.documentUrl,
+        fileName: body.document.fileName || null,
+        mimeType: body.document.mimeType || null,
+      });
+      console.log(`[Z-API] Anexo cacheado pra conversa ${conversaId}: ${body.document.fileName || '(sem nome)'} (${body.document.mimeType || '?'})`);
+    } catch (errCache) {
+      console.warn(`[Z-API] Falha ao cachear anexo: ${errCache.message}`);
+    }
+  }
 
   // Marca como lida (best-effort)
   try {
