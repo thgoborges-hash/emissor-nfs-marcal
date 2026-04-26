@@ -260,6 +260,9 @@ class NfseNacionalService {
     const documentoTomador = tomador.documento.replace(/[.\-\/]/g, '');
     const codMunicipio = cliente.codigo_municipio || '0000000';
 
+    // DEBUG temporário — pra rastrear por que IM não chega no XML após ATUALIZAR_CLIENTE
+    console.log(`[NFS-e DEBUG] Cliente carregado: id=${cliente.id} razao="${cliente.razao_social}" cnpj=${cliente.cnpj} IM="${cliente.inscricao_municipal}" codigo_servico="${cliente.codigo_servico}" aliquota_iss=${cliente.aliquota_iss} optante_simples=${cliente.optante_simples}`);
+
     // Gera o ID da DPS no formato correto (TSIdDPS - 45 posições)
     const idDPS = this._gerarIdDPS(cliente, nota);
 
