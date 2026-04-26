@@ -132,6 +132,20 @@ function initDatabase() {
     console.warn('[migration] codigos_servico_nacional seed:', e.message);
   }
 
+  // Migração: limpa codigo_servico de clientes com formato cTribNac inválido
+  // (ex: '123012200' que veio de exemplo errado do prompt antigo da Ana).
+  // Códigos válidos têm 6 dígitos no formato iissdd. Tudo o que não bate vai pra NULL,
+  // e a próxima emissão vai usar auto-sugestão.
+  try {
+    const total = db.prepare("SELECT COUNT(*) as c FROM clientes WHERE codigo_servico IS NOT NULL AND codigo_servico != '' AND codigo_servico NOT GLOB '[0-9][0-9][0-9][0-9][0-9][0-9]'").get();
+    if (total.c > 0) {
+      const r = db.prepare("UPDATE clientes SET codigo_servico = NULL WHERE codigo_servico IS NOT NULL AND codigo_servico != '' AND codigo_servico NOT GLOB '[0-9][0-9][0-9][0-9][0-9][0-9]'").run();
+      console.log(`[migration] codigo_servico inválido limpo em ${r.changes} cliente(s) — vão usar auto-sugestão na próxima NF`);
+    }
+  } catch (e) {
+    console.warn('[migration] limpar codigo_servico inválido:', e.message);
+  }
+
   // Insere dados iniciais se o banco estiver vazio
   const escritorioCount = db.prepare('SELECT COUNT(*) as count FROM escritorio').get();
   if (escritorioCount.count === 0) {

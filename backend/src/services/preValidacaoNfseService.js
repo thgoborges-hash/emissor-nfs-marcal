@@ -247,13 +247,33 @@ class PreValidacaoNfseService {
     }
 
     // Código de serviço (cTribNac)
+    // Helper: valida formato (6 dígitos iissdd) e existência na tabela oficial.
+    // Se o valor é inválido (lixo de testes antigos, formato 9 dígitos descontinuado, etc),
+    // tratamos como ausente pra cair na auto-sugestão.
+    const _ctribValido = (cod) => {
+      if (!cod || !/^\d{6}$/.test(String(cod))) return false;
+      try {
+        const db = getDb();
+        const r = db.prepare('SELECT 1 FROM codigos_servico_nacional WHERE codigo = ?').get(String(cod));
+        return !!r;
+      } catch { return /^\d{6}$/.test(String(cod)); /* tabela ainda não populada — aceita formato */ }
+    };
+
+    // Se nota.codigo_servico veio mas é inválido, descarta
+    if (nota.codigo_servico && !_ctribValido(nota.codigo_servico)) {
+      avisos.push(`Nota: código de serviço "${nota.codigo_servico}" tem formato inválido (esperado 6 dígitos da Lista LC 116/2003) — vou tentar sugerir o correto.`);
+      nota.codigo_servico = null;
+    }
+    // Se cliente.codigo_servico está no banco mas é inválido, descarta também
+    const codClienteValido = _ctribValido(cliente.codigo_servico) ? cliente.codigo_servico : null;
+
     if (!nota.codigo_servico) {
-      if (cliente.codigo_servico) {
-        nota.codigo_servico = cliente.codigo_servico;
+      if (codClienteValido) {
+        nota.codigo_servico = codClienteValido;
         try {
           const db = getDb();
-          db.prepare('UPDATE notas_fiscais SET codigo_servico = ? WHERE id = ?').run(cliente.codigo_servico, nota.id);
-          correcoes.push(`Nota: código de serviço preenchido do cadastro do cliente (${cliente.codigo_servico})`);
+          db.prepare('UPDATE notas_fiscais SET codigo_servico = ? WHERE id = ?').run(codClienteValido, nota.id);
+          correcoes.push(`Nota: código de serviço preenchido do cadastro do cliente (${codClienteValido})`);
         } catch (e) { /* ok */ }
       } else if (nota.descricao_servico) {
         // Tenta sugerir a partir da descrição (cliente sem cadastro de cTribNac)
@@ -265,9 +285,18 @@ class PreValidacaoNfseService {
             try {
               const db = getDb();
               db.prepare('UPDATE notas_fiscais SET codigo_servico = ? WHERE id = ?').run(escolha.codigo, nota.id);
-              // Auto-cadastra no cliente também (libera próximas NFs sem perguntar)
-              db.prepare(`UPDATE clientes SET codigo_servico = ?, updated_at = datetime('now')
-                          WHERE id = ? AND (codigo_servico IS NULL OR codigo_servico = '')`).run(escolha.codigo, cliente.id);
+              // Auto-cadastra no cliente também (libera próximas NFs sem perguntar).
+              // Sobrescreve qualquer valor inválido que esteja no cadastro (ex: lixo de
+              // testes antigos com formato errado).
+              const _ehValidoUpsert = /^\d{6}$/.test(String(cliente.codigo_servico || ''));
+              if (_ehValidoUpsert) {
+                // só seta se está NULL/vazio
+                db.prepare(`UPDATE clientes SET codigo_servico = ?, updated_at = datetime('now')
+                            WHERE id = ? AND (codigo_servico IS NULL OR codigo_servico = '')`).run(escolha.codigo, cliente.id);
+              } else {
+                // override: limpa valor inválido e aplica sugestão
+                db.prepare(`UPDATE clientes SET codigo_servico = ?, updated_at = datetime('now') WHERE id = ?`).run(escolha.codigo, cliente.id);
+              }
             } catch (e) { /* ok */ }
             correcoes.push(`Nota: código de serviço sugerido automaticamente: ${escolha.codigo} - ${escolha.descricao} (confirme depois no cadastro do cliente)`);
             console.log(`[PreValidacao] cTribNac auto-sugerido: ${escolha.codigo} (${escolha.descricao}) - score=${escolha.candidatos[0]?.score}`);
