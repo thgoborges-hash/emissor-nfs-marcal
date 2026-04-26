@@ -315,9 +315,21 @@ class NfseNacionalService {
             <pTotTribSN>${fmt(parseFloat(pTotTribSN))}</pTotTribSN>
           </totTrib>`;
     } else {
-      totTribXml = `<totTrib>
-            <indTotTrib>0</indTotTrib>
+      // Não Optante: SEFIN rejeita E0713 quando enviamos indTotTrib=0 ou pTotTribSN.
+      // Se houver retenções federais, informa via <vTotTrib> com valores exatos.
+      // Caso contrário, omite o bloco <totTrib> (opcional pra Não Optante sem retenção).
+      const vTotFed = (parseFloat(nota.valor_ir) || 0) + (parseFloat(nota.valor_csll) || 0) + (parseFloat(nota.valor_inss) || 0);
+      if (vTotFed > 0) {
+        totTribXml = `<totTrib>
+            <vTotTrib>
+              <vTotTribFed>${fmt(vTotFed)}</vTotTribFed>
+              <vTotTribEst>0.00</vTotTribEst>
+              <vTotTribMun>0.00</vTotTribMun>
+            </vTotTrib>
           </totTrib>`;
+      } else {
+        totTribXml = '';
+      }
     }
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
