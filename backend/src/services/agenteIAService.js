@@ -177,6 +177,21 @@ class AgenteIAService {
         }
       }
 
+      // Feedback do cadastro de A1
+      const feedbackA1 = acoes.find(a => a.tipo === 'CADASTRAR_A1' && a.feedback);
+      if (feedbackA1?.feedback) {
+        const fb = feedbackA1.feedback;
+        let feedbackMsg = '';
+        if (fb.sucesso) {
+          const dias = fb.diasRestantes != null ? ` (${fb.diasRestantes} dias)` : '';
+          feedbackMsg = `\n\n✅ Certificado A1 cadastrado!\nTitular: ${fb.titular || fb.razao}\nValidade: ${fb.validade}${dias}\n\nAgora pode emitir NF normalmente. 🚀`;
+        } else {
+          feedbackMsg = `\n\n⚠️ Não consegui cadastrar o A1: ${fb.erro}`;
+        }
+        const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+        return { texto: respostaLimpa + feedbackMsg, acoes };
+      }
+
       // Feedback de busca de DANFSe
       const feedbackDanfse = acoes.find(a => a.tipo === 'BUSCAR_DANFSE' && a.feedback);
       if (feedbackDanfse?.feedback) {
@@ -1293,32 +1308,46 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 break;
               }
 
+              console.log(`[WhatsApp] CADASTRAR_A1 iniciando: cnpj=${cnpjA1}, conversaId=${conversaId}`);
+
               const cliA1 = db.prepare(`SELECT id, razao_social FROM clientes WHERE REPLACE(REPLACE(REPLACE(cnpj,'.',''),'/',''),'-','') = ?`).get(cnpjA1);
               if (!cliA1) {
+                console.log(`[WhatsApp] CADASTRAR_A1: cliente CNPJ ${cnpjA1} não está na carteira`);
                 acao.feedback = { sucesso: false, erro: `Cliente com CNPJ ${cnpjA1} não encontrado na carteira. Cadastre o cliente antes de subir o A1.` };
                 break;
               }
+              console.log(`[WhatsApp] CADASTRAR_A1: cliente encontrado: ${cliA1.razao_social} (id=${cliA1.id})`);
 
               const anexo = anexoCacheService.buscarUltimo(conversaId);
               if (!anexo || !anexo.url) {
+                console.log(`[WhatsApp] CADASTRAR_A1: NENHUM anexo encontrado pra conversaId=${conversaId}`);
                 acao.feedback = { sucesso: false, erro: 'Não achei arquivo .pfx anexado nessa conversa (ou expirou, TTL 30min). Reenvie o certificado como documento e já emenda a mensagem "CADASTRAR_A1".' };
                 break;
               }
+              console.log(`[WhatsApp] CADASTRAR_A1: anexo encontrado, baixando de ${anexo.url.substring(0, 80)}...`);
 
               // Baixa o arquivo do URL Z-API
-              const pfxBuffer = await new Promise((resolve, reject) => {
-                const req = https.get(anexo.url, (res) => {
-                  if (res.statusCode !== 200) {
-                    reject(new Error(`Download do anexo falhou (HTTP ${res.statusCode})`));
-                    return;
-                  }
-                  const chunks = [];
-                  res.on('data', c => chunks.push(c));
-                  res.on('end', () => resolve(Buffer.concat(chunks)));
+              let pfxBuffer;
+              try {
+                pfxBuffer = await new Promise((resolve, reject) => {
+                  const req = https.get(anexo.url, (res) => {
+                    if (res.statusCode !== 200) {
+                      reject(new Error(`Download do anexo falhou (HTTP ${res.statusCode})`));
+                      return;
+                    }
+                    const chunks = [];
+                    res.on('data', c => chunks.push(c));
+                    res.on('end', () => resolve(Buffer.concat(chunks)));
+                  });
+                  req.on('error', reject);
+                  req.setTimeout(20000, () => req.destroy(new Error('Download timeout')));
                 });
-                req.on('error', reject);
-                req.setTimeout(20000, () => req.destroy(new Error('Download timeout')));
-              });
+              } catch (downloadErr) {
+                console.error(`[WhatsApp] CADASTRAR_A1: falha no download do anexo: ${downloadErr.message}`);
+                acao.feedback = { sucesso: false, erro: `Não consegui baixar o arquivo .pfx: ${downloadErr.message}. Tenta reenviar.` };
+                break;
+              }
+              console.log(`[WhatsApp] CADASTRAR_A1: download OK, ${pfxBuffer.length} bytes`);
 
               if (pfxBuffer.length < 100) {
                 acao.feedback = { sucesso: false, erro: 'Arquivo baixado é muito pequeno — anexo corrompido ou URL inválida.' };
@@ -1330,7 +1359,9 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
               try {
                 const resultSalvar = certificadoService.salvarCertificado(cliA1.id, pfxBuffer, senhaA1);
                 infoCert = resultSalvar.info;
+                console.log(`[WhatsApp] CADASTRAR_A1: salvarCertificado OK, validade=${infoCert.validade?.fim}, CNPJ cert=${infoCert.cnpj}`);
               } catch (errCert) {
+                console.error(`[WhatsApp] CADASTRAR_A1: salvarCertificado falhou: ${errCert.message}`);
                 acao.feedback = { sucesso: false, erro: `Certificado inválido: ${errCert.message}` };
                 break;
               }
