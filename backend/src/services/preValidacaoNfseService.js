@@ -5,6 +5,7 @@
 // =====================================================
 
 const cnpjService = require('./cnpjService');
+const codigoServicoSugestaoService = require('./codigoServicoSugestaoService');
 const { getDb } = require('../database/init');
 
 class PreValidacaoNfseService {
@@ -231,21 +232,7 @@ class PreValidacaoNfseService {
   // ===========================================================================
 
   _validarNota(nota, cliente, erros, correcoes, avisos) {
-    // Código de serviço — tentar pegar do cliente se ausente na nota
-    if (!nota.codigo_servico) {
-      if (cliente.codigo_servico) {
-        nota.codigo_servico = cliente.codigo_servico;
-        // Persiste na nota
-        try {
-          const db = getDb();
-          db.prepare('UPDATE notas_fiscais SET codigo_servico = ? WHERE id = ?').run(cliente.codigo_servico, nota.id);
-          correcoes.push(`Nota: código de serviço preenchido do cadastro do cliente (${cliente.codigo_servico})`);
-        } catch (e) { /* ok */ }
-      } else {
-        erros.push('Nota: código de serviço (cTribNac) ausente. Configure o código padrão no cadastro do cliente.');
-      }
-    }
-    // Descrição do serviço — tentar do cliente
+    // Descrição do serviço — primeiro (vai ser usada pra sugerir cTribNac se faltar)
     if (!nota.descricao_servico || nota.descricao_servico.trim() === '') {
       if (cliente.descricao_servico_padrao) {
         nota.descricao_servico = cliente.descricao_servico_padrao;
@@ -256,6 +243,47 @@ class PreValidacaoNfseService {
         } catch (e) { /* ok */ }
       } else {
         erros.push('Nota: descrição do serviço ausente');
+      }
+    }
+
+    // Código de serviço (cTribNac)
+    if (!nota.codigo_servico) {
+      if (cliente.codigo_servico) {
+        nota.codigo_servico = cliente.codigo_servico;
+        try {
+          const db = getDb();
+          db.prepare('UPDATE notas_fiscais SET codigo_servico = ? WHERE id = ?').run(cliente.codigo_servico, nota.id);
+          correcoes.push(`Nota: código de serviço preenchido do cadastro do cliente (${cliente.codigo_servico})`);
+        } catch (e) { /* ok */ }
+      } else if (nota.descricao_servico) {
+        // Tenta sugerir a partir da descrição (cliente sem cadastro de cTribNac)
+        try {
+          const escolha = codigoServicoSugestaoService.escolher(nota.descricao_servico, cliente.cnae || '');
+          if (escolha.auto && escolha.codigo) {
+            // Auto-aplicação: top1 com confiança alta
+            nota.codigo_servico = escolha.codigo;
+            try {
+              const db = getDb();
+              db.prepare('UPDATE notas_fiscais SET codigo_servico = ? WHERE id = ?').run(escolha.codigo, nota.id);
+              // Auto-cadastra no cliente também (libera próximas NFs sem perguntar)
+              db.prepare(`UPDATE clientes SET codigo_servico = ?, updated_at = datetime('now')
+                          WHERE id = ? AND (codigo_servico IS NULL OR codigo_servico = '')`).run(escolha.codigo, cliente.id);
+            } catch (e) { /* ok */ }
+            correcoes.push(`Nota: código de serviço sugerido automaticamente: ${escolha.codigo} - ${escolha.descricao} (confirme depois no cadastro do cliente)`);
+            console.log(`[PreValidacao] cTribNac auto-sugerido: ${escolha.codigo} (${escolha.descricao}) - score=${escolha.candidatos[0]?.score}`);
+          } else if (escolha.candidatos && escolha.candidatos.length > 0) {
+            // Sugestões ambíguas — devolve opções pra equipe escolher
+            const opcoes = escolha.candidatos.map((c, i) => `${i + 1}) ${c.codigo} - ${c.descricao}`).join('; ');
+            erros.push(`Nota: código de serviço (cTribNac) não cadastrado. Sugestões pra "${nota.descricao_servico}": ${opcoes}. Responda com o código que devo usar.`);
+          } else {
+            erros.push('Nota: código de serviço (cTribNac) ausente. Configure o código padrão no cadastro do cliente.');
+          }
+        } catch (sugErr) {
+          console.warn('[PreValidacao] sugestão cTribNac falhou:', sugErr.message);
+          erros.push('Nota: código de serviço (cTribNac) ausente. Configure o código padrão no cadastro do cliente.');
+        }
+      } else {
+        erros.push('Nota: código de serviço (cTribNac) ausente. Configure o código padrão no cadastro do cliente.');
       }
     }
     if (!nota.valor_servico || nota.valor_servico <= 0) {

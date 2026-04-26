@@ -98,6 +98,40 @@ function initDatabase() {
     console.warn('[migration] clientes.dominio_integration_key:', e.message);
   }
 
+  // Seed idempotente da tabela cTribNac (Lista LC 116/2003)
+  // Carrega do JSON em src/data/codigos_servico_nacional.json
+  try {
+    const cnRow = db.prepare('SELECT COUNT(*) as count FROM codigos_servico_nacional').get();
+    const jsonPath = path.join(__dirname, '../data/codigos_servico_nacional.json');
+    if (fs.existsSync(jsonPath)) {
+      const codigos = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      const ftsRow = db.prepare('SELECT COUNT(*) as count FROM codigos_servico_nacional_fts').get();
+      const precisaSeed = cnRow.count !== codigos.length || ftsRow.count !== codigos.length;
+      if (precisaSeed) {
+        db.exec('DELETE FROM codigos_servico_nacional');
+        db.exec('DELETE FROM codigos_servico_nacional_fts');
+        const ins = db.prepare(`INSERT INTO codigos_servico_nacional
+          (codigo, descricao, grupo, palavras_chave, cnae_afins) VALUES (?, ?, ?, ?, ?)`);
+        const insFts = db.prepare(`INSERT INTO codigos_servico_nacional_fts
+          (codigo, descricao, palavras_chave) VALUES (?, ?, ?)`);
+        const tx = db.transaction((arr) => {
+          for (const c of arr) {
+            const palavras = (c.palavras_chave || []).join(' ');
+            const cnaes = JSON.stringify(c.cnae_afins || []);
+            ins.run(c.codigo, c.descricao, c.grupo || '', palavras, cnaes);
+            insFts.run(c.codigo, c.descricao, palavras);
+          }
+        });
+        tx(codigos);
+        console.log(`[migration] codigos_servico_nacional populada: ${codigos.length} itens`);
+      }
+    } else {
+      console.warn('[migration] codigos_servico_nacional.json não encontrado em ' + jsonPath);
+    }
+  } catch (e) {
+    console.warn('[migration] codigos_servico_nacional seed:', e.message);
+  }
+
   // Insere dados iniciais se o banco estiver vazio
   const escritorioCount = db.prepare('SELECT COUNT(*) as count FROM escritorio').get();
   if (escritorioCount.count === 0) {

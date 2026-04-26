@@ -343,6 +343,28 @@ CREATE INDEX IF NOT EXISTS idx_snapshot_cliente ON snapshot_obrigacoes(cliente_i
 CREATE INDEX IF NOT EXISTS idx_snapshot_obrigacao ON snapshot_obrigacoes(obrigacao);
 CREATE INDEX IF NOT EXISTS idx_snapshot_atualizado ON snapshot_obrigacoes(atualizado_em);
 
+
+-- =====================================================
+-- Tabela cTribNac (Lista de Serviços anexa à LC 116/2003)
+-- Fonte: gov.br/nfse — usada pelo codigoServicoSugestaoService
+-- =====================================================
+CREATE TABLE IF NOT EXISTS codigos_servico_nacional (
+  codigo TEXT PRIMARY KEY,           -- formato iissdd (6 dígitos)
+  descricao TEXT NOT NULL,
+  grupo TEXT,                        -- nome humano do item (ex: "Saúde")
+  palavras_chave TEXT,               -- string com termos pra match (separado por espaço)
+  cnae_afins TEXT,                   -- JSON array de prefixos CNAE 4 dígitos
+  atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Índice FTS5 pra busca rápida por descrição + palavras-chave
+CREATE VIRTUAL TABLE IF NOT EXISTS codigos_servico_nacional_fts USING fts5(
+  codigo UNINDEXED,
+  descricao,
+  palavras_chave,
+  tokenize='unicode61 remove_diacritics 2'
+);
+
 -- Índices para performance
 CREATE INDEX IF NOT EXISTS idx_clientes_cnpj ON clientes(cnpj);
 CREATE INDEX IF NOT EXISTS idx_tomadores_cliente ON tomadores(cliente_id);
