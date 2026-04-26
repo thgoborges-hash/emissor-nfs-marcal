@@ -382,6 +382,7 @@ class NfseNacionalService {
         <tribMun>
           <tribISSQN>1</tribISSQN>
           ${!isSimplesNacional ? `<BM>
+            <nBM>1</nBM>
             <vBC>${fmt(baseCalculo)}</vBC>
             <pAliq>${fmt(aliquotaPercent)}</pAliq>
             <vISS>${fmt(baseCalculo * (aliquotaPercent / 100))}</vISS>
