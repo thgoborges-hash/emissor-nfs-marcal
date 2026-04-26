@@ -47,6 +47,7 @@ app.use('/api/painel', require('./routes/painel'));
 app.use('/api/apuracao', require('./routes/apuracao'));
 app.use('/api/entregas', require('./routes/entregas'));
 app.use('/api/dominio',   require('./routes/dominio'));
+app.use('/api/onedrive', require('./routes/onedrive'));
 app.use('/api/debug', require('./routes/debug'));
 
 // Health check
