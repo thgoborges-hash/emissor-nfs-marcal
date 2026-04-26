@@ -482,6 +482,9 @@ Você SÓ PODE prometer coisas que você consegue entregar NA MESMA MENSAGEM, at
 - Toda promessa sua precisa vir acompanhada de uma tag [ACAO:...] na mesma mensagem. Sem tag = promessa vazia = cliente fica esperando pra sempre.
 - Se a action falhar, o sistema vai adicionar a mensagem de erro. Confie no sistema. NÃO tente "voltar depois pra confirmar".
 
+⚠️ REGRA INVIOLÁVEL — EMITENTE EXPLÍCITO NA MENSAGEM ⚠️
+Se a mensagem do usuário mencionar "Emitente: <Razão Social> - CNPJ: <CNPJ>" (ou variação tipo "NF do <X> CNPJ ...", "do CNPJ <X>"), VOCÊ DEVE incluir o CNPJ do emitente como PRIMEIRO campo da tag, formato 5+ campos: [ACAO:EMITIR_NF:cnpj_emitente|valor|cnpj_tomador|razao_tomador|descricao]. NUNCA gere tag de 4 campos quando há emitente explícito na mensagem — isso emitiria a NF pela empresa errada e o sistema vai bloquear. Vale para qualquer modo (cliente, equipe, admin).
+
 REGRA CRÍTICA — AÇÃO DE EMISSÃO:
 ⚠️ NUNCA diga "emitindo", "vou emitir", "saindo a NF" ou qualquer frase que sugira emissão SEM incluir a tag [ACAO:EMITIR_NF:...] na mesma mensagem. Se você disser que vai emitir mas não incluir a tag, a NF NÃO será emitida e o cliente vai ficar esperando.
 
@@ -957,6 +960,20 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
             if (ehContextoEquipe && !pareceCnpjEmitente) {
               console.log(`[WhatsApp] 🛑 EMITIR_NF bloqueado: modo equipe exige CNPJ do emitente como 1º campo (5 campos). Recebido: ${acao.parametro.substring(0, 100)}`);
               acao.feedback = { sucesso: false, erro: 'Pra emitir em modo equipe preciso do CNPJ do cliente que vai emitir a NF como primeiro campo da tag. Me passa o CNPJ do emitente?' };
+              break;
+            }
+
+            // GUARD DEFESA EM PROFUNDIDADE: se a mensagem original tem "Emitente:" ou "CNPJ do emitente:"
+            // com CNPJ explícito mas a tag veio sem CNPJ emitente, bloqueia. Evita emitir pela
+            // empresa errada quando o operador (admin ou não) escreveu instrução clara mas a Ana
+            // gerou tag de 4 campos por engano. Crítico fiscal/legal.
+            const msgOriginal = String(contato?.mensagemOriginal || '');
+            const padraoEmitente = /(?:emitente|cnpj\s*do\s*emitente|nf\s+d[oa]\s+\w+\s+\(cnpj)[^0-9]{0,20}(\d{2}[.\s]?\d{3}[.\s]?\d{3}[/\s]?\d{4}[-\s]?\d{2})/i;
+            const matchEmitente = padraoEmitente.exec(msgOriginal);
+            if (matchEmitente && !pareceCnpjEmitente) {
+              const cnpjMencionado = matchEmitente[1].replace(/\D/g, '');
+              console.log(`[WhatsApp] 🛑 EMITIR_NF bloqueado: mensagem mencionou emitente CNPJ ${cnpjMencionado} mas a tag não incluiu. Evitando emissão errada.`);
+              acao.feedback = { sucesso: false, erro: `Você falou que o emitente é o CNPJ ${cnpjMencionado}, mas a tag veio sem o emitente. Reemita usando esse CNPJ como primeiro campo: [ACAO:EMITIR_NF:${cnpjMencionado}|...].` };
               break;
             }
             if (pareceCnpjEmitente) {
