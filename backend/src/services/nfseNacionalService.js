@@ -181,34 +181,70 @@ class NfseNacionalService {
   }
 
   /**
-   * Cancela uma NFS-e emitida
+   * Avalia se um erro do SEFIN e retentavel (transitorio).
+   * HTTP 5xx, timeouts e erros de rede sao geralmente transitorios.
+   * HTTP 4xx (exceto 408 timeout, 429 rate-limit) sao geralmente erros definitivos.
    */
-  async cancelarNFSe(chaveAcesso, motivo, clienteId, senhaEncrypted) {
+  _erroEhRetentavel(err) {
+    if (!err) return false;
+    const status = err.statusCode || err.status || 0;
+    const msg = String(err.mensagem || err.message || '').toLowerCase();
+    if (status >= 500 && status < 600) return true;
+    if (status === 408 || status === 429) return true;
+    if (msg.includes('timeout')) return true;
+    if (msg.includes('econnreset') || msg.includes('econnrefused') || msg.includes('socket hang up')) return true;
+    if (msg.includes('etimedout') || msg.includes('eai_again') || msg.includes('enotfound')) return true;
+    if (msg.includes('an error has occurred')) return true; // mensagem generica do SEFIN p/ HTTP 500
+    return false;
+  }
+
+  /**
+   * Cancela uma NFS-e emitida com retry automatico em erros transitorios.
+   * Tenta ate `maxTentativas` vezes com backoff (delaySeconds[i]).
+   */
+  async cancelarNFSe(chaveAcesso, motivo, clienteId, senhaEncrypted, opts = {}) {
+    const maxTentativas = opts.maxTentativas || 4;
+    const delays = opts.delays || [15, 45, 90]; // segundos entre tentativas (3 retries -> 4 tentativas total)
     const cert = certificadoService.carregarCertificado(clienteId, senhaEncrypted);
 
-    // Gera XML do evento de cancelamento
-    const eventoXml = this._gerarEventoCancelamentoXml(chaveAcesso, motivo);
-    // DEBUG temporário (2026-04-27): logar XML do evento pra rastrear HTTP 500 do SEFIN
-    console.log(`[NFS-e CANC DEBUG] chave=${chaveAcesso} motivo="${motivo}" xmlLen=${eventoXml.length}`);
-    console.log(`[NFS-e CANC DEBUG] XML: ${eventoXml.substring(0, 1500)}`);
+    // Gera XML do evento de cancelamento (uma vez — dhEvento e nPedRegEvento sao gerados a cada retry, ver abaixo)
+    let lastErr = null;
+    for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+      // Regenera XML a cada tentativa (dhEvento atualizado, nPedRegEvento incrementa)
+      const eventoXml = this._gerarEventoCancelamentoXml(chaveAcesso, motivo, tentativa);
+      console.log(`[NFS-e CANC] Tentativa ${tentativa}/${maxTentativas} chave=${chaveAcesso} motivo="${motivo.substring(0, 60)}"`);
+      if (tentativa === 1) {
+        console.log(`[NFS-e CANC DEBUG] XML: ${eventoXml.substring(0, 1500)}`);
+      }
 
-    // Assina o XML
-    const eventoXmlAssinado = xmlSignerService.assinarXml(
-      eventoXml,
-      cert.pfxBuffer,
-      cert.senha,
-      `CANC_${chaveAcesso}`
-    );
-
-    // Comprime
-    const xmlGzipBase64 = await this._comprimirECodificar(eventoXmlAssinado);
-
-    const payload = {
-      eventoXmlGZipB64: xmlGzipBase64,
-    };
-
-    const endpoint = `${nfseConfig.ambiente.sefin}${nfseConfig.endpoints.enviarEvento}/${chaveAcesso}/eventos`;
-    return await this._requisicaoMTLS(endpoint, 'POST', payload, cert.pfxBuffer, cert.senha, false, { keyPem: cert.keyPem, certPem: cert.certPem });
+      try {
+        const eventoXmlAssinado = xmlSignerService.assinarXml(
+          eventoXml,
+          cert.pfxBuffer,
+          cert.senha,
+          `CANC_${chaveAcesso}_${tentativa}`
+        );
+        const xmlGzipBase64 = await this._comprimirECodificar(eventoXmlAssinado);
+        const payload = { eventoXmlGZipB64: xmlGzipBase64 };
+        const endpoint = `${nfseConfig.ambiente.sefin}${nfseConfig.endpoints.enviarEvento}/${chaveAcesso}/eventos`;
+        const result = await this._requisicaoMTLS(endpoint, 'POST', payload, cert.pfxBuffer, cert.senha, false, { keyPem: cert.keyPem, certPem: cert.certPem });
+        console.log(`[NFS-e CANC] ✅ sucesso na tentativa ${tentativa}`);
+        return result;
+      } catch (err) {
+        lastErr = err;
+        const retentavel = this._erroEhRetentavel(err);
+        const ultimo = tentativa >= maxTentativas;
+        console.warn(`[NFS-e CANC] tentativa ${tentativa} falhou: ${err.mensagem || err.message || JSON.stringify(err).substring(0, 200)} (retentavel=${retentavel})`);
+        if (!retentavel || ultimo) {
+          if (lastErr) lastErr.tentativasUsadas = tentativa;
+          throw lastErr;
+        }
+        const espera = (delays[tentativa - 1] || 60) * 1000;
+        console.log(`[NFS-e CANC] aguardando ${espera/1000}s antes da proxima tentativa...`);
+        await new Promise(r => setTimeout(r, espera));
+      }
+    }
+    if (lastErr) throw lastErr;
   }
 
   /**
@@ -442,15 +478,15 @@ class NfseNacionalService {
   /**
    * Gera XML de evento de cancelamento
    */
-  _gerarEventoCancelamentoXml(chaveAcesso, motivo) {
+  _gerarEventoCancelamentoXml(chaveAcesso, motivo, tentativa = 1) {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <pedRegEvento xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${nfseConfig.versaoLayout}">
-  <infPedReg Id="CANC_${chaveAcesso}">
+  <infPedReg Id="CANC_${chaveAcesso}_${tentativa}">
     <tpAmb>${nfseConfig.ambienteNome === 'producao' ? '1' : '2'}</tpAmb>
     <verAplic>EmissorMarcal_1.0</verAplic>
     <dhEvento>${this._formatarDataUTC(new Date())}</dhEvento>
     <chNFSe>${chaveAcesso}</chNFSe>
-    <nPedRegEvento>1</nPedRegEvento>
+    <nPedRegEvento>${tentativa}</nPedRegEvento>
     <tpEvento>e101101</tpEvento>
     <infEvento>
       <desc>Cancelamento de NFS-e</desc>

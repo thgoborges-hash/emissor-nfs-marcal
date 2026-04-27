@@ -201,8 +201,11 @@ class AgenteIAService {
         } else {
           // Tenta dar mensagem util pro erro do SEFIN ou do sistema
           const errStr = String(fb.erro || '');
+          const retryAgendadoTxt = fb.retryAgendado
+            ? ` Vou tentar de novo automaticamente em 5min — se rolar, te aviso aqui.`
+            : '';
           if (/An error has occurred|HTTP 500|status 500/i.test(errStr)) {
-            feedbackMsg = `\n\n\u26a0\ufe0f Nao consegui cancelar agora — a Receita devolveu erro generico (HTTP 500). Geralmente acontece quando a NF foi emitida ha menos de 5min e ainda esta sendo processada. Espera 2-3min e me pede pra tentar de novo. Detalhe tecnico: ${errStr.substring(0, 200)}`;
+            feedbackMsg = `\n\n\u26a0\ufe0f Insisti com a Receita mas ela continua devolvendo erro generico (HTTP 500).${retryAgendadoTxt} Detalhe tecnico: ${errStr.substring(0, 220)}`;
           } else if (/prazo|expirou|24h|tempo/i.test(errStr)) {
             feedbackMsg = `\n\n\u26a0\ufe0f Nao consegui cancelar — o prazo de cancelamento ja expirou (geralmente 24h apos emissao). Detalhe: ${errStr.substring(0, 200)}`;
           } else if (/certificado|A1/i.test(errStr)) {
@@ -1614,8 +1617,44 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 resultadoCanc = await nfseService.cancelarNFSe(nf.chave_acesso, motivo, clienteEmit.id, clienteEmit.certificado_a1_senha_encrypted);
               } catch (errCanc) {
                 const msg = errCanc.mensagem || errCanc.message || JSON.stringify(errCanc).substring(0, 400);
-                console.error(`[WhatsApp] Erro ao cancelar NF ${nf.id}:`, msg);
-                acao.feedback = { sucesso: false, erro: `SEFIN rejeitou: ${msg}` };
+                const tentativasUsadas = errCanc.tentativasUsadas || 1;
+                console.error(`[WhatsApp] Erro ao cancelar NF ${nf.id} apos ${tentativasUsadas} tentativas:`, msg);
+
+                // Se foi erro retentavel e esgotou as tentativas, agenda 1 retry adicional em 5min em background.
+                // Nao esperamos esse retry — devolvemos feedback agora pro user.
+                const retentavel = nfseService._erroEhRetentavel(errCanc);
+                if (retentavel) {
+                  console.log(`[WhatsApp] CANCELAR_NF ${nf.id}: agendando retry final em 5min (background)`);
+                  // Captura referencias do escopo atual antes do setTimeout
+                  const _nfBg = { id: nf.id, chave: nf.chave_acesso, numero: nf.numero_nfse };
+                  const _emitBg = { id: clienteEmit.id, senha: clienteEmit.certificado_a1_senha_encrypted };
+                  const _motivoBg = motivo;
+                  const _telBg = contato?.telefone || null;
+                  const _wa = this._obterWhatsAppProvider ? this._obterWhatsAppProvider() : null;
+                  setTimeout(async () => {
+                    try {
+                      console.log(`[WhatsApp] CANCELAR_NF ${_nfBg.id}: retry agendado disparado agora`);
+                      await nfseService.cancelarNFSe(_nfBg.chave, _motivoBg, _emitBg.id, _emitBg.senha, { maxTentativas: 2, delays: [30] });
+                      const dbBg = require('../database/db').getDb();
+                      dbBg.prepare(`UPDATE notas_fiscais SET status = 'cancelada', data_cancelamento = datetime('now'), observacoes = COALESCE(observacoes || ' | ', '') || ? WHERE id = ?`).run('Cancelamento ANA (retry agendado): ' + _motivoBg, _nfBg.id);
+                      console.log(`[WhatsApp] CANCELAR_NF ${_nfBg.id}: sucesso no retry agendado`);
+                      try {
+                        if (_wa && _telBg && _wa.enviarTexto) {
+                          await _wa.enviarTexto(_telBg, `\u2705 Consegui cancelar a NF ${_nfBg.numero} agora (retry automatico). Motivo: ${_motivoBg}`);
+                        }
+                      } catch (sendErr) { console.warn('[WhatsApp] falhou enviar msg do retry agendado:', sendErr.message); }
+                    } catch (retryErr) {
+                      console.error(`[WhatsApp] CANCELAR_NF ${_nfBg.id}: retry agendado tambem falhou:`, retryErr.mensagem || retryErr.message);
+                      try {
+                        if (_wa && _telBg && _wa.enviarTexto) {
+                          await _wa.enviarTexto(_telBg, `\u26a0\ufe0f Tentei cancelar a NF ${_nfBg.numero} mais uma vez (5min depois) e a Receita continua devolvendo erro. Pode ser instabilidade do SEFIN. Tenta de novo daqui a 30min ou avisa o Thiago.`);
+                        }
+                      } catch (_) {}
+                    }
+                  }, 5 * 60 * 1000); // 5 minutos
+                }
+
+                acao.feedback = { sucesso: false, erro: `SEFIN rejeitou apos ${tentativasUsadas} tentativa(s): ${msg}`, retryAgendado: retentavel };
                 break;
               }
 
