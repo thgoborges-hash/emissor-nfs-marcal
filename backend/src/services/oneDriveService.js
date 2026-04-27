@@ -96,12 +96,19 @@ function _httpRequest(url, method, body, headers) {
 async function testarConexao() {
   if (!USER) throw new Error('ONEDRIVE_USER_EMAIL ausente');
   await _obterToken(); // auth
-  const userInfo = await _graphGet(`/users/${encodeURIComponent(USER)}`);
+  // Não precisa ler /users/{id} — Files.Read.All não cobre isso (precisaria User.Read.All).
+  // Vamos direto pro /drive do user, que basta pra confirmar acesso.
   const driveInfo = await _graphGet(`/users/${encodeURIComponent(USER)}/drive`);
   return {
     ok: true,
-    user: { id: userInfo.id, mail: userInfo.mail, displayName: userInfo.displayName },
-    drive: { id: driveInfo.id, name: driveInfo.name, total: driveInfo.quota?.total, used: driveInfo.quota?.used },
+    drive: {
+      id: driveInfo.id,
+      name: driveInfo.name,
+      driveType: driveInfo.driveType,
+      total: driveInfo.quota?.total,
+      used: driveInfo.quota?.used,
+      owner: driveInfo.owner?.user?.email || driveInfo.owner?.user?.displayName,
+    },
   };
 }
 
