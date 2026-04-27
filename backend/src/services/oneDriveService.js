@@ -184,10 +184,30 @@ async function baixarArquivo(itemId) {
   });
 }
 
+/**
+ * Baixa um xlsx do OneDrive e devolve a primeira sheet como
+ * { cabecalhos: [...], linhas: [[...], ...] }. Limita preview pra evitar payload grande.
+ */
+async function previewXlsx(itemId, maxLinhas = 50) {
+  const buf = await baixarArquivo(itemId);
+  const XLSX = require('xlsx');
+  const wb = XLSX.read(buf, { type: 'buffer' });
+  const result = {};
+  for (const sheetName of wb.SheetNames) {
+    const sheet = wb.Sheets[sheetName];
+    const json = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+    const cabecalhos = json[0] || [];
+    const linhas = json.slice(1, 1 + maxLinhas);
+    result[sheetName] = { cabecalhos, linhas, totalLinhas: json.length - 1 };
+  }
+  return result;
+}
+
 module.exports = {
   testarConexao,
   listarClientes,
   listarArquivosPasta,
   baixarArquivo,
+  previewXlsx,
   _config: { TENANT_set: !!TENANT, CLIENT_set: !!CLIENT, SECRET_set: !!SECRET, USER, ROOT },
 };

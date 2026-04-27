@@ -50,4 +50,15 @@ router.get('/clientes/:folderId/arquivos', autenticado, apenasEscritorio, async 
   }
 });
 
+// GET /api/onedrive/preview-xlsx/:fileId — baixa um xlsx e retorna preview (50 linhas)
+router.get('/preview-xlsx/:fileId', autenticado, apenasEscritorio, async (req, res) => {
+  try {
+    const data = await oneDriveService.previewXlsx(req.params.fileId, 50);
+    res.json(data);
+  } catch (err) {
+    console.error('[OneDrive] /preview-xlsx:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;

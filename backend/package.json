@@ -1,7 +1,7 @@
 {
   "name": "emissor-nfs",
   "version": "1.1.0",
-  "description": "Emissor de NFS-e - Mar\u00e7al Contabilidade",
+  "description": "Emissor de NFS-e - Marçal Contabilidade",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -23,6 +23,7 @@
     "puppeteer": "^23.0.0",
     "qrcode": "^1.5.4",
     "uuid": "^10.0.0",
+    "xlsx": "^0.18.5",
     "xml-crypto": "^6.0.0",
     "xml2js": "^0.6.2"
   },
