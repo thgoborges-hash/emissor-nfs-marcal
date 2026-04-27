@@ -301,17 +301,52 @@ async function syncRegimeTributario(planilhaId, db) {
  *   "DDA... 27998575000100 - Senha - Daniele@102030 (Vc 12-06-26).pfx"
  */
 function _parsearNomePfx(nome) {
-  const cnpjMatch = nome.match(/(\d{14})/);
-  if (!cnpjMatch) return null;
-  // Pula CPF (11 dígitos) que aparece em arquivos de sócios
-  if (/(?:^|\D)(\d{11})(?:\D|$)/.test(nome) && !cnpjMatch) return null;
-  const cnpj = cnpjMatch[1];
+  // CNPJ tem prioridade. Senão tenta CPF. Senão null no doc (busca por nome da pasta).
+  const cnpjMatch = nome.match(/(?:^|[^\d])(\d{14})(?:[^\d]|$)/);
+  const cpfMatch = !cnpjMatch ? nome.match(/(?:^|[^\d])(\d{11})(?:[^\d]|$)/) : null;
+  const doc = cnpjMatch?.[1] || cpfMatch?.[1] || null;
 
-  // Senha: tudo após "Senha" até espaço, parêntese ou fim
+  // Senha: aceita Senha X, Senha-X, Senha:X, Senha - X
   const senhaMatch = nome.match(/Senha[\s\-:]+([^\s\(\)]+)/i);
   if (!senhaMatch) return null;
-  const senha = senhaMatch[1].replace(/\.pfx$/i, '').trim();
-  return { cnpj, senha };
+  let senha = senhaMatch[1].replace(/\.pfx$/i, '').replace(/\.p12$/i, '').trim();
+  // Remove eventuais sufixos tipo "Vc" agarrados (raro, mas pode acontecer)
+  return { doc, cnpj: cnpjMatch?.[1] || null, cpf: cpfMatch?.[1] || null, senha };
+}
+
+function _normalizarNome(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function _matchClientePorNome(nomePasta, db) {
+  const norm = _normalizarNome(nomePasta);
+  if (!norm) return null;
+  // Busca exata e por prefixo de razão social
+  const todos = db.prepare('SELECT id, razao_social FROM clientes WHERE ativo = 1').all();
+  // Pontuação simples: quantos tokens de nomePasta aparecem em razao_social normalizada
+  const tokens = norm.split(' ').filter(t => t.length > 2);
+  if (tokens.length === 0) return null;
+  let melhor = { score: 0, cliente: null };
+  for (const c of todos) {
+    const rsNorm = _normalizarNome(c.razao_social);
+    let score = 0;
+    for (const t of tokens) {
+      if (rsNorm.includes(t)) score++;
+    }
+    // Prioriza match consecutivo dos primeiros tokens
+    if (rsNorm.startsWith(tokens[0]) && tokens.length > 1 && rsNorm.includes(tokens[1])) score += 5;
+    if (score > melhor.score) melhor = { score, cliente: c };
+  }
+  // Pelo menos 60% dos tokens precisam casar e score mínimo de 2
+  if (melhor.score >= Math.max(2, Math.ceil(tokens.length * 0.6))) {
+    return melhor.cliente;
+  }
+  return null;
 }
 
 /**
@@ -328,23 +363,34 @@ async function syncCertificadosA1(folderClientesId, db, opts = {}, onProgress = 
     if (!pastaCliente.isFolder) continue;
     out.processados++;
     try {
-      // Acha "1 - CERTIFICADO DIGITAL" (ou variação)
+      // Acha subpasta de certificado (varias formas: "1 - CERTIFICADO DIGITAL", "CERTIFICADOS", "1 - CERTIFICADO", etc)
       const subpastas = await listarArquivosPasta(pastaCliente.id);
-      const pastaCert = subpastas.find(s => s.isFolder && /CERTIFICADO/i.test(s.name));
+      const pastaCert = subpastas.find(s => s.isFolder && /CERTIFICAD|DIGITAL/i.test(s.name));
       if (!pastaCert) {
         out.erros.push({ cliente: pastaCliente.name, erro: 'sem subpasta CERTIFICADO' });
         continue;
       }
 
-      // Lista PFX dentro
-      const arquivos = await listarArquivosPasta(pastaCert.id);
-      const pfxs = arquivos.filter(a => !a.isFolder && /\.pfx$/i.test(a.name));
+      // Lista PFX/P12 dentro (pode também varrer sub-subpastas se nada for encontrado)
+      let arquivos = await listarArquivosPasta(pastaCert.id);
+      let pfxs = arquivos.filter(a => !a.isFolder && /\.(pfx|p12)$/i.test(a.name));
+      if (pfxs.length === 0) {
+        // Tenta sub-subpastas (caso exista um nivel a mais)
+        for (const sub of arquivos.filter(a => a.isFolder)) {
+          const subArqs = await listarArquivosPasta(sub.id);
+          const subPfxs = subArqs.filter(a => !a.isFolder && /\.(pfx|p12)$/i.test(a.name));
+          if (subPfxs.length > 0) { pfxs = subPfxs; break; }
+        }
+      }
       if (pfxs.length === 0) {
         out.erros.push({ cliente: pastaCliente.name, erro: 'sem .pfx' });
         continue;
       }
 
-      // Pega o mais recente que tem padrão "Senha"
+      // Identifica cliente PRIMEIRO (pelo nome da pasta) — depois confirma com CNPJ se houver
+      const clientePorNome = _matchClientePorNome(pastaCliente.name, db);
+
+      // Pega PFX que tem padrão "Senha"
       const candidatos = pfxs
         .map(p => ({ ...p, parsed: _parsearNomePfx(p.name) }))
         .filter(p => p.parsed);
@@ -356,10 +402,16 @@ async function syncCertificadosA1(folderClientesId, db, opts = {}, onProgress = 
       candidatos.sort((a, b) => new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime));
       const pfxEscolhido = candidatos[0];
 
-      // Acha cliente no banco pelo CNPJ
-      const cliente = db.prepare(`SELECT id, razao_social, certificado_a1_path, certificado_validade FROM clientes WHERE REPLACE(REPLACE(REPLACE(cnpj,'.',''),'/',''),'-','') = ?`).get(pfxEscolhido.parsed.cnpj);
+      // Resolve cliente: prioriza CNPJ no PFX > nome da pasta
+      let cliente = null;
+      if (pfxEscolhido.parsed.cnpj) {
+        cliente = db.prepare(`SELECT id, razao_social, certificado_a1_path, certificado_validade FROM clientes WHERE REPLACE(REPLACE(REPLACE(cnpj,'.',''),'/',''),'-','') = ?`).get(pfxEscolhido.parsed.cnpj);
+      }
+      if (!cliente && clientePorNome) {
+        cliente = db.prepare(`SELECT id, razao_social, certificado_a1_path, certificado_validade FROM clientes WHERE id = ?`).get(clientePorNome.id);
+      }
       if (!cliente) {
-        out.naoEncontrados.push({ cnpj: pfxEscolhido.parsed.cnpj, nomePasta: pastaCliente.name });
+        out.naoEncontrados.push({ cnpj: pfxEscolhido.parsed.cnpj, cpf: pfxEscolhido.parsed.cpf, nomePasta: pastaCliente.name });
         continue;
       }
 
