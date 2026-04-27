@@ -34,6 +34,8 @@ class NfseNacionalService {
     // 2. Gera o XML da DPS
     const { xml: dpsXml, idDPS } = this._gerarDpsXml(nota, cliente, tomador);
     console.log(`[NFS-e] XML DPS gerado (${dpsXml.length} chars), idDPS: ${idDPS}`);
+    // DEBUG temporário (2026-04-27): logar XML completo pra rastrear E0116/E0617/RNG6110
+    console.log(`[NFS-e DEBUG XML] HEAD2K: ${dpsXml.substring(0, 2000)}`);
     // DEBUG: imprime trecho do <prest> e logo abaixo trecho do <serv> pra rastrear IM/cTribNac no XML
     const _idxPrest = dpsXml.indexOf('<prest>');
     const _idxPrestEnd = dpsXml.indexOf('</prest>') + '</prest>'.length;
@@ -286,8 +288,20 @@ class NfseNacionalService {
     const aliquotaPercent = nota.aliquota_iss ? (nota.aliquota_iss * 100) : 0;
 
     // Regime tributário do prestador (obrigatório no XSD)
-    // opSimpNac: 1=Não Optante, 2=MEI, 3=ME/EPP
-    const opSimpNac = String(cliente.optante_simples || cliente.regime_simples_nacional || '1');
+    // opSimpNac (semântica XSD): 1=Não Optante, 2=MEI, 3=ME/EPP
+    // ATENÇÃO: a coluna `optante_simples` é boolean (0/1) — semântica do banco é
+    // "é optante do Simples Nacional?". NÃO confundir com o código XSD.
+    // Prioridade: usar regime_simples_nacional quando válido (já tem semântica XSD).
+    // Senão, inferir: optante=1 → '3' (ME/EPP, default), optante=0 → '1' (Não Optante).
+    let opSimpNac;
+    const _regSN = String(cliente.regime_simples_nacional || '').trim();
+    if (['1', '2', '3'].includes(_regSN)) {
+      opSimpNac = _regSN;
+    } else if (cliente.optante_simples === 1 || cliente.optante_simples === '1' || cliente.optante_simples === true) {
+      opSimpNac = '3'; // default ME/EPP pra optantes Simples sem regime explícito
+    } else {
+      opSimpNac = '1'; // Não Optante
+    }
     const isSimplesNacional = opSimpNac === '2' || opSimpNac === '3';
     // regEspTrib: 0=Nenhum, 1=Cooperativa, 2=Estimativa, 3=Microempresa, 4=Notário, 5=Autônomo, 6=Sociedade
     const regEspTrib = cliente.regime_especial_tributacao || '0';

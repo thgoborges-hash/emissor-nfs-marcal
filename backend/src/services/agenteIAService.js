@@ -154,15 +154,26 @@ class AgenteIAService {
           const erroStr = (fb.numero || fb.erro || '').toLowerCase();
           console.log(`[WhatsApp] Erro na emissão (detalhes): ${fb.numero || fb.erro || 'erro desconhecido'}`);
 
+          // Extrai códigos SEFIN (E0xxx, RNGxxxx) que vieram concatenados no errMsg / erroStr.
+          // O catch de emitirNFSe agora joga `Codigo: Descricao | Codigo: Descricao` em fb.numero.
+          const _codigosSefin = ((fb.numero || fb.erro || '').match(/\b(?:E\d{4}|RNG\d{4})\b/gi) || []).map(c => c.toUpperCase());
+          // Tenta tirar a 1ª descrição como "humano-amigável"
+          const _primeiraDesc = ((fb.numero || '').split('|')[0] || '').replace(/^[A-Z0-9]+:\s*/, '').trim().substring(0, 220);
+
           if (erroStr.includes('certificado')) {
             feedbackMsg = `\n\n⚠️ Não consegui emitir a NF porque o certificado digital A1 não está configurado ou está vencido. Vou avisar o Thiago pra resolver isso rapidinho! A NF ficou salva e será emitida assim que o certificado estiver ok.`;
           } else if (erroStr.includes('pré-validação') || erroStr.includes('dados incompletos')) {
-            // Extrai os erros específicos da pré-validação
             const detalhes = (fb.numero || fb.erro || '').replace(/^(Pré-validação: |Dados incompletos: )/i, '');
             feedbackMsg = `\n\n⚠️ Quase lá! Faltam alguns dados pra emitir:\n${detalhes}\n\nMe passa essas informações que eu emito na hora! 😉`;
-          } else if (erroStr.includes('e0') || erroStr.includes('rejeição') || erroStr.includes('rejeicao') || erroStr.includes('sefin')) {
-            // Erros da SEFIN (códigos E0xxx)
-            feedbackMsg = `\n\n⚠️ A prefeitura rejeitou a emissão. O Thiago já foi notificado e vai verificar o que precisa ser ajustado. Assim que resolver, a NF será emitida! 🔧`;
+          } else if (_codigosSefin.includes('E0116')) {
+            feedbackMsg = `\n\n⚠️ A prefeitura rejeitou (E0116): a Inscrição Municipal cadastrada não confere com o registro oficial do município. Thiago notificado pra verificar a IM da empresa.`;
+          } else if (_codigosSefin.includes('E0617') || _codigosSefin.includes('E0713')) {
+            feedbackMsg = `\n\n⚠️ A prefeitura rejeitou (${_codigosSefin[0]}): regime tributário do prestador inconsistente — alíquota informada não bate com Optante/Não Optante do Simples. Thiago notificado pra ajustar o cadastro.`;
+          } else if (_codigosSefin.some(c => c.startsWith('RNG'))) {
+            feedbackMsg = `\n\n⚠️ A prefeitura rejeitou por validação de schema (${_codigosSefin[0]})${_primeiraDesc ? ': ' + _primeiraDesc : ''}. Thiago notificado pra olhar o XML.`;
+          } else if (_codigosSefin.length > 0 || erroStr.includes('rejeição') || erroStr.includes('rejeicao') || erroStr.includes('sefin')) {
+            const _codeStr = _codigosSefin.length > 0 ? _codigosSefin.join(', ') : 'rejeição';
+            feedbackMsg = `\n\n⚠️ A prefeitura rejeitou a emissão (${_codeStr})${_primeiraDesc ? ': ' + _primeiraDesc : ''}. Thiago notificado pra ajustar.`;
           } else if (erroStr.includes('timeout') || erroStr.includes('econnrefused') || erroStr.includes('network') || erroStr.includes('socket')) {
             feedbackMsg = `\n\n⚠️ O sistema da prefeitura está instável no momento. Sua NF foi salva e vou tentar emitir novamente em breve! ⏳`;
           } else {
@@ -1262,8 +1273,14 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 }
               } catch (emissaoErr) {
                 // emissaoErr pode ser um Error nativo OU um objeto custom { statusCode, mensagem, detalhes }
-                const errMsg = emissaoErr.mensagem || emissaoErr.message || JSON.stringify(emissaoErr).substring(0, 500);
+                let errMsg = emissaoErr.mensagem || emissaoErr.message || JSON.stringify(emissaoErr).substring(0, 500);
                 const errDetalhes = emissaoErr.detalhes ? JSON.stringify(emissaoErr.detalhes, null, 2).substring(0, 1000) : '';
+                // Extrai erros estruturados do SEFIN (array em detalhes.erros) pra mensagem útil
+                // ao usuário e pra que o classificador da Ana reconheça os códigos (E0116, E0617, RNG…).
+                const _sefinErros = (emissaoErr.detalhes && Array.isArray(emissaoErr.detalhes.erros)) ? emissaoErr.detalhes.erros : [];
+                if (_sefinErros.length > 0) {
+                  errMsg = _sefinErros.map(e => `${e.Codigo || e.codigo || '?'}: ${e.Descricao || e.descricao || ''}`).join(' | ');
+                }
                 console.error(`[WhatsApp] Erro ao tentar emitir NF ${nfId}: ${errMsg}`);
                 if (errDetalhes) console.error(`[WhatsApp] Detalhes SEFIN: ${errDetalhes}`);
                 db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
