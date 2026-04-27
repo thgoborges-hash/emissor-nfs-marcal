@@ -146,6 +146,22 @@ function initDatabase() {
     console.warn('[migration] limpar codigo_servico inválido:', e.message);
   }
 
+  // Migração idempotente: regime_simples_nacional (1=Não Optante, 2=MEI, 3=ME/EPP)
+  // Permite distinguir MEI vs ME/EPP — opSimpNac no XML da NFS-e Nacional
+  try {
+    const cols = db.prepare("PRAGMA table_info(clientes)").all();
+    if (!cols.some(c => c.name === 'regime_simples_nacional')) {
+      db.exec("ALTER TABLE clientes ADD COLUMN regime_simples_nacional TEXT");
+      console.log('[migration] clientes.regime_simples_nacional adicionada');
+    }
+    if (!cols.some(c => c.name === 'reg_ap_trib_sn')) {
+      db.exec("ALTER TABLE clientes ADD COLUMN reg_ap_trib_sn TEXT");
+      console.log('[migration] clientes.reg_ap_trib_sn adicionada');
+    }
+  } catch (e) {
+    console.warn('[migration] regime_simples_nacional/reg_ap_trib_sn:', e.message);
+  }
+
   // Insere dados iniciais se o banco estiver vazio
   const escritorioCount = db.prepare('SELECT COUNT(*) as count FROM escritorio').get();
   if (escritorioCount.count === 0) {
