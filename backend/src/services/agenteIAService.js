@@ -1078,7 +1078,34 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
               // e passa como último campo da tag.
               // Normaliza: aceita formatos com pontos/espaços (ex: "02.01.01" → "020101")
               // pq o usuario tipicamente cola o codigo no formato oficial com pontos.
-              const codigoServicoOverride = (partes[idx + 5]?.trim() || '').replace(/\D/g, '');
+              let codigoServicoOverride = (partes[idx + 5]?.trim() || '').replace(/\D/g, '');
+
+              // FALLBACK: se a tag nao tem 6o campo mas a mensagem original do user
+              // mencionou um cTribNac explicito ("codigo de servico (cTribNac) 02.01.01",
+              // "Codigo de Tributacao Nacional: 04.01.01", "cTribNac: 020101", etc.),
+              // extrai com regex e usa. Defesa contra a Ana esquecer de incluir o codigo.
+              if (!codigoServicoOverride && contato?.mensagemOriginal) {
+                const _msg = String(contato.mensagemOriginal);
+                // Padrao: c[oó]digo (de) servi[cç]o|tributa[cç][aã]o (nacional)|ctribnac|nbs
+                // seguido de ":", "(...)"  ou nada, e depois 2-3 grupos de 2-3 digitos
+                // separados por . - / ou espaco. Captura ate 6 digitos efetivos.
+                const _patterns = [
+                  /(?:c[óo]digo\s*(?:de\s+)?(?:servi[çc]o|tributa[çc][ãa]o)(?:\s+nacional)?|ctribnac|c\.?trib\.?nac\.?|nbs)\s*[\(\):,\.\-]*\s*(\d{2}[.\s\-/]?\d{2}[.\s\-/]?\d{2})/i,
+                  // Fallback mais largo: se aparecer numero "XX.XX.XX" no texto, captura
+                  /\b(\d{2}\.\d{2}\.\d{2})\b/
+                ];
+                for (const re of _patterns) {
+                  const m = re.exec(_msg);
+                  if (m && m[1]) {
+                    const cand = m[1].replace(/\D/g, '');
+                    if (cand.length === 6) {
+                      codigoServicoOverride = cand;
+                      console.log(`[WhatsApp] cTribNac extraido por fallback regex da mensagem: ${cand}`);
+                      break;
+                    }
+                  }
+                }
+              }
 
               if (!documentoTomador || valor <= 0) {
                 console.log(`[WhatsApp] NF não criada: CNPJ/CPF ausente (${documentoTomador}) ou valor inválido (${valor})`);
