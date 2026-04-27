@@ -400,7 +400,18 @@ class NfseNacionalService {
         <cTribNac>${nota.codigo_servico}</cTribNac>
         <xDescServ>${this._escapeXml(nota.descricao_servico)}</xDescServ>
       </cServ>
-      ${nota.observacoes ? `<infoCompl><xInfComp>${this._escapeXml(nota.observacoes)}</xInfComp></infoCompl>` : ''}
+      ${(() => {
+        // Filtra observacoes que sao log tecnico/erro (nao deve ir pro XML como info comp).
+        // Casos: re-emissao de NF que tinha erro_emissao gravava o JSON do SEFIN no campo
+        // observacoes; esse texto vazava como <xInfComp> no novo XML e quebrava o schema.
+        const obs = (nota.observacoes || '').trim();
+        if (!obs) return '';
+        const ehLogErro = /^(API retornou|Pré-validação:|Pre-validacao:|Dados incompletos:|\{\s*"tipoAmbiente"|E0\d{3}|RNG\d{3,})/i.test(obs)
+                       || obs.includes('"erros"')
+                       || obs.includes('SefinNacional');
+        if (ehLogErro) return '';
+        return `<infoCompl><xInfComp>${this._escapeXml(obs)}</xInfComp></infoCompl>`;
+      })()}
     </serv>
 
     <valores>
