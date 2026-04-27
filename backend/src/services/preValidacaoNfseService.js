@@ -259,13 +259,24 @@ class PreValidacaoNfseService {
       } catch { return /^\d{6}$/.test(String(cod)); /* tabela ainda não populada — aceita formato */ }
     };
 
+    // Normaliza nota.codigo_servico removendo pontos/espacos/lixo (ex: "02.01.01" -> "020101")
+    if (nota.codigo_servico) {
+      const codNorm = String(nota.codigo_servico).replace(/\D/g, '');
+      if (codNorm !== nota.codigo_servico) {
+        console.log(`[PreValidacao] cTribNac normalizado: "${nota.codigo_servico}" -> "${codNorm}"`);
+        nota.codigo_servico = codNorm;
+        // tambem persiste no banco pra nao precisar normalizar de novo
+        try { db.prepare('UPDATE notas_fiscais SET codigo_servico = ? WHERE id = ?').run(codNorm, nota.id); } catch (_) {}
+      }
+    }
     // Se nota.codigo_servico veio mas é inválido, descarta
     if (nota.codigo_servico && !_ctribValido(nota.codigo_servico)) {
       avisos.push(`Nota: código de serviço "${nota.codigo_servico}" tem formato inválido (esperado 6 dígitos da Lista LC 116/2003) — vou tentar sugerir o correto.`);
       nota.codigo_servico = null;
     }
-    // Se cliente.codigo_servico está no banco mas é inválido, descarta também
-    const codClienteValido = _ctribValido(cliente.codigo_servico) ? cliente.codigo_servico : null;
+    // Normaliza cliente.codigo_servico tambem (lixo historico pode ter pontos)
+    const codClienteRaw = cliente.codigo_servico ? String(cliente.codigo_servico).replace(/\D/g, '') : '';
+    const codClienteValido = _ctribValido(codClienteRaw) ? codClienteRaw : null;
 
     if (!nota.codigo_servico) {
       if (codClienteValido) {

@@ -647,6 +647,7 @@ FLUXO OBRIGATÓRIO EM MODO EQUIPE:
 CÓDIGO DE SERVIÇO (cTribNac) — quando passar e como usar sugestões automáticas:
 - Se a mensagem trouxer explicitamente "Código de Tributação Nacional", "cTribNac", ou "código de serviço" com um número, EXTRAIA esse número (só dígitos) e passe como 6º campo da tag.
 - Exemplo prático: "Código de Tributação Nacional: 04.01.01 - Medicina" → passe 040101 no 6º campo. O cTribNac oficial tem 6 dígitos no formato iissdd (item, subitem, desdobramento).
+- IMPORTANTE: SEMPRE remova pontos, traços e espaços do código antes de colocar na tag. Formatos aceitos: "02.01.01", "02-01-01", "020101" → todos viram "020101" na tag. NUNCA mande a tag com pontos.
 - Se a mensagem não mencionar código, não precisa do 6º campo — o sistema usa o que estiver no cadastro do cliente emitente.
 - O sistema agora tem sugestão automática (Lista de Serviços LC 116/2003): quando o cliente é novo (sem cTribNac cadastrado), ele tenta inferir pela descrição do serviço.
   - Se a confiança é alta, ele AUTO-APLICA e devolve "código sugerido automaticamente: 040101 - Medicina (confirme depois no cadastro do cliente)" — você só relata pra equipe que foi sugerido e segue.
@@ -1075,7 +1076,9 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
               // ainda não tem código_servico cadastrado no painel (cliente novo ou múltiplas atividades).
               // A equipe extrai da mensagem (ex: "Código de Tributação Nacional: 04.01.01 - Medicina")
               // e passa como último campo da tag.
-              const codigoServicoOverride = partes[idx + 5]?.trim() || '';
+              // Normaliza: aceita formatos com pontos/espaços (ex: "02.01.01" → "020101")
+              // pq o usuario tipicamente cola o codigo no formato oficial com pontos.
+              const codigoServicoOverride = (partes[idx + 5]?.trim() || '').replace(/\D/g, '');
 
               if (!documentoTomador || valor <= 0) {
                 console.log(`[WhatsApp] NF não criada: CNPJ/CPF ausente (${documentoTomador}) ou valor inválido (${valor})`);
