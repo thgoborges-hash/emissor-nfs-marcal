@@ -61,4 +61,34 @@ router.get('/preview-xlsx/:fileId', autenticado, apenasEscritorio, async (req, r
   }
 });
 
+
+const { getDb } = require('../database/init');
+
+// POST /api/onedrive/sync-regime — lê planilha do Controle Geral e atualiza regime/município
+router.post('/sync-regime', autenticado, apenasEscritorio, async (req, res) => {
+  try {
+    const { planilhaId } = req.body;
+    if (!planilhaId) return res.status(400).json({ erro: 'planilhaId obrigatório' });
+    const result = await oneDriveService.syncRegimeTributario(planilhaId, getDb());
+    res.json(result);
+  } catch (err) {
+    console.error('[OneDrive] /sync-regime:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// POST /api/onedrive/sync-a1 — itera pastas de clientes e cadastra A1
+router.post('/sync-a1', autenticado, apenasEscritorio, async (req, res) => {
+  try {
+    const { folderId, forcar } = req.body;
+    if (!folderId) return res.status(400).json({ erro: 'folderId obrigatório (ex: pasta "02 - CLIENTES CONTABILIDADE")' });
+    const result = await oneDriveService.syncCertificadosA1(folderId, getDb(), { forcar: !!forcar });
+    res.json(result);
+  } catch (err) {
+    console.error('[OneDrive] /sync-a1:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+
 module.exports = router;

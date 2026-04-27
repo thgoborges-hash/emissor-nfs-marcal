@@ -203,11 +203,201 @@ async function previewXlsx(itemId, maxLinhas = 50) {
   return result;
 }
 
+
+// ============================================================
+// SYNC: regime tributário a partir da planilha do Controle Geral
+// ============================================================
+
+const REGIME_MAP = {
+  'simples nacional': { optante_simples: 1, regime_simples_nacional: '3' },
+  'simples':          { optante_simples: 1, regime_simples_nacional: '3' },
+  'mei':              { optante_simples: 1, regime_simples_nacional: '2' },
+  'lucro presumido':  { optante_simples: 0, regime_simples_nacional: null },
+  'lucro real':       { optante_simples: 0, regime_simples_nacional: null },
+  'imune':            { optante_simples: 0, regime_simples_nacional: null },
+};
+
+function _normalizarRegime(s) {
+  return REGIME_MAP[String(s || '').toLowerCase().trim()] || null;
+}
+
+function _normalizarCnpj(s) {
+  return String(s || '').replace(/\D/g, '');
+}
+
+/**
+ * Lê o Controle Geral da Marçal e atualiza regime + município nos clientes.
+ * Retorna {atualizados, ignorados, naoEncontrados}.
+ */
+async function syncRegimeTributario(planilhaId, db) {
+  const data = await previewXlsx(planilhaId, 500);
+  // Pega a primeira sheet (Obrigações Acessórias)
+  const firstSheet = Object.keys(data)[0];
+  const sh = data[firstSheet];
+
+  // Acha linha de cabeçalho real (procura "EMPRESA" e "CNPJ")
+  let cabIdx = -1;
+  for (let i = 0; i < sh.linhas.length; i++) {
+    const linha = sh.linhas[i];
+    if (linha.includes('EMPRESA') && linha.some(c => /CNPJ/i.test(c))) {
+      cabIdx = i;
+      break;
+    }
+  }
+  if (cabIdx < 0) throw new Error('Cabeçalho real não encontrado na planilha (EMPRESA/CNPJ)');
+
+  const cab = sh.linhas[cabIdx];
+  const colEmpresa = cab.findIndex(c => /EMPRESA/i.test(c));
+  const colCnpj = cab.findIndex(c => /CNPJ/i.test(c));
+  const colRegime = cab.findIndex(c => /REGIME/i.test(c));
+  const colMun = cab.findIndex(c => /MUNIC/i.test(c));
+  const colSituacao = cab.findIndex(c => /SITUA/i.test(c));
+
+  const rows = sh.linhas.slice(cabIdx + 1).filter(r => _normalizarCnpj(r[colCnpj]).length === 14);
+
+  const out = { atualizados: 0, ignorados: 0, naoEncontrados: [], detalhes: [] };
+  for (const r of rows) {
+    const cnpj = _normalizarCnpj(r[colCnpj]);
+    const empresa = r[colEmpresa];
+    const regimeStr = r[colRegime];
+    const municipio = r[colMun];
+    const situacao = r[colSituacao];
+    const regime = _normalizarRegime(regimeStr);
+    if (!regime) {
+      out.ignorados++;
+      continue;
+    }
+    const cliente = db.prepare(`SELECT id, razao_social, optante_simples, regime_simples_nacional, municipio FROM clientes WHERE REPLACE(REPLACE(REPLACE(cnpj,'.',''),'/',''),'-','') = ?`).get(cnpj);
+    if (!cliente) {
+      out.naoEncontrados.push({ cnpj, empresa, regimeStr });
+      continue;
+    }
+    const updates = {};
+    if (cliente.optante_simples !== regime.optante_simples) updates.optante_simples = regime.optante_simples;
+    if (regime.regime_simples_nacional && cliente.regime_simples_nacional !== regime.regime_simples_nacional) {
+      updates.regime_simples_nacional = regime.regime_simples_nacional;
+    }
+    if (municipio && !cliente.municipio) updates.municipio = String(municipio).toUpperCase().trim();
+    if (Object.keys(updates).length > 0) {
+      const setClause = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+      db.prepare(`UPDATE clientes SET ${setClause}, updated_at = datetime('now') WHERE id = ?`).run(...Object.values(updates), cliente.id);
+      out.atualizados++;
+      out.detalhes.push({ cnpj, razao: cliente.razao_social, regimeStr, ...updates });
+    } else {
+      out.ignorados++;
+    }
+  }
+  return out;
+}
+
+// ============================================================
+// SYNC: certificados A1 das pastas dos clientes
+// ============================================================
+
+/**
+ * Extrai CNPJ + senha do nome do arquivo PFX usando regex tolerante.
+ * Aceita variações:
+ *   "AGC..._56092666000171 - Senha 30533141.pfx"
+ *   "DDA... 27998575000100 - Senha - Daniele@102030 (Vc 12-06-26).pfx"
+ */
+function _parsearNomePfx(nome) {
+  const cnpjMatch = nome.match(/(\d{14})/);
+  if (!cnpjMatch) return null;
+  // Pula CPF (11 dígitos) que aparece em arquivos de sócios
+  if (/(?:^|\D)(\d{11})(?:\D|$)/.test(nome) && !cnpjMatch) return null;
+  const cnpj = cnpjMatch[1];
+
+  // Senha: tudo após "Senha" até espaço, parêntese ou fim
+  const senhaMatch = nome.match(/Senha[\s\-:]+([^\s\(\)]+)/i);
+  if (!senhaMatch) return null;
+  const senha = senhaMatch[1].replace(/\.pfx$/i, '').trim();
+  return { cnpj, senha };
+}
+
+/**
+ * Itera pasta-pai (ex: "02 - CLIENTES CONTABILIDADE") → cada subpasta-cliente
+ * → "1 - CERTIFICADO DIGITAL" → encontra PFX com padrão de senha → cadastra.
+ */
+async function syncCertificadosA1(folderClientesId, db, opts = {}) {
+  const certificadoService = require('./certificadoService');
+  const out = { processados: 0, cadastrados: 0, ignoradosJaTinham: 0, semSenha: 0, naoEncontrados: [], erros: [] };
+  const pastasClientes = await listarArquivosPasta(folderClientesId);
+
+  for (const pastaCliente of pastasClientes) {
+    if (!pastaCliente.isFolder) continue;
+    out.processados++;
+    try {
+      // Acha "1 - CERTIFICADO DIGITAL" (ou variação)
+      const subpastas = await listarArquivosPasta(pastaCliente.id);
+      const pastaCert = subpastas.find(s => s.isFolder && /CERTIFICADO/i.test(s.name));
+      if (!pastaCert) {
+        out.erros.push({ cliente: pastaCliente.name, erro: 'sem subpasta CERTIFICADO' });
+        continue;
+      }
+
+      // Lista PFX dentro
+      const arquivos = await listarArquivosPasta(pastaCert.id);
+      const pfxs = arquivos.filter(a => !a.isFolder && /\.pfx$/i.test(a.name));
+      if (pfxs.length === 0) {
+        out.erros.push({ cliente: pastaCliente.name, erro: 'sem .pfx' });
+        continue;
+      }
+
+      // Pega o mais recente que tem padrão "Senha"
+      const candidatos = pfxs
+        .map(p => ({ ...p, parsed: _parsearNomePfx(p.name) }))
+        .filter(p => p.parsed);
+      if (candidatos.length === 0) {
+        out.semSenha++;
+        out.erros.push({ cliente: pastaCliente.name, erro: 'pfx sem senha no nome', arquivos: pfxs.map(a => a.name) });
+        continue;
+      }
+      candidatos.sort((a, b) => new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime));
+      const pfxEscolhido = candidatos[0];
+
+      // Acha cliente no banco pelo CNPJ
+      const cliente = db.prepare(`SELECT id, razao_social, certificado_a1_path, certificado_validade FROM clientes WHERE REPLACE(REPLACE(REPLACE(cnpj,'.',''),'/',''),'-','') = ?`).get(pfxEscolhido.parsed.cnpj);
+      if (!cliente) {
+        out.naoEncontrados.push({ cnpj: pfxEscolhido.parsed.cnpj, nomePasta: pastaCliente.name });
+        continue;
+      }
+
+      // Pula se já tem A1 válido (caso opts.forcar=false, default)
+      if (!opts.forcar && cliente.certificado_a1_path) {
+        const validade = cliente.certificado_validade ? new Date(cliente.certificado_validade) : null;
+        if (validade && validade > new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)) {
+          out.ignoradosJaTinham++;
+          continue;
+        }
+      }
+
+      // Baixa e cadastra
+      const buf = await baixarArquivo(pfxEscolhido.id);
+      const result = certificadoService.salvarCertificado(cliente.id, buf, pfxEscolhido.parsed.senha);
+      // Atualiza cadastro do cliente
+      db.prepare(`UPDATE clientes SET certificado_a1_path = ?, certificado_a1_senha_encrypted = ?, certificado_validade = ?, updated_at = datetime('now') WHERE id = ?`).run(
+        result.filepath,
+        result.senhaEncrypted,
+        result.info.validade?.fim || null,
+        cliente.id,
+      );
+      out.cadastrados++;
+      console.log(`[OneDrive sync-a1] ${cliente.razao_social} (id=${cliente.id}) — A1 válido até ${result.info.validade?.fim}`);
+    } catch (err) {
+      out.erros.push({ cliente: pastaCliente.name, erro: err.message });
+    }
+  }
+  return out;
+}
+
+
 module.exports = {
   testarConexao,
   listarClientes,
   listarArquivosPasta,
   baixarArquivo,
   previewXlsx,
+  syncRegimeTributario,
+  syncCertificadosA1,
   _config: { TENANT_set: !!TENANT, CLIENT_set: !!CLIENT, SECRET_set: !!SECRET, USER, ROOT },
 };
