@@ -188,6 +188,35 @@ class AgenteIAService {
         }
       }
 
+      // Feedback do cancelamento de NF
+      const feedbackCanc = acoes.find(a => a.tipo === 'CANCELAR_NF' && a.feedback);
+      if (feedbackCanc?.feedback) {
+        const fb = feedbackCanc.feedback;
+        let feedbackMsg = '';
+        if (fb.sucesso) {
+          feedbackMsg = `\n\n\u2705 *NF cancelada com sucesso!*` +
+            (fb.numero ? `\nNumero: ${fb.numero}` : '') +
+            (fb.emitente ? `\nEmitente: ${fb.emitente}` : '') +
+            (fb.motivo ? `\nMotivo: ${fb.motivo}` : '');
+        } else {
+          // Tenta dar mensagem util pro erro do SEFIN ou do sistema
+          const errStr = String(fb.erro || '');
+          if (/An error has occurred|HTTP 500|status 500/i.test(errStr)) {
+            feedbackMsg = `\n\n\u26a0\ufe0f Nao consegui cancelar agora — a Receita devolveu erro generico (HTTP 500). Geralmente acontece quando a NF foi emitida ha menos de 5min e ainda esta sendo processada. Espera 2-3min e me pede pra tentar de novo. Detalhe tecnico: ${errStr.substring(0, 200)}`;
+          } else if (/prazo|expirou|24h|tempo/i.test(errStr)) {
+            feedbackMsg = `\n\n\u26a0\ufe0f Nao consegui cancelar — o prazo de cancelamento ja expirou (geralmente 24h apos emissao). Detalhe: ${errStr.substring(0, 200)}`;
+          } else if (/certificado|A1/i.test(errStr)) {
+            feedbackMsg = `\n\n\u26a0\ufe0f Nao consegui cancelar — problema com o certificado A1 do emitente. Detalhe: ${errStr.substring(0, 200)}`;
+          } else {
+            feedbackMsg = `\n\n\u26a0\ufe0f Nao consegui cancelar a NF. Detalhe: ${errStr.substring(0, 300)}`;
+          }
+        }
+        if (feedbackMsg) {
+          const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+          return { texto: respostaLimpa + feedbackMsg, acoes };
+        }
+      }
+
       // Feedback do cadastro de A1
       const feedbackA1 = acoes.find(a => a.tipo === 'CADASTRAR_A1' && a.feedback);
       if (feedbackA1?.feedback) {

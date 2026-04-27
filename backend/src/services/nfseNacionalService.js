@@ -188,6 +188,9 @@ class NfseNacionalService {
 
     // Gera XML do evento de cancelamento
     const eventoXml = this._gerarEventoCancelamentoXml(chaveAcesso, motivo);
+    // DEBUG temporário (2026-04-27): logar XML do evento pra rastrear HTTP 500 do SEFIN
+    console.log(`[NFS-e CANC DEBUG] chave=${chaveAcesso} motivo="${motivo}" xmlLen=${eventoXml.length}`);
+    console.log(`[NFS-e CANC DEBUG] XML: ${eventoXml.substring(0, 1500)}`);
 
     // Assina o XML
     const eventoXmlAssinado = xmlSignerService.assinarXml(
