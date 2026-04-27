@@ -318,11 +318,12 @@ function _parsearNomePfx(nome) {
  * Itera pasta-pai (ex: "02 - CLIENTES CONTABILIDADE") → cada subpasta-cliente
  * → "1 - CERTIFICADO DIGITAL" → encontra PFX com padrão de senha → cadastra.
  */
-async function syncCertificadosA1(folderClientesId, db, opts = {}) {
+async function syncCertificadosA1(folderClientesId, db, opts = {}, onProgress = null) {
   const certificadoService = require('./certificadoService');
   const out = { processados: 0, cadastrados: 0, ignoradosJaTinham: 0, semSenha: 0, naoEncontrados: [], erros: [] };
   const pastasClientes = await listarArquivosPasta(folderClientesId);
 
+  out.totalPastas = pastasClientes.filter(p => p.isFolder).length;
   for (const pastaCliente of pastasClientes) {
     if (!pastaCliente.isFolder) continue;
     out.processados++;
@@ -385,6 +386,9 @@ async function syncCertificadosA1(folderClientesId, db, opts = {}) {
       console.log(`[OneDrive sync-a1] ${cliente.razao_social} (id=${cliente.id}) — A1 válido até ${result.info.validade?.fim}`);
     } catch (err) {
       out.erros.push({ cliente: pastaCliente.name, erro: err.message });
+    }
+    if (onProgress) {
+      try { onProgress({ ...out, ultimaPasta: pastaCliente.name }); } catch {}
     }
   }
   return out;

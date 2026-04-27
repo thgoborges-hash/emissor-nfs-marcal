@@ -77,17 +77,62 @@ router.post('/sync-regime', autenticado, apenasEscritorio, async (req, res) => {
   }
 });
 
-// POST /api/onedrive/sync-a1 — itera pastas de clientes e cadastra A1
+// Estado de jobs em memória (persiste enquanto o processo do Node rodar)
+const syncJobs = new Map();
+
+// POST /api/onedrive/sync-a1 — dispara em background, retorna jobId imediato
 router.post('/sync-a1', autenticado, apenasEscritorio, async (req, res) => {
   try {
     const { folderId, forcar } = req.body;
-    if (!folderId) return res.status(400).json({ erro: 'folderId obrigatório (ex: pasta "02 - CLIENTES CONTABILIDADE")' });
-    const result = await oneDriveService.syncCertificadosA1(folderId, getDb(), { forcar: !!forcar });
-    res.json(result);
+    if (!folderId) return res.status(400).json({ erro: 'folderId obrigatório' });
+
+    const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const job = {
+      id: jobId,
+      status: 'em_andamento',
+      iniciadoEm: new Date().toISOString(),
+      folderId,
+      forcar: !!forcar,
+      progresso: { processados: 0, cadastrados: 0, ignoradosJaTinham: 0, semSenha: 0, erros: 0, ultimaPasta: null },
+      resultado: null,
+      erro: null,
+    };
+    syncJobs.set(jobId, job);
+
+    // Dispara em background (sem await)
+    oneDriveService.syncCertificadosA1(folderId, getDb(), { forcar: !!forcar }, (snap) => {
+      job.progresso = {
+        processados: snap.processados,
+        cadastrados: snap.cadastrados,
+        ignoradosJaTinham: snap.ignoradosJaTinham,
+        semSenha: snap.semSenha,
+        erros: snap.erros?.length || 0,
+        totalPastas: snap.totalPastas,
+        ultimaPasta: snap.ultimaPasta,
+      };
+    }).then(result => {
+      job.status = 'concluido';
+      job.terminadoEm = new Date().toISOString();
+      job.resultado = result;
+    }).catch(err => {
+      job.status = 'erro';
+      job.terminadoEm = new Date().toISOString();
+      job.erro = err.message;
+      console.error('[OneDrive sync-a1 job]', err);
+    });
+
+    res.json({ started: true, jobId, statusUrl: `/api/onedrive/sync-a1/job/${jobId}` });
   } catch (err) {
     console.error('[OneDrive] /sync-a1:', err);
     res.status(500).json({ erro: err.message });
   }
+});
+
+// GET /api/onedrive/sync-a1/job/:id — status do job
+router.get('/sync-a1/job/:id', autenticado, apenasEscritorio, (req, res) => {
+  const job = syncJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ erro: 'job não encontrado' });
+  res.json(job);
 });
 
 
