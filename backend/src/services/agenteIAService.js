@@ -9,6 +9,7 @@ const anexoCacheService = require('./anexoCacheService');
 const certificadoService = require('./certificadoService');
 const cnpjService = require('./cnpjService');
 const integraContadorService = require('./integraContadorService');
+const anaModoEquipeService = require('./anaModoEquipeService');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -31,6 +32,60 @@ class AgenteIAService {
    */
   isConfigured() {
     return !!this.apiKey;
+  }
+
+  /**
+   * Parser de endereço a partir da mensagem livre da equipe.
+   * Usado para enriquecer cadastro de tomador CPF novo (a Receita não cobre CPF).
+   * Procura padrões soltos no texto:
+   *   - "Endereço: Rua X, 123, bairro Y"
+   *   - "Rua/Av/Travessa NomeDaVia 123"
+   *   - "Bairro: Z"
+   *   - "Cidade / UF"
+   *   - "CEP: 99999-999"
+   * Retorna { logradouro, numero, bairro, municipio, uf, cep, complemento } com
+   * o que conseguiu extrair (campos vazios ficam '').
+   */
+  _parseEnderecoMensagem(mensagem) {
+    const out = { logradouro: '', numero: '', complemento: '', bairro: '', municipio: '', uf: '', cep: '' };
+    if (!mensagem || typeof mensagem !== 'string') return out;
+    const txt = mensagem.replace(/\r/g, '');
+
+    // CEP: 8 dígitos com ou sem traço
+    const cepMatch = /CEP\s*:?\s*(\d{5})[\-\s]?(\d{3})/i.exec(txt) || /\b(\d{5})[\-\s]?(\d{3})\b/.exec(txt);
+    if (cepMatch) out.cep = (cepMatch[1] + cepMatch[2]).replace(/\D/g, '');
+
+    // Cidade / UF — "Vacaria / RS", "Porto Alegre / RS"
+    // Ancora em começo de linha pra evitar capturar "bairro Petrópolis.\nVacaria"
+    // como cidade. Aceita só letras/espaços/ponto/hífen/apóstrofo no nome da cidade,
+    // sem quebra de linha.
+    const cidadeUfMatch = /(?:^|\n)\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s\.\-\']{1,40}?)\s*\/\s*([A-Z]{2})(?:\s|$|[,\.])/m.exec(txt);
+    if (cidadeUfMatch) {
+      // limpa qualquer ruído antes/depois (mas nunca pega newlines)
+      out.municipio = cidadeUfMatch[1].trim().replace(/\s+/g, ' ');
+      out.uf = cidadeUfMatch[2].toUpperCase();
+    }
+
+    // Logradouro + número — "Rua Newton 381" ou "Rua Newton, 381" ou "Av. Brasil, 100"
+    const logMatch = /\b(Rua|Av\.?|Avenida|Travessa|Tv\.?|Rod\.?|Rodovia|Estrada|Praça|Pra[cç]a|Alameda|Al\.?|Largo)\s+([A-Za-zÀ-ÿ0-9\.\s\-]+?)[,\s]+(\d{1,6})(?:\b|[,\s])/i.exec(txt);
+    if (logMatch) {
+      out.logradouro = (logMatch[1] + ' ' + logMatch[2]).trim().replace(/\s+/g, ' ');
+      out.numero = logMatch[3];
+    } else {
+      // fallback: linha começando com Rua/Av sem número explícito
+      const logSimples = /\b(Rua|Av\.?|Avenida|Travessa|Tv\.?|Rodovia|Estrada|Praça|Pra[cç]a|Alameda|Largo)\s+([A-Za-zÀ-ÿ0-9\.\s\-]{2,80})/i.exec(txt);
+      if (logSimples) {
+        out.logradouro = (logSimples[1] + ' ' + logSimples[2]).trim().replace(/\s+/g, ' ').replace(/[,\.]+$/, '');
+      }
+    }
+
+    // Bairro — "bairro Petrópolis" ou "Bairro: X"
+    const bairroMatch = /\bbairro\s*:?\s*([A-Za-zÀ-ÿ0-9\s\.\-]{2,60})(?:[,\.\n]|\sCEP|\sCidade|$)/i.exec(txt);
+    if (bairroMatch) {
+      out.bairro = bairroMatch[1].trim().replace(/[,\.]+$/, '');
+    }
+
+    return out;
   }
 
   /**
@@ -62,45 +117,26 @@ class AgenteIAService {
       dadosCliente = this.buscarDadosCliente(contato.cliente_id);
     }
 
-    // 3.5. Detecta se é mensagem de operador da equipe Marçal (vindo do Messenger Domínio)
-    let modoEquipe = this.detectarModoEquipe(mensagem);
+    // 3.5. Detecção de modo equipe robusta (3 camadas: admin → grupo staff → prefixo+whitelist)
+    // Mantém compatibilidade: mesma estrutura `{ ehEquipe, operador, mensagemSemPrefixo }`
+    // mais campos novos `fonte` e `ambiguo` pra observabilidade.
+    const modoEquipe = anaModoEquipeService.detectar(mensagem, contato, getDb);
     if (modoEquipe.ehEquipe) {
-      console.log(`[AgenteIA] Modo EQUIPE detectado via prefixo — operador: ${modoEquipe.operador}`);
+      console.log(
+        `[AgenteIA] Modo EQUIPE detectado — fonte: ${modoEquipe.fonte}, operador: ${modoEquipe.operador}`
+      );
+    } else if (modoEquipe.ambiguo) {
+      // Prefixo "Nome:" detectado mas não validado contra whitelist —
+      // tratamos como cliente conservador, mas avisa admin pra revisar.
+      console.warn(
+        `[AgenteIA] ⚠ Prefixo ambíguo detectado: ${modoEquipe.motivoAmbiguidade}. Tratando como cliente.`
+      );
+      this._alertarAdminAmbiguidadeAsync(modoEquipe, contato, conversaId).catch(() => {});
     }
 
-    // 3.5.1. Se a conversa é um grupo interno do escritório (ANA_STAFF_GROUP_IDS),
-    // SEMPRE tratar como modo equipe — só equipe tem acesso ao grupo.
-    // Cobre o caso do Thiago (ou qualquer staff) mandando NF no grupo Staff sem
-    // prefixar 'Nome:' — o whatsapp.js já prefixa '[PushName] texto' que não casa
-    // com o regex do Messenger Domínio.
-    if (!modoEquipe.ehEquipe) {
-      const staffGroups = (process.env.ANA_STAFF_GROUP_IDS || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-      const tel = String(telefone || '');
-      // Z-API entrega grupos como "<id>-group@g.us"; na env.var normalmente o user
-      // salva "<id>@g.us" (sem -group). Comparar só o prefixo numérico cobre ambos.
-      const extrairIdNum = (str) => (String(str).match(/^(\d+)/) || [])[1] || '';
-      const telId = extrairIdNum(tel);
-      const ehGrupoStaff = !!telId && staffGroups.some(id => extrairIdNum(id) === telId);
-      console.log(`[AgenteIA] staff-check: tel="${tel}" telId="${telId}" groups=${JSON.stringify(staffGroups)} match=${ehGrupoStaff}`);
-      if (ehGrupoStaff) {
-        const pushMatch = mensagem.match(/^\[([^\]]+)\]\s*([\s\S]*)/);
-        modoEquipe = {
-          ehEquipe: true,
-          operador: pushMatch ? pushMatch[1].trim() : 'Equipe',
-          mensagemSemPrefixo: pushMatch ? pushMatch[2].trim() : mensagem,
-        };
-        console.log(`[AgenteIA] Modo EQUIPE ativado por grupo staff — operador: ${modoEquipe.operador} (groupId=${tel})`);
-      }
-    }
-
-    // 3.6. Detecta se o contato é o admin (pra destravar modo equipe em conversa privada)
-    const ehAdmin = this._ehAdmin(contato);
-    if (ehAdmin && !modoEquipe.ehEquipe) {
-      console.log(`[AgenteIA] Contato admin detectado — tratando como modo equipe`);
-    }
+    // 3.6. Compat: ehAdmin segue exposto pra ações que dependem dele (ex: BUSCAR_DANFSE no
+    // modo admin permite buscar por CNPJ). É derivado da fonte 'admin'.
+    const ehAdmin = modoEquipe.fonte === 'admin';
 
     // 4. Monta o prompt do sistema
     const systemPrompt = this.montarSystemPrompt(contato, dadosCliente, modoEquipe, { ehAdmin });
@@ -1182,6 +1218,35 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 }
 
                 console.log(`[WhatsApp] Cadastrando tomador: ${razaoFinal} (${documentoTomador})`);
+
+                // Para CPF (e fallback de CNPJ), tenta extrair endereço da mensagem original
+                // que a equipe digitou no WhatsApp. Receita não cobre CPF, então sem isso o
+                // tomador novo fica sem endereço e a NF sai sem dados de localização.
+                const enderecoMsg = this._parseEnderecoMensagem(contato?.mensagemOriginal || '');
+                if (tipoDocumento === 'CPF' && (enderecoMsg.logradouro || enderecoMsg.cep)) {
+                  console.log(`[WhatsApp] Endereço CPF extraído da mensagem: logr="${enderecoMsg.logradouro}" num="${enderecoMsg.numero}" bairro="${enderecoMsg.bairro}" cidade="${enderecoMsg.municipio}/${enderecoMsg.uf}" cep="${enderecoMsg.cep}"`);
+                }
+
+                // Tenta resolver código IBGE pelo município/UF parseado (necessário no XSD)
+                let codigoIBGEMsg = '';
+                if (enderecoMsg.municipio && enderecoMsg.uf) {
+                  try {
+                    codigoIBGEMsg = await cnpjService._buscarCodigoIBGE(enderecoMsg.municipio, enderecoMsg.uf);
+                  } catch (ibgeErr) {
+                    console.warn(`[WhatsApp] Falha buscando IBGE p/ ${enderecoMsg.municipio}/${enderecoMsg.uf}: ${ibgeErr.message}`);
+                  }
+                }
+
+                // Mescla: dadosReceita tem prioridade (CNPJ); senão usa parse da mensagem (CPF/casos novos)
+                const _logradouro    = dadosReceita?.logradouro    || enderecoMsg.logradouro || '';
+                const _numero        = dadosReceita?.numero        || enderecoMsg.numero     || '';
+                const _complemento   = dadosReceita?.complemento   || enderecoMsg.complemento|| '';
+                const _bairro        = dadosReceita?.bairro        || enderecoMsg.bairro     || '';
+                const _municipio     = dadosReceita?.municipio     || enderecoMsg.municipio  || '';
+                const _uf            = dadosReceita?.uf            || enderecoMsg.uf         || '';
+                const _cep           = dadosReceita?.cep           || enderecoMsg.cep        || '';
+                const _codigoMun     = dadosReceita?.codigoMunicipio || codigoIBGEMsg        || '';
+
                 const insertResult = db.prepare(`
                   INSERT INTO tomadores (
                     cliente_id, razao_social, nome_fantasia, documento, tipo_documento,
@@ -1196,14 +1261,14 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                   documentoTomador,
                   tipoDocumento,
                   dadosReceita?.email || '',
-                  dadosReceita?.logradouro || '',
-                  dadosReceita?.numero || '',
-                  dadosReceita?.complemento || '',
-                  dadosReceita?.bairro || '',
-                  dadosReceita?.municipio || '',
-                  dadosReceita?.uf || '',
-                  dadosReceita?.cep || '',
-                  dadosReceita?.codigoMunicipio || ''
+                  _logradouro,
+                  _numero,
+                  _complemento,
+                  _bairro,
+                  _municipio,
+                  _uf,
+                  _cep,
+                  _codigoMun
                 );
 
                 tomador = {
@@ -1712,9 +1777,13 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
               const ehAdmin = matchTelefone(adminPhoneRaw, telefoneContatoRaw);
               const ehEquipe = ehAdmin || contato?.modoEquipe?.ehEquipe;
 
-              // Sempre tenta extrair CNPJ da mensagem — se achou, usa como cliente_id.
-              // Isso funciona pra admin E pra cliente que por acaso mencione o próprio CNPJ.
-              let clienteIdParaBusca = contato?.cliente_id || null;
+              // Em modo equipe (admin/equipe), o contato.cliente_id default é Marçal —
+              // se usássemos como filtro, NF de outro emitente nunca seria encontrada e o
+              // fallback "última NF de Marçal" devolveria PDF errado (já aconteceu, NF 122
+              // sendo retornada quando equipe pediu NF 359 da AUREUM). Por isso, em modo
+              // equipe começamos SEM filtro de cliente — só fixamos o cliente se a mensagem
+              // mencionar CNPJ explícito ou nome do emitente reconhecível.
+              let clienteIdParaBusca = ehEquipe ? null : (contato?.cliente_id || null);
               let cnpjMencionado = null;
               if (contato?.mensagemOriginal) {
                 const cnpjMatch = contato.mensagemOriginal.match(/(\d{2}[.\s]?\d{3}[.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2})/);
@@ -1733,6 +1802,33 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                       console.log(`[WhatsApp] BUSCAR_DANFSE: CNPJ ${cnpjLimpo} → ${clienteEncontrado.razao_social} (id=${clienteIdParaBusca})${ehEquipe ? ' (modo equipe)' : ''}`);
                     } else {
                       console.log(`[WhatsApp] BUSCAR_DANFSE: CNPJ ${cnpjLimpo} não encontrado na base de ${todosClientes.length} clientes`);
+                    }
+                  }
+                }
+
+                // Em modo equipe, se ainda não fixou cliente_id, tenta fuzzy-match por nome
+                // do emitente na mensagem ("PDF da NF 359 da AUREUM ESPECIALIDADES MEDICAS").
+                // Pega tokens de 4+ chars e procura cliente cuja razão social contenha pelo
+                // menos 2 deles (evita match espúrio com palavras comuns).
+                if (!clienteIdParaBusca && ehEquipe) {
+                  const msgUpper = String(contato.mensagemOriginal).toUpperCase();
+                  const tokens = (msgUpper.match(/[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{4,}/g) || [])
+                    .filter(t => !['NOTA','FISCAL','EMITENTE','TOMADOR','PARA','PARA','SOBRE','GERAR','BAIXAR','CONSEGUIU','ENCONTRADA','EMITIR','PORTAL','NACIONAL','AINDA','DISPONIVEL','ESTÁ','ESTA','DEPOIS','ESCRITORIO','ESCRITÓRIO','MARCAL','MARÇAL','CONTABILIDADE'].includes(t));
+                  if (tokens.length >= 1) {
+                    const todos = db.prepare("SELECT id, razao_social, cnpj FROM clientes WHERE razao_social IS NOT NULL").all();
+                    let melhor = null;
+                    let melhorScore = 0;
+                    for (const c of todos) {
+                      const rs = (c.razao_social || '').toUpperCase();
+                      let score = 0;
+                      for (const t of tokens) if (rs.includes(t)) score++;
+                      if (score > melhorScore && score >= 2) { melhor = c; melhorScore = score; }
+                      // Se token único E muito específico (ex: 8+ chars raro), aceita score 1
+                      else if (score === 1 && tokens.length === 1 && tokens[0].length >= 8 && rs.includes(tokens[0]) && melhorScore === 0) { melhor = c; melhorScore = 1; }
+                    }
+                    if (melhor) {
+                      clienteIdParaBusca = melhor.id;
+                      console.log(`[WhatsApp] BUSCAR_DANFSE: fuzzy-match por nome → ${melhor.razao_social} (id=${melhor.id}, score=${melhorScore}, tokens=${tokens.join('|')})`);
                     }
                   }
                 }
@@ -1782,8 +1878,11 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                   chaveAcesso: nfEncontrada.chave_acesso
                 };
                 console.log(`[WhatsApp] DANFSe encontrado: NF ${nfEncontrada.numero_nfse || nfEncontrada.id}${ehEquipe ? ' (modo equipe)' : ''}`);
-              } else if (clienteIdParaBusca) {
-                // Fallback no modo cliente: pega a última NF emitida do cliente
+              } else if (clienteIdParaBusca && !ehEquipe) {
+                // Fallback APENAS no modo cliente: pega a última NF emitida do cliente.
+                // Em modo equipe NUNCA aplica fallback "última NF" — pq o contato.cliente_id
+                // default é Marçal e a equipe acaba recebendo PDF de NF errada (NF 122 da
+                // Marçal quando pediu NF 359 da AUREUM).
                 const ultimaNf = db.prepare(`
                   SELECT id, numero_nfse, numero_dps, chave_acesso
                   FROM notas_fiscais
@@ -1802,6 +1901,8 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 } else {
                   acao.feedback = { sucesso: false, erro: 'Nenhuma NF emitida encontrada' };
                 }
+              } else if (ehEquipe) {
+                acao.feedback = { sucesso: false, erro: `Não achei nenhuma NF com número ${busca}. Me diz o CNPJ do emitente (ou o nome completo da empresa) pra eu buscar certo — nunca devolvo "última NF" sem confirmação em modo equipe.` };
               } else {
                 acao.feedback = { sucesso: false, erro: `Não achei nenhuma NF com número ${busca}. Me passa o CNPJ do cliente pra eu buscar certo.` };
               }
@@ -2210,6 +2311,53 @@ ${baseUrl}/escritorio/whatsapp`;
       console.log(`[WhatsApp] ✓ Admin (${adminPhone}) notificado da transferência da conversa ${conversaId}`);
     } catch (err) {
       console.error('[WhatsApp] Erro enviando alerta admin:', err.message);
+    }
+  }
+
+  /**
+   * Alerta admin quando uma mensagem chega com prefixo "Nome:" mas o nome
+   * NÃO está na whitelist de operadores (ANA_OPERADORES ou tabela ana_operadores).
+   *
+   * Cenário típico: cliente externo escreveu por engano "Janaina:" ou um operador
+   * novo da equipe começou a usar o Domínio sem ser cadastrado. A mensagem é
+   * tratada como cliente conservador (não dispara modo equipe), mas o admin
+   * recebe um aviso pra avaliar se vale adicionar o nome à whitelist.
+   *
+   * Throttling: máximo 1 alerta de ambiguidade por hora pro mesmo nome,
+   * pra não spammar admin se cliente teimar em mandar.
+   */
+  async _alertarAdminAmbiguidadeAsync(modoEquipe, contato, conversaId) {
+    const adminPhone = (process.env.ANA_ADMIN_WHATSAPP || '').replace(/\D/g, '');
+    if (!adminPhone) return;
+
+    // Throttle simples em memória (process-local)
+    if (!this._ambiguidadeThrottle) this._ambiguidadeThrottle = new Map();
+    const chave = `${modoEquipe.motivoAmbiguidade || ''}|${contato?.telefone || ''}`;
+    const ultimoAlerta = this._ambiguidadeThrottle.get(chave) || 0;
+    const agora = Date.now();
+    const UMA_HORA = 60 * 60 * 1000;
+    if (agora - ultimoAlerta < UMA_HORA) return;
+    this._ambiguidadeThrottle.set(chave, agora);
+
+    const baseUrl = process.env.APP_BASE_URL || 'https://emissor-nfs-marcal.onrender.com';
+    const mensagem = `⚠️ *ANA: prefixo ambíguo detectado*
+
+${modoEquipe.motivoAmbiguidade || 'Prefixo "Nome:" não validado'}
+
+Telefone do contato: ${contato?.telefone || '?'}
+Conversa: ${conversaId}
+
+A ANA tratou como cliente (conservador). Se for operador legítimo, adicione na env *ANA_OPERADORES* ou na tabela *ana_operadores*.
+
+Painel: ${baseUrl}/escritorio/whatsapp`;
+
+    try {
+      const provider = this._obterWhatsAppProvider();
+      if (!provider.isConfigured?.()) return;
+      await provider.enviarTexto(adminPhone, mensagem);
+      console.log(`[ana-modo-equipe] ✓ Admin notificado de ambiguidade — conversa ${conversaId}`);
+    } catch (err) {
+      console.warn('[ana-modo-equipe] Falha enviando alerta de ambiguidade:', err.message);
     }
   }
 

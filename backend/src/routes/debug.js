@@ -224,4 +224,118 @@ router.post('/backup/rodar', autenticado, apenasEscritorio, (req, res) => {
   }
 });
 
+// =====================================================
+// Exportar conversas da ANA — para análise/revisão
+// =====================================================
+//
+// GET /api/debug/exportar-conversas-ana?dias=30&limite=200&sanitizar=1
+//
+// Devolve JSON com últimas conversas da ANA + suas mensagens, pronto pra análise.
+// - dias: janela de tempo (default 30)
+// - limite: máximo de conversas a retornar (default 200, max 1000)
+// - sanitizar: se 1, remove dígitos do telefone e aplica iniciais nos nomes (default 1)
+//
+// Restrito a usuários do escritório.
+router.get('/exportar-conversas-ana', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const db = getDb();
+    const dias = Math.max(1, Math.min(365, parseInt(req.query.dias || '30', 10)));
+    const limite = Math.max(1, Math.min(1000, parseInt(req.query.limite || '200', 10)));
+    const sanitizar = req.query.sanitizar !== '0';
+
+    const conversas = db.prepare(`
+      SELECT
+        c.id,
+        c.contato_id,
+        c.status,
+        c.created_at,
+        c.ultimo_mensagem_at,
+        co.telefone,
+        co.nome,
+        co.tipo as tipo_contato,
+        co.cliente_id,
+        cli.razao_social,
+        cli.cnpj
+      FROM whatsapp_conversas c
+      INNER JOIN whatsapp_contatos co ON c.contato_id = co.id
+      LEFT JOIN clientes cli ON co.cliente_id = cli.id
+      WHERE c.ultimo_mensagem_at >= datetime('now', '-' || ? || ' days')
+      ORDER BY c.ultimo_mensagem_at DESC
+      LIMIT ?
+    `).all(dias, limite);
+
+    const stmtMsgs = db.prepare(`
+      SELECT id, direcao, tipo, conteudo, remetente, metadata, created_at
+      FROM whatsapp_mensagens
+      WHERE conversa_id = ?
+      ORDER BY id ASC
+    `);
+
+    const sanitizarTelefone = (tel) => {
+      if (!tel) return tel;
+      if (!sanitizar) return tel;
+      // mantém DDI+DDD, mascara restante
+      const s = String(tel);
+      if (s.length <= 6) return '***';
+      return s.slice(0, 4) + '*'.repeat(Math.max(0, s.length - 6)) + s.slice(-2);
+    };
+
+    const sanitizarNome = (nome) => {
+      if (!nome || !sanitizar) return nome;
+      return String(nome).split(/\s+/).map(p => p ? p[0].toUpperCase() + '.' : '').join(' ').trim();
+    };
+
+    const sanitizarCnpj = (cnpj) => {
+      if (!cnpj || !sanitizar) return cnpj;
+      const s = String(cnpj).replace(/\D/g, '');
+      if (s.length < 8) return '***';
+      return s.slice(0, 2) + '.***.***/****-' + s.slice(-2);
+    };
+
+    const resultado = conversas.map(c => {
+      const msgs = stmtMsgs.all(c.id).map(m => {
+        let metadata = null;
+        try { metadata = m.metadata ? JSON.parse(m.metadata) : null; } catch { metadata = m.metadata; }
+        return {
+          id: m.id,
+          direcao: m.direcao,
+          tipo: m.tipo,
+          remetente: m.remetente,
+          conteudo: m.conteudo,
+          metadata,
+          created_at: m.created_at,
+        };
+      });
+      return {
+        conversa_id: c.id,
+        status: c.status,
+        criada_em: c.created_at,
+        ultima_mensagem_em: c.ultimo_mensagem_at,
+        contato: {
+          telefone: sanitizarTelefone(c.telefone),
+          nome: sanitizarNome(c.nome),
+          tipo: c.tipo_contato,
+          cliente_vinculado: c.cliente_id ? {
+            razao_social: sanitizarNome(c.razao_social),
+            cnpj: sanitizarCnpj(c.cnpj),
+          } : null,
+        },
+        total_mensagens: msgs.length,
+        mensagens: msgs,
+      };
+    });
+
+    res.json({
+      gerado_em: new Date().toISOString(),
+      janela_dias: dias,
+      sanitizado: sanitizar,
+      total_conversas: resultado.length,
+      conversas: resultado,
+    });
+  } catch (err) {
+    console.error('[exportar-conversas-ana] erro:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;

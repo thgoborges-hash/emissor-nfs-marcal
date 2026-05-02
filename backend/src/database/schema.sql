@@ -263,6 +263,30 @@ CREATE TABLE IF NOT EXISTS whatsapp_notificacoes (
 );
 
 -- =====================================================
+-- ANA — Operadores autorizados (whitelist do modo equipe)
+-- =====================================================
+-- Lista de operadores que ficam autorizados a interagir com a ANA em modo
+-- equipe quando aparecem com prefixo "Nome:" nas mensagens. Camada extra
+-- de segurança contra falsos positivos (ex: "Olá:", "T:", "Cliente XYZ:").
+--
+-- Pode ser populada também via env var ANA_OPERADORES="Janaina Alves,Lucas
+-- Silva,Thiago Borges" (tabela é a fonte preferida — env serve de fallback
+-- e bootstrap).
+CREATE TABLE IF NOT EXISTS ana_operadores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  nome_normalizado TEXT NOT NULL UNIQUE, -- lowercase + sem acentos pra match
+  telefone TEXT,                          -- opcional, formato 5541999999999
+  papel TEXT DEFAULT 'operador',          -- 'admin' | 'operador'
+  ativo INTEGER DEFAULT 1,
+  observacoes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ana_operadores_ativo ON ana_operadores(ativo);
+CREATE INDEX IF NOT EXISTS idx_ana_operadores_telefone ON ana_operadores(telefone);
+
+-- =====================================================
 -- Entregas Mensais por Cliente (dashboard gerencial)
 -- Status do mês por tipo de obrigação (DCTFWeb, PGDAS-D, DAS, Balancete, etc)
 -- =====================================================
