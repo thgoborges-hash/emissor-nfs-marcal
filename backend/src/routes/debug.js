@@ -229,19 +229,105 @@ router.post('/backup/rodar', autenticado, apenasEscritorio, (req, res) => {
 // =====================================================
 //
 // GET /api/debug/exportar-conversas-ana?dias=30&limite=200&sanitizar=1
+//   → modo "sumário": retorna lista de conversas com metadata (sem mensagens)
 //
-// Devolve JSON com últimas conversas da ANA + suas mensagens, pronto pra análise.
-// - dias: janela de tempo (default 30)
-// - limite: máximo de conversas a retornar (default 200, max 1000)
-// - sanitizar: se 1, remove dígitos do telefone e aplica iniciais nos nomes (default 1)
+// GET /api/debug/exportar-conversas-ana?conversa_id=42
+//   → modo "detalhe": retorna 1 conversa específica com TODAS as mensagens
+//   → adicione &msg_offset=0&msg_limite=20 pra paginar mensagens grandes
 //
 // Restrito a usuários do escritório.
 router.get('/exportar-conversas-ana', autenticado, apenasEscritorio, (req, res) => {
   try {
     const db = getDb();
+    const sanitizar = req.query.sanitizar !== '0';
+
+    const sanitizarTelefone = (tel) => {
+      if (!tel) return tel;
+      if (!sanitizar) return tel;
+      const s = String(tel);
+      if (s.length <= 6) return '***';
+      return s.slice(0, 4) + '*'.repeat(Math.max(0, s.length - 6)) + s.slice(-2);
+    };
+
+    const sanitizarNome = (nome) => {
+      if (!nome || !sanitizar) return nome;
+      return String(nome).split(/\s+/).map(p => p ? p[0].toUpperCase() + '.' : '').join(' ').trim();
+    };
+
+    const sanitizarCnpj = (cnpj) => {
+      if (!cnpj || !sanitizar) return cnpj;
+      const s = String(cnpj).replace(/\D/g, '');
+      if (s.length < 8) return '***';
+      return s.slice(0, 2) + '.***.***/****-' + s.slice(-2);
+    };
+
+    // ── Modo detalhe: 1 conversa específica + mensagens paginadas ─────────
+    if (req.query.conversa_id) {
+      const conversaId = parseInt(req.query.conversa_id, 10);
+      const msgOffset = Math.max(0, parseInt(req.query.msg_offset || '0', 10));
+      const msgLimite = Math.max(1, Math.min(500, parseInt(req.query.msg_limite || '500', 10)));
+
+      const conv = db.prepare(`
+        SELECT
+          c.id, c.contato_id, c.status, c.created_at, c.ultimo_mensagem_at,
+          co.telefone, co.nome, co.tipo as tipo_contato, co.cliente_id,
+          cli.razao_social, cli.cnpj
+        FROM whatsapp_conversas c
+        INNER JOIN whatsapp_contatos co ON c.contato_id = co.id
+        LEFT JOIN clientes cli ON co.cliente_id = cli.id
+        WHERE c.id = ?
+      `).get(conversaId);
+
+      if (!conv) {
+        return res.status(404).json({ erro: 'conversa nao encontrada' });
+      }
+
+      const totalMsgs = db.prepare(
+        'SELECT COUNT(*) as n FROM whatsapp_mensagens WHERE conversa_id = ?'
+      ).get(conversaId).n;
+
+      const msgs = db.prepare(`
+        SELECT id, direcao, tipo, conteudo, remetente, metadata, created_at
+        FROM whatsapp_mensagens
+        WHERE conversa_id = ?
+        ORDER BY id ASC
+        LIMIT ? OFFSET ?
+      `).all(conversaId, msgLimite, msgOffset).map(m => {
+        let metadata = null;
+        try { metadata = m.metadata ? JSON.parse(m.metadata) : null; } catch { metadata = m.metadata; }
+        return {
+          id: m.id, direcao: m.direcao, tipo: m.tipo, remetente: m.remetente,
+          conteudo: m.conteudo, metadata, created_at: m.created_at,
+        };
+      });
+
+      return res.json({
+        conversa_id: conv.id,
+        status: conv.status,
+        criada_em: conv.created_at,
+        ultima_mensagem_em: conv.ultimo_mensagem_at,
+        contato: {
+          telefone: sanitizarTelefone(conv.telefone),
+          nome: sanitizarNome(conv.nome),
+          tipo: conv.tipo_contato,
+          cliente_vinculado: conv.cliente_id ? {
+            razao_social: sanitizarNome(conv.razao_social),
+            cnpj: sanitizarCnpj(conv.cnpj),
+          } : null,
+        },
+        total_mensagens: totalMsgs,
+        msg_offset: msgOffset,
+        msg_limite: msgLimite,
+        msg_retornadas: msgs.length,
+        tem_mais: (msgOffset + msgs.length) < totalMsgs,
+        mensagens: msgs,
+      });
+    }
+
+    // ── Modo sumário: lista de conversas (sem mensagens) ──────────────────
     const dias = Math.max(1, Math.min(365, parseInt(req.query.dias || '30', 10)));
     const limite = Math.max(1, Math.min(1000, parseInt(req.query.limite || '200', 10)));
-    const sanitizar = req.query.sanitizar !== '0';
+    const incluirMensagens = req.query.incluir_mensagens === '1';
 
     const conversas = db.prepare(`
       SELECT
@@ -264,49 +350,14 @@ router.get('/exportar-conversas-ana', autenticado, apenasEscritorio, (req, res) 
       LIMIT ?
     `).all(dias, limite);
 
-    const stmtMsgs = db.prepare(`
-      SELECT id, direcao, tipo, conteudo, remetente, metadata, created_at
-      FROM whatsapp_mensagens
-      WHERE conversa_id = ?
-      ORDER BY id ASC
-    `);
-
-    const sanitizarTelefone = (tel) => {
-      if (!tel) return tel;
-      if (!sanitizar) return tel;
-      // mantém DDI+DDD, mascara restante
-      const s = String(tel);
-      if (s.length <= 6) return '***';
-      return s.slice(0, 4) + '*'.repeat(Math.max(0, s.length - 6)) + s.slice(-2);
-    };
-
-    const sanitizarNome = (nome) => {
-      if (!nome || !sanitizar) return nome;
-      return String(nome).split(/\s+/).map(p => p ? p[0].toUpperCase() + '.' : '').join(' ').trim();
-    };
-
-    const sanitizarCnpj = (cnpj) => {
-      if (!cnpj || !sanitizar) return cnpj;
-      const s = String(cnpj).replace(/\D/g, '');
-      if (s.length < 8) return '***';
-      return s.slice(0, 2) + '.***.***/****-' + s.slice(-2);
-    };
+    // Contagem por conversa (sem fazer SELECT pesado das mensagens)
+    const stmtCount = db.prepare(
+      'SELECT COUNT(*) as n FROM whatsapp_mensagens WHERE conversa_id = ?'
+    );
 
     const resultado = conversas.map(c => {
-      const msgs = stmtMsgs.all(c.id).map(m => {
-        let metadata = null;
-        try { metadata = m.metadata ? JSON.parse(m.metadata) : null; } catch { metadata = m.metadata; }
-        return {
-          id: m.id,
-          direcao: m.direcao,
-          tipo: m.tipo,
-          remetente: m.remetente,
-          conteudo: m.conteudo,
-          metadata,
-          created_at: m.created_at,
-        };
-      });
-      return {
+      const totalMsgs = stmtCount.get(c.id).n;
+      const base = {
         conversa_id: c.id,
         status: c.status,
         criada_em: c.created_at,
@@ -320,15 +371,31 @@ router.get('/exportar-conversas-ana', autenticado, apenasEscritorio, (req, res) 
             cnpj: sanitizarCnpj(c.cnpj),
           } : null,
         },
-        total_mensagens: msgs.length,
-        mensagens: msgs,
+        total_mensagens: totalMsgs,
       };
+      // Modo legacy: incluir_mensagens=1 retorna tudo (cuidado com tamanho)
+      if (incluirMensagens) {
+        const msgs = db.prepare(`
+          SELECT id, direcao, tipo, conteudo, remetente, metadata, created_at
+          FROM whatsapp_mensagens WHERE conversa_id = ? ORDER BY id ASC
+        `).all(c.id).map(m => {
+          let metadata = null;
+          try { metadata = m.metadata ? JSON.parse(m.metadata) : null; } catch { metadata = m.metadata; }
+          return {
+            id: m.id, direcao: m.direcao, tipo: m.tipo, remetente: m.remetente,
+            conteudo: m.conteudo, metadata, created_at: m.created_at,
+          };
+        });
+        base.mensagens = msgs;
+      }
+      return base;
     });
 
     res.json({
       gerado_em: new Date().toISOString(),
       janela_dias: dias,
       sanitizado: sanitizar,
+      modo: incluirMensagens ? 'completo' : 'sumario',
       total_conversas: resultado.length,
       conversas: resultado,
     });
