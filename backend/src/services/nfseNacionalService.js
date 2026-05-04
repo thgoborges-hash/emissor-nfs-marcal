@@ -414,7 +414,11 @@ class NfseNacionalService {
 
     <prest>
       <CNPJ>${cnpjPrestador}</CNPJ>
-      ${cliente.inscricao_municipal ? `<IM>${String(cliente.inscricao_municipal).replace(/\D/g, '')}</IM>` : ''}
+      ${''/* IM do prestador omitida: NFSe Nacional rejeita com E0120 quando o
+            município emissor não tem registro complementar no CNC. Muitos
+            municípios (incluindo Porto Alegre) ainda não têm. SEFIN identifica
+            o prestador pelo CNPJ — IM é puramente informativa. Caso algum
+            município venha a exigir, adicionar flag por cliente no schema. */}
       ${cliente.telefone ? `<fone>${cliente.telefone.replace(/\D/g, '')}</fone>` : ''}
       ${cliente.email ? `<email>${this._escapeXml(cliente.email)}</email>` : ''}
       <regTrib>
