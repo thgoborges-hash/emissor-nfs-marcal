@@ -281,7 +281,10 @@ class NfseNacionalService {
    * <endNac> contém APENAS cMun e CEP
    */
   _gerarEnderecoXml(dados, codMunicipioFallback) {
-    if (!dados.logradouro && !dados.cep) return '';
+    // XSD do TCEndereco exige <xLgr> como filho obrigatório de <end> quando há <endNac>.
+    // Se logradouro está vazio, gerar <end> parcial (só com endNac+xBairro+...) produz
+    // RNG6110 (Falha Schema Xml). Melhor omitir <end> inteiro nesse caso.
+    if (!dados.logradouro) return '';
     const cep = dados.cep ? dados.cep.replace(/\D/g, '') : '';
     // Só usa codigo_municipio se for IBGE válido (7 dígitos) — nunca SIAFI (4 dígitos)
     const rawCMun = dados.codigo_municipio || codMunicipioFallback || '';
