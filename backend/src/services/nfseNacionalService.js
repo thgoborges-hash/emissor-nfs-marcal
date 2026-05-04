@@ -411,7 +411,7 @@ class NfseNacionalService {
 
     <prest>
       <CNPJ>${cnpjPrestador}</CNPJ>
-      ${cliente.inscricao_municipal ? `<IM>${cliente.inscricao_municipal}</IM>` : ''}
+      ${cliente.inscricao_municipal ? `<IM>${String(cliente.inscricao_municipal).replace(/\D/g, '')}</IM>` : ''}
       ${cliente.telefone ? `<fone>${cliente.telefone.replace(/\D/g, '')}</fone>` : ''}
       ${cliente.email ? `<email>${this._escapeXml(cliente.email)}</email>` : ''}
       <regTrib>
