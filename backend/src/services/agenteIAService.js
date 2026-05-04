@@ -10,6 +10,8 @@ const certificadoService = require('./certificadoService');
 const cnpjService = require('./cnpjService');
 const integraContadorService = require('./integraContadorService');
 const anaModoEquipeService = require('./anaModoEquipeService');
+const anaRouterService = require('./anaRouterService');
+const anaGroundingValidator = require('./anaGroundingValidator');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -138,8 +140,32 @@ class AgenteIAService {
     // modo admin permite buscar por CNPJ). É derivado da fonte 'admin'.
     const ehAdmin = modoEquipe.fonte === 'admin';
 
-    // 4. Monta o prompt do sistema
-    const systemPrompt = this.montarSystemPrompt(contato, dadosCliente, modoEquipe, { ehAdmin });
+    // 3.7. Sprint 1.1 — Router Haiku pré-classifica intenção/modo/confiança ANTES do Sonnet.
+    // Early-exits: ignorar (grupo) ou handoff (baixa confiança/intenção handoff_humano).
+    const router = await anaRouterService.classificar({
+      mensagem: modoEquipe.mensagemSemPrefixo || mensagem,
+      modoDetectado: modoEquipe.ehEquipe ? 'equipe' : 'cliente',
+      tipoContato: contato?.tipo || 'desconhecido',
+      ultimas3Msgs: historico.slice(-3),
+    });
+    console.log(
+      `[AgenteIA] Router: intencao=${router.intencao} modo_inferido=${router.modo_inferido} ` +
+      `conf=${router.confianca} motivo="${router.motivo}"`
+    );
+
+    if (router.deve_ignorar) {
+      // Mensagem de grupo que não é pra ANA — fica em silêncio.
+      return { texto: '', acoes: [{ tipo: 'IGNORAR' }] };
+    }
+    if (router.deve_handoff) {
+      // Confiança baixa ou handoff_humano explícito — transfere direto, sem queimar Sonnet.
+      const textoTransfer = `Essa eu prefiro deixar o Thiago te responder com calma — já tô chamando ele aqui mesmo 👍 [ACAO:TRANSFERIR_HUMANO]`;
+      return { texto: textoTransfer, acoes: [{ tipo: 'TRANSFERIR_HUMANO' }] };
+    }
+
+    // 4. Monta o prompt do sistema (com hint do router pra reduzir alucinação de intenção)
+    let systemPrompt = this.montarSystemPrompt(contato, dadosCliente, modoEquipe, { ehAdmin });
+    systemPrompt += `\n\n[ROUTER]: intencao=${router.intencao}, modo_inferido=${router.modo_inferido}, confianca=${router.confianca}, campos_faltantes=${JSON.stringify(router.campos_faltantes || [])}, motivo="${router.motivo}"`;
 
     // 5. Monta mensagens para a API
     const messages = this.montarMensagens(historico, mensagem);
@@ -150,15 +176,22 @@ class AgenteIAService {
     // DEBUG: loga resposta bruta do Claude pra diagnosticar ações
     console.log(`[AgenteIA] Resposta bruta (${resposta.length} chars): ${resposta.substring(0, 300)}`);
 
-    // 6.5. AUTO-VALIDAÇÃO — detecta promessas vazias (só modo cliente, skip modo equipe)
-    if (!modoEquipe.ehEquipe) {
-      const validacao = await this._validarResposta(mensagem, resposta);
-      if (!validacao.ok) {
-        console.warn(`[AgenteIA] ⚠ Auto-validação rejeitou resposta: ${validacao.motivo}`);
-        console.log(`[AgenteIA] Resposta rejeitada: ${resposta.substring(0, 200)}`);
-        resposta = `Essa eu prefiro deixar o Thiago te responder com calma — já tô chamando ele aqui mesmo pra dar atenção, tá? 👍 [ACAO:TRANSFERIR_HUMANO]`;
-      }
+    // 6.5. Sprint 1.3 — Grounding pré-envio: valida promessa vazia + alucinação factual ANTES
+    // de qualquer envio. Se bloquear, substitui por sugestão de transferência (sem cliente
+    // ver a promessa vazia primeiro).
+    const grounding = await anaGroundingValidator.validarPreEnvio({
+      mensagemCliente: mensagem,
+      respostaAna: resposta,
+      historico,
+      modoEquipe: modoEquipe.ehEquipe,
+    });
+    if (!grounding.ok) {
+      console.warn(
+        `[AgenteIA] ⚠ Grounding bloqueou (${grounding.tipo}): ${grounding.motivo}. ` +
+        `Resposta original: ${resposta.substring(0, 200)}`
+      );
     }
+    resposta = grounding.resposta_final;
 
     // 7. Verifica se precisa executar ações
     const acoes = this.extrairAcoes(resposta);
@@ -2361,112 +2394,6 @@ Painel: ${baseUrl}/escritorio/whatsapp`;
     }
   }
 
-  // =====================================================
-  // AUTO-VALIDAÇÃO DE RESPOSTA (anti-promessa vazia)
-  // Detecta quando ANA promete "vou verificar e te retorno"
-  // sem ter mecanismo de retorno, e força transferência humana
-  // =====================================================
-
-  /**
-   * Retorna { ok: bool, motivo: string }
-   * Otimizado: regex detecta sinais antes de gastar tokens no Haiku
-   */
-  async _validarResposta(mensagemCliente, respostaAna) {
-    // Skip se resposta já tem ação concreta — presume que é boa
-    if (/\[ACAO:[^\]]+\]/.test(respostaAna)) {
-      return { ok: true, motivo: 'tem ação concreta' };
-    }
-
-    // Resposta muito curta (< 30 chars) — provavelmente saudação simples, deixa passar
-    if (respostaAna.trim().length < 30) {
-      return { ok: true, motivo: 'resposta curta' };
-    }
-
-    // Detecta sinais de promessa vazia por regex
-    const sinaisPromessa = /\b(vou\s+(verificar|confirmar|olhar|consultar|checar|analisar|pesquisar|ver|dar uma olhada|dar uma verificada|conferir|pegar)|deixa\s+(eu|que\s+eu)\s+(ver|verificar|olhar|consultar|checar|conferir)|te\s+(retorno|aviso|falo|respondo|confirmo)|já\s+(te|lhe)?\s*(retorno|aviso|respondo|falo|confirmo)|(daqui|em)\s+\w+\s+(minuto|segundo|instante|momento))/i;
-
-    if (!sinaisPromessa.test(respostaAna)) {
-      return { ok: true, motivo: 'sem sinais de promessa vazia' };
-    }
-
-    // Tem sinal suspeito — chama Haiku pra confirmar
-    console.log('[AgenteIA] 🔍 Sinal de promessa detectado, validando com Haiku...');
-
-    try {
-      return await this._chamarClaudeValidacao(mensagemCliente, respostaAna);
-    } catch (err) {
-      // Fail-safe: se validação quebrar, deixa passar (não queremos bloquear ANA por erro nosso)
-      console.warn('[AgenteIA] Erro na auto-validação, deixando passar:', err.message);
-      return { ok: true, motivo: 'validador offline' };
-    }
-  }
-
-  _chamarClaudeValidacao(mensagemCliente, respostaAna) {
-    const systemValidador = `Você é o avaliador de qualidade da ANA, atendente de contabilidade no WhatsApp. Avalie se a resposta dela vai resolver o problema do cliente ou deixá-lo esperando indefinidamente.
-
-REGRA CRÍTICA: ANA não tem mecanismo de "voltar depois". Se ela promete algo no futuro (ex: "vou verificar e te retorno") sem cumprir AGORA, vira promessa vazia — cliente fica pra sempre esperando.
-
-ok=TRUE quando a resposta:
-- Resolve a dúvida do cliente de forma concreta
-- Faz uma pergunta clara pra coletar info que ANA precisa pra agir
-- Transfere explicitamente pro humano ("vou chamar o Thiago aqui no chat agora")
-- É saudação genérica simples ("Oi! Tudo bem?")
-
-ok=FALSE quando a resposta:
-- Promete "vou verificar/confirmar/olhar/consultar e te retorno" sem mecanismo real de retorno
-- Diz "te aviso depois" / "daqui a pouco eu volto" / "já te respondo" sem garantia
-- Deixa o cliente esperando sem próximo passo claro
-
-Responda APENAS em JSON válido, sem markdown: {"ok": true|false, "motivo": "explicação curta"}`;
-
-    const userPrompt = `Cliente: "${mensagemCliente.slice(0, 500)}"\nANA: "${respostaAna.slice(0, 800)}"\n\nEssa resposta resolve ou deixa em aberto?`;
-
-    return new Promise((resolve, reject) => {
-      const body = JSON.stringify({
-        model: process.env.ANTHROPIC_VALIDADOR_MODEL || 'claude-haiku-4-5-20251001',
-        max_tokens: 150,
-        system: systemValidador,
-        messages: [{ role: 'user', content: userPrompt }],
-      });
-
-      const url = new URL(ANTHROPIC_API_URL);
-      const options = {
-        hostname: url.hostname,
-        path: url.pathname,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        timeout: 6000,
-      };
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', c => data += c);
-        res.on('end', () => {
-          try {
-            const payload = JSON.parse(data);
-            const texto = payload.content?.[0]?.text || '';
-            const match = texto.match(/\{[\s\S]*?\}/);
-            if (!match) {
-              console.log('[AgenteIA] Validador não devolveu JSON, deixando passar. Texto:', texto.substring(0, 150));
-              return resolve({ ok: true, motivo: 'sem json válido' });
-            }
-            const json = JSON.parse(match[0]);
-            resolve({ ok: !!json.ok, motivo: json.motivo || '' });
-          } catch (err) {
-            reject(err);
-          }
-        });
-      });
-      req.on('timeout', () => { req.destroy(new Error('Timeout validador Haiku')); });
-      req.on('error', reject);
-      req.write(body);
-      req.end();
-    });
-  }
 }
 
 module.exports = new AgenteIAService();
