@@ -141,27 +141,40 @@ class PreValidacaoNfseService {
       erros.push('Tomador: razão social ausente');
     }
 
-    // codigo_municipio do tomador - SEMPRE verificar via CNPJ para garantir que é válido
-    // (um código de 7 dígitos pode parecer válido mas ser rejeitado pela SEFIN)
+    // codigo_municipio do tomador
+    // Estratégia: o cadastro é a fonte da verdade. Se o código atual tem formato válido
+    // (7 dígitos), aceita e segue. A consulta à Receita serve pra ENRIQUECER outros campos
+    // (endereço, e-mail) e detectar divergência, NÃO pra autorizar emissão.
+    // Bug anterior: bloqueava emissão se a Receita estivesse offline/timeout, mesmo com
+    // cadastro correto.
     {
-      let corrigido = false;
+      const codigoAtualValido = this._isCodigoIBGEValido(tomador.codigo_municipio);
+      let corrigido = codigoAtualValido;
 
       if (tomador.tipo_documento === 'CNPJ' && documento.length === 14) {
-        // Sempre consulta a Receita pra CNPJ — garante dados atualizados
-        console.log(`[PreValidacao] Tomador CNPJ ${documento}: verificando codigo_municipio (atual: "${tomador.codigo_municipio}")...`);
-        const dadosReceita = await cnpjService.consultarCNPJ(documento);
+        console.log(`[PreValidacao] Tomador CNPJ ${documento}: codigo_municipio atual="${tomador.codigo_municipio}" valido=${codigoAtualValido}. Consultando Receita pra enriquecer...`);
+        let dadosReceita = null;
+        try {
+          dadosReceita = await cnpjService.consultarCNPJ(documento);
+        } catch (err) {
+          console.warn(`[PreValidacao] Consulta Receita falhou pra ${documento}: ${err.message}. Seguindo com cadastro local.`);
+        }
+
         if (dadosReceita && this._isCodigoIBGEValido(dadosReceita.codigoMunicipio)) {
           const codigoAnterior = tomador.codigo_municipio;
-          // Atualiza se estava vazio OU se mudou (correção de dado errado)
-          if (!codigoAnterior || codigoAnterior !== dadosReceita.codigoMunicipio) {
+          // Só substitui se o atual estiver vazio/inválido. Se já era válido e diverge da
+          // Receita, mantém o cadastro (operador pode ter razão) e gera aviso.
+          if (!codigoAtualValido) {
             tomador.codigo_municipio = dadosReceita.codigoMunicipio;
-            correcoes.push(`Tomador: codigo_municipio atualizado de "${codigoAnterior || 'vazio'}" para "${dadosReceita.codigoMunicipio}" (${dadosReceita.municipio}/${dadosReceita.uf})`);
+            correcoes.push(`Tomador: codigo_municipio preenchido com "${dadosReceita.codigoMunicipio}" (${dadosReceita.municipio}/${dadosReceita.uf}) via Receita`);
+            corrigido = true;
+          } else if (codigoAnterior !== dadosReceita.codigoMunicipio) {
+            avisos.push(`Tomador: codigo_municipio do cadastro ("${codigoAnterior}") difere do retornado pela Receita ("${dadosReceita.codigoMunicipio}" — ${dadosReceita.municipio}/${dadosReceita.uf}). Mantido o cadastro; revise manualmente se a NF for rejeitada.`);
           }
-          corrigido = true;
-          // Persiste no banco — SEMPRE atualiza codigo_municipio pra garantir dado correto
-          const updateFields = { codigo_municipio: dadosReceita.codigoMunicipio };
-          // Aproveita pra preencher/atualizar dados do tomador
-          // Atualiza TODOS os campos do tomador com dados frescos da Receita
+
+          // Enriquece campos auxiliares (sempre — independente de o IBGE ter sido trocado)
+          const updateFields = {};
+          if (!codigoAtualValido) updateFields.codigo_municipio = dadosReceita.codigoMunicipio;
           const camposReceita = {
             logradouro: dadosReceita.logradouro,
             numero: dadosReceita.numero,
@@ -179,22 +192,21 @@ class PreValidacaoNfseService {
               updateFields[campo] = valor;
             }
           }
-          this._atualizarTomadorNoBanco(tomador.id, updateFields, correcoes);
-          if (Object.keys(updateFields).length > 1) {
-            correcoes.push(`Tomador: endereço e dados complementares preenchidos via Receita`);
+          if (Object.keys(updateFields).length > 0) {
+            this._atualizarTomadorNoBanco(tomador.id, updateFields, correcoes);
+            if (Object.keys(updateFields).length > 1 || !updateFields.codigo_municipio) {
+              correcoes.push(`Tomador: endereço e dados complementares atualizados via Receita`);
+            }
           }
-        } else if (dadosReceita && dadosReceita.municipio && dadosReceita.uf) {
-          // CNPJ retornou o nome da cidade mas o IBGE lookup falhou no cnpjService
-          // Tenta buscar direto pela API do IBGE como fallback
-          console.log(`[PreValidacao] CNPJ retornou município ${dadosReceita.municipio}/${dadosReceita.uf} mas sem IBGE. Tentando fallback direto...`);
+        } else if (!codigoAtualValido && dadosReceita && dadosReceita.municipio && dadosReceita.uf) {
+          // Cadastro inválido + Receita não devolveu IBGE — tenta fallback pela tabela do IBGE
+          console.log(`[PreValidacao] Cadastro sem IBGE válido. Receita tem ${dadosReceita.municipio}/${dadosReceita.uf}. Tentando fallback direto...`);
           try {
             const codigoIBGE = await cnpjService._buscarCodigoIBGE(dadosReceita.municipio, dadosReceita.uf);
             if (codigoIBGE) {
-              const codigoAnterior = tomador.codigo_municipio;
               tomador.codigo_municipio = codigoIBGE;
-              correcoes.push(`Tomador: codigo_municipio corrigido de "${codigoAnterior || 'vazio'}" para "${codigoIBGE}" (${dadosReceita.municipio}/${dadosReceita.uf}) via fallback IBGE`);
+              correcoes.push(`Tomador: codigo_municipio preenchido com "${codigoIBGE}" (${dadosReceita.municipio}/${dadosReceita.uf}) via fallback IBGE`);
               corrigido = true;
-              // Persiste
               const updateFields = { codigo_municipio: codigoIBGE };
               if (!tomador.municipio && dadosReceita.municipio) {
                 tomador.municipio = dadosReceita.municipio;
@@ -212,16 +224,15 @@ class PreValidacaoNfseService {
         }
       }
 
-      // Se não corrigiu E não é CPF sem endereço → BLOQUEIA emissão
+      // Só bloqueia se cadastro era inválido E nenhuma fonte conseguiu corrigir
       if (!corrigido) {
         if (tomador.tipo_documento === 'CPF') {
-          // CPF: limpa o código inválido pra não enviar lixo no XML
           if (tomador.codigo_municipio && !this._isCodigoIBGEValido(tomador.codigo_municipio)) {
             tomador.codigo_municipio = null;
             avisos.push(`Tomador (CPF): codigo_municipio inválido removido. Endereço será omitido do XML.`);
           }
         } else {
-          erros.push(`Tomador: codigo_municipio inválido ("${tomador.codigo_municipio || 'vazio'}") e não foi possível corrigir automaticamente. Cadastre o código IBGE (7 dígitos) do tomador.`);
+          erros.push(`Tomador: codigo_municipio "${tomador.codigo_municipio || 'vazio'}" não tem formato válido (esperado 7 dígitos do IBGE) e a Receita também não retornou um código válido. Cadastre o código IBGE manualmente.`);
         }
       }
     }
