@@ -6,5 +6,9 @@ frontend/build/
 backend/public/
 .DS_Store
 
+# Lixo do FUSE/sync e backups locais
+.fuse_hidden*
+*.bak*
+
 # Tabela cTribNac é estática e precisa ir pro repo (resto de data/ é runtime)
 !backend/src/data/codigos_servico_nacional.json
