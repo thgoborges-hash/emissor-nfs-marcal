@@ -12,6 +12,7 @@ router.get('/', autenticado, apenasEscritorio, (req, res) => {
     const clientes = db.prepare(`
       SELECT id, razao_social, nome_fantasia, cnpj, email, telefone,
              modo_emissao, ativo, codigo_servico, aliquota_iss,
+             regime_tributario,
              certificado_validade, municipio, uf,
              (SELECT COUNT(*) FROM notas_fiscais WHERE cliente_id = clientes.id) as total_nfs,
              (SELECT COUNT(*) FROM notas_fiscais WHERE cliente_id = clientes.id AND status = 'pendente_aprovacao') as nfs_pendentes
@@ -22,6 +23,65 @@ router.get('/', autenticado, apenasEscritorio, (req, res) => {
     res.json(clientes);
   } catch (err) {
     console.error('Erro ao listar clientes:', err);
+    res.status(500).json({ erro: 'Erro interno do servidor' });
+  }
+});
+
+// GET /api/clientes/_resumo-regimes - Conta clientes por regime tributário
+// (usado no Dashboard de Apuração pra equipe ver distribuição)
+router.get('/_resumo-regimes', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const db = getDb();
+    const linhas = db.prepare(`
+      SELECT COALESCE(regime_tributario, 'nao_classificado') as regime,
+             COUNT(*) as total,
+             SUM(CASE WHEN ativo = 1 THEN 1 ELSE 0 END) as ativos
+      FROM clientes
+      GROUP BY regime
+      ORDER BY total DESC
+    `).all();
+    res.json({ regimes: linhas });
+  } catch (err) {
+    console.error('Erro no resumo de regimes:', err);
+    res.status(500).json({ erro: 'Erro interno do servidor' });
+  }
+});
+
+// PUT /api/clientes/_regime-bulk - Atualiza regime_tributario em lote
+// Body: { atualizacoes: [{ id, regime_tributario }, ...] }
+// regime_tributario aceita: 'simples' | 'presumido' | 'real' | 'mei' | null
+router.put('/_regime-bulk', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const db = getDb();
+    const { atualizacoes } = req.body || {};
+    if (!Array.isArray(atualizacoes) || atualizacoes.length === 0) {
+      return res.status(400).json({ erro: 'campo "atualizacoes" deve ser array não-vazio' });
+    }
+    const REGIMES_VALIDOS = new Set(['simples', 'presumido', 'real', 'mei']);
+    const stmt = db.prepare(`
+      UPDATE clientes SET regime_tributario = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `);
+    const tx = db.transaction((items) => {
+      let aplicadas = 0;
+      const erros = [];
+      for (const item of items) {
+        const id = parseInt(item.id);
+        const regime = item.regime_tributario;
+        if (!id) { erros.push({ id: item.id, erro: 'id inválido' }); continue; }
+        if (regime !== null && !REGIMES_VALIDOS.has(regime)) {
+          erros.push({ id, erro: `regime "${regime}" inválido (use: ${[...REGIMES_VALIDOS].join(', ')} ou null)` });
+          continue;
+        }
+        const r = stmt.run(regime, id);
+        if (r.changes > 0) aplicadas++;
+        else erros.push({ id, erro: 'cliente não encontrado' });
+      }
+      return { aplicadas, erros };
+    });
+    const resultado = tx(atualizacoes);
+    res.json(resultado);
+  } catch (err) {
+    console.error('Erro no bulk update de regime:', err);
     res.status(500).json({ erro: 'Erro interno do servidor' });
   }
 });
@@ -43,6 +103,7 @@ router.get('/:id', autenticado, (req, res) => {
              municipio, uf, cep, email, telefone,
              codigo_servico, descricao_servico_padrao, aliquota_iss,
              regime_especial, optante_simples, incentivo_fiscal,
+             regime_tributario,
              modo_emissao, certificado_validade, ativo
       FROM clientes WHERE id = ?
     `).get(clienteId);
@@ -128,8 +189,17 @@ router.put('/:id', autenticado, apenasEscritorio, (req, res) => {
       'municipio', 'uf', 'cep', 'email', 'telefone',
       'codigo_servico', 'descricao_servico_padrao', 'aliquota_iss',
       'regime_especial', 'optante_simples', 'incentivo_fiscal',
+      'regime_tributario',
       'modo_emissao', 'ativo'
     ];
+
+    // Validação do regime_tributario
+    if (campos.regime_tributario !== undefined && campos.regime_tributario !== null) {
+      const REGIMES = ['simples', 'presumido', 'real', 'mei'];
+      if (!REGIMES.includes(campos.regime_tributario)) {
+        return res.status(400).json({ erro: `regime_tributario inválido. Use: ${REGIMES.join(', ')} ou null` });
+      }
+    }
 
     const updates = [];
     const values = [];

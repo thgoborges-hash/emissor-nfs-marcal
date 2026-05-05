@@ -162,6 +162,29 @@ function initDatabase() {
     console.warn('[migration] regime_simples_nacional/reg_ap_trib_sn:', e.message);
   }
 
+  // Migração idempotente: regime_tributario — pra apuração gerencial (Fase 1).
+  // Valores: 'simples' | 'presumido' | 'real' | 'mei' | NULL (não classificado).
+  // Backfill heurístico: optante_simples=1 → 'simples'; optante_simples=0 → 'presumido'
+  // (default seguro pra serviços; equipe corrige Real/MEI manualmente no painel).
+  try {
+    const cols = db.prepare("PRAGMA table_info(clientes)").all();
+    if (!cols.some(c => c.name === 'regime_tributario')) {
+      db.exec("ALTER TABLE clientes ADD COLUMN regime_tributario TEXT");
+      console.log('[migration] clientes.regime_tributario adicionada');
+
+      // Backfill inicial — apenas linhas NULL
+      const r1 = db.prepare(
+        "UPDATE clientes SET regime_tributario = 'simples' WHERE optante_simples = 1 AND regime_tributario IS NULL"
+      ).run();
+      const r2 = db.prepare(
+        "UPDATE clientes SET regime_tributario = 'presumido' WHERE optante_simples = 0 AND regime_tributario IS NULL"
+      ).run();
+      console.log(`[migration] regime_tributario backfill: ${r1.changes} simples + ${r2.changes} presumido (heurística inicial; equipe ajusta Real/MEI no painel)`);
+    }
+  } catch (e) {
+    console.warn('[migration] regime_tributario:', e.message);
+  }
+
   // Insere dados iniciais se o banco estiver vazio
   const escritorioCount = db.prepare('SELECT COUNT(*) as count FROM escritorio').get();
   if (escritorioCount.count === 0) {

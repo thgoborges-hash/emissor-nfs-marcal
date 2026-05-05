@@ -16,9 +16,18 @@ export default function GestaoClientes() {
   const formVazio = {
     razao_social: '', nome_fantasia: '', cnpj: '', email: '', telefone: '',
     codigo_servico: '', descricao_servico_padrao: '', aliquota_iss: '5',
-    modo_emissao: 'aprovacao', senha: '', municipio: '', uf: '', codigo_municipio: ''
+    modo_emissao: 'aprovacao', senha: '', municipio: '', uf: '', codigo_municipio: '',
+    regime_tributario: 'presumido'
   };
   const [form, setForm] = useState(formVazio);
+  const [filtroRegime, setFiltroRegime] = useState('todos');
+
+  const REGIMES = [
+    { v: 'simples', label: '🟢 Simples' },
+    { v: 'presumido', label: '🟡 Presumido' },
+    { v: 'real', label: '🔴 Real' },
+    { v: 'mei', label: '🔵 MEI' },
+  ];
 
   const carregarClientes = async () => {
     try {
@@ -79,6 +88,27 @@ export default function GestaoClientes() {
       alert('Erro ao alterar modo');
     }
   };
+
+  const alterarRegime = async (id, novoRegime) => {
+    // Otimização: atualiza local primeiro pra UI responder na hora; recarrega no final
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, regime_tributario: novoRegime } : c));
+    try {
+      await clientesApi.atualizar(id, { regime_tributario: novoRegime || null });
+    } catch (err) {
+      alert('Erro ao alterar regime: ' + (err.response?.data?.erro || err.message));
+      carregarClientes(); // reverte
+    }
+  };
+
+  const clientesFiltrados = filtroRegime === 'todos'
+    ? clientes
+    : clientes.filter(c => (c.regime_tributario || 'nao_classificado') === filtroRegime);
+
+  const contagemPorRegime = clientes.reduce((acc, c) => {
+    const r = c.regime_tributario || 'nao_classificado';
+    acc[r] = (acc[r] || 0) + 1;
+    return acc;
+  }, {});
 
   const handleArquivoImportacao = (e) => {
     const file = e.target.files[0];
@@ -266,6 +296,14 @@ export default function GestaoClientes() {
             </div>
             <div className="form-row">
               <div className="form-group">
+                <label>Regime Tributário (apuração)</label>
+                <select name="regime_tributario" value={form.regime_tributario} onChange={handleChange}>
+                  {REGIMES.map(r => <option key={r.v} value={r.v}>{r.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
                 <label>Município</label>
                 <input type="text" name="municipio" value={form.municipio} onChange={handleChange} />
               </div>
@@ -290,6 +328,33 @@ export default function GestaoClientes() {
         </div>
       )}
 
+      {!carregando && clientes.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3 className="card-title" style={{ marginBottom: 12 }}>Distribuição por Regime Tributário</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button
+              className={`btn btn-sm ${filtroRegime === 'todos' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setFiltroRegime('todos')}>
+              Todos ({clientes.length})
+            </button>
+            {REGIMES.map(r => (
+              <button key={r.v}
+                className={`btn btn-sm ${filtroRegime === r.v ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setFiltroRegime(r.v)}>
+                {r.label} ({contagemPorRegime[r.v] || 0})
+              </button>
+            ))}
+            {(contagemPorRegime['nao_classificado'] > 0) && (
+              <button
+                className={`btn btn-sm ${filtroRegime === 'nao_classificado' ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setFiltroRegime('nao_classificado')}>
+                ⚪ Não classificado ({contagemPorRegime['nao_classificado']})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="card">
         {carregando ? <p>Carregando...</p> : clientes.length === 0 ? (
           <div className="empty-state">
@@ -304,6 +369,7 @@ export default function GestaoClientes() {
                   <th>Razão Social</th>
                   <th>CNPJ</th>
                   <th>Município</th>
+                  <th>Regime</th>
                   <th>Modo</th>
                   <th>NFs</th>
                   <th>Pendentes</th>
@@ -312,11 +378,21 @@ export default function GestaoClientes() {
                 </tr>
               </thead>
               <tbody>
-                {clientes.map(c => (
+                {clientesFiltrados.map(c => (
                   <tr key={c.id}>
                     <td><strong>{c.razao_social}</strong>{c.nome_fantasia ? <br /> : null}{c.nome_fantasia && <small style={{ color: 'var(--text-light)' }}>{c.nome_fantasia}</small>}</td>
                     <td>{c.cnpj}</td>
                     <td>{c.municipio ? `${c.municipio}/${c.uf}` : '-'}</td>
+                    <td>
+                      <select
+                        value={c.regime_tributario || ''}
+                        onChange={(e) => alterarRegime(c.id, e.target.value)}
+                        style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: '0.85rem' }}
+                        title="Edite pra mudar o regime">
+                        <option value="">— escolher —</option>
+                        {REGIMES.map(r => <option key={r.v} value={r.v}>{r.label}</option>)}
+                      </select>
+                    </td>
                     <td>
                       <button className="btn btn-outline btn-sm" onClick={() => alterarModo(c.id, c.modo_emissao)} title="Clique para alternar">
                         {c.modo_emissao === 'autonomo' ? '🟢 Autônomo' : '🟡 Aprovação'}

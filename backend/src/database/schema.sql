@@ -54,6 +54,10 @@ CREATE TABLE IF NOT EXISTS clientes (
   optante_simples INTEGER DEFAULT 0,
   incentivo_fiscal INTEGER DEFAULT 0,
 
+  -- Regime tributário pra apuração gerencial.
+  -- Valores: 'simples' | 'presumido' | 'real' | 'mei' | NULL (não classificado)
+  regime_tributario TEXT,
+
   -- Certificado digital
   certificado_a1_path TEXT, -- caminho do arquivo .pfx
   certificado_a1_senha_encrypted TEXT, -- senha do certificado (criptografada)
