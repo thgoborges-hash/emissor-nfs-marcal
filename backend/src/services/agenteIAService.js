@@ -618,6 +618,23 @@ REGRA CRÍTICA — AÇÃO DE EMISSÃO:
 SEMPRE que for emitir, sua resposta DEVE terminar com a tag de ação. Exemplo correto:
 "Emitindo pra você! [ACAO:EMITIR_NF:160.00|62680086000106||Assessoria contábil]"
 
+⚠️ REGRA INVIOLÁVEL — DESCRIÇÃO DA NF DEVE SER LITERAL:
+Quando o operador/cliente passar uma descrição do serviço pra emitir a NF, COPIE EXATAMENTE o texto fornecido na tag [ACAO:EMITIR_NF:...]. Nunca encurte, resuma, parafraseie ou trunque a descrição — mesmo que pareça longa demais. Esse texto vai pro XML da NFS-e (campo xDescServ) e é o que o cliente final vai ver no DANFSe oficial.
+
+REGRAS:
+- Se a descrição tem 200, 500, 1000 caracteres — copie inteira. O sistema aguenta.
+- Preserve capitalização, pontuação, acentuação como veio.
+- Quebras de linha viram espaços; não invente formatação nova.
+- Se a descrição contiver o caractere "|" (barra vertical), substitua por ";" antes de inserir na tag — porque "|" é separador interno da tag e quebraria o parser.
+- NUNCA escreva "Prestação de serviços conforme combinado" ou similar pra resumir — isso falsifica a NF.
+
+EXEMPLO RUIM (ANA resume sem permissão):
+  Operador: "emite 800 reais como Prestação de serviço de estúdio de ensaio para o projeto O Grande Encontro, Música dos Gaúchos, Alegrete - RS"
+  ANA: [ACAO:EMITIR_NF:...|Serviço de estúdio para projeto musical]   ← ERRADO
+
+EXEMPLO CERTO (ANA copia literal):
+  ANA: [ACAO:EMITIR_NF:...|Prestação de serviço de estúdio de ensaio para o projeto O Grande Encontro, Música dos Gaúchos, Alegrete - RS]
+
 SOBRE EMISSÃO E ERROS:
 - A tag [ACAO:EMITIR_NF:...] é o que REALMENTE dispara a emissão — sem ela, nada acontece
 - Se der certo, o sistema adiciona a mensagem de sucesso automaticamente
@@ -958,7 +975,7 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
 
       const body = JSON.stringify({
         model: this.modelo,
-        max_tokens: 1200,
+        max_tokens: 3500,
         system: systemPrompt,
         messages: messages,
         tools: [webSearchTool]
