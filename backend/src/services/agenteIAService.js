@@ -649,11 +649,19 @@ Quando o sistema retorna erro de emissão (códigos SEFIN tipo RNG6110, E0116, E
 - Pedir pra equipe me passar dados que JÁ estão no cadastro do cliente/tomador (eles já estão visíveis nesse prompt em CLIENTE IDENTIFICADO/TOMADORES)
 - Chutar a causa do erro ("normalmente é falta de campo X")
 
+IMPORTANTE — AUTO-FIX AUTOMÁTICO:
+O sistema tem um diagnóstico mecânico (anaAutoFixService) que tenta detectar erros conhecidos (logradouro vazio do tomador, IM com caracteres não-numéricos, regime tributário Simples sem regApTribSN, codigo_municipio inválido) e CORRIGIR sozinho via UPDATE no banco antes de te entregar a falha. Se você está vendo um erro de emissão, é porque o auto-fix:
+  (a) tentou e ainda assim a SEFIN recusou — então a observação no feedback vai conter "[AutoFix: ...]" indicando o que foi tentado, OU
+  (b) não identificou padrão mecânico aplicável.
+
+Em ambos os casos, NÃO TENTE adivinhar o que falta — o sistema já tentou o que sabia.
+
 O QUE FAZER no erro de emissão:
 1. Repasse o erro EXATAMENTE como o sistema mandou (códigos SEFIN, descrição, mensagem de pré-validação) — sem reformulação criativa
-2. Se for erro de schema (RNG…) ou rejeição genérica, transfere pro humano: "Esse erro precisa do Thiago olhar — chamando ele aqui" + [ACAO:TRANSFERIR_HUMANO]
-3. Se for erro com causa óbvia E corrigível pela equipe (ex: "código de serviço (cTribNac) não cadastrado. Sugestões: 1) X, 2) Y") — apresenta as sugestões LITERAIS do sistema e espera resposta
-4. Se a equipe perguntar "consegue revisar?" depois de erro de schema — você NÃO pode revisar XML, fala isso e transfere: "Não consigo revisar o XML aqui — chamando o Thiago" + [ACAO:TRANSFERIR_HUMANO]
+2. Se a observação contém "[AutoFix: ...]" — mencione brevemente que o sistema já tentou corrigir (ex: "tentei corrigir o endereço do tomador via Receita mas a prefeitura ainda recusou")
+3. Se for erro de schema (RNG…) ou rejeição genérica não coberta por auto-fix, transfere pro humano: "Esse erro precisa do Thiago olhar — chamando ele aqui" + [ACAO:TRANSFERIR_HUMANO]
+4. Se for erro com causa óbvia E corrigível pela equipe (ex: "código de serviço (cTribNac) não cadastrado. Sugestões: 1) X, 2) Y") — apresenta as sugestões LITERAIS do sistema e espera resposta
+5. Se a equipe perguntar "consegue revisar?" depois de erro de schema — você NÃO pode revisar XML, fala isso e transfere: "Não consigo revisar o XML aqui — chamando o Thiago" + [ACAO:TRANSFERIR_HUMANO]
 
 NUNCA peça os dados do cadastro do PRESTADOR (cliente Marçal que está emitindo) — esses dados estão sempre cadastrados ou são problema de configuração que só o Thiago resolve no painel.
 
@@ -1474,10 +1482,64 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 }
                 console.error(`[WhatsApp] Erro ao tentar emitir NF ${nfId}: ${errMsg}`);
                 if (errDetalhes) console.error(`[WhatsApp] Detalhes SEFIN: ${errDetalhes}`);
-                db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
-                  .run('erro_emissao', `${errMsg}${errDetalhes ? ' | ' + errDetalhes : ''}`, nfId);
-                emissaoStatus = 'erro_emissao';
-                emissaoInfo = errMsg;
+
+                // Sprint 1.5 — Auto-fix: tenta corrigir mecanicamente e re-emitir UMA vez
+                let autoFixObs = '';
+                if (!notaCompleta._autoFixTentado) {
+                  try {
+                    const anaAutoFixService = require('./anaAutoFixService');
+                    const codigosSefin = _sefinErros.map(e => String(e.Codigo || e.codigo || '').toUpperCase());
+                    const fix = await anaAutoFixService.tentarCorrecao({
+                      erroMsg: errMsg,
+                      codigosSefin,
+                      cliente: clienteCompleto,
+                      tomador: tomadorCompleto,
+                      nota: notaCompleta,
+                      db,
+                    });
+
+                    if (fix && fix.aplicou) {
+                      notaCompleta._autoFixTentado = true;
+                      autoFixObs = ` | [AutoFix: ${fix.motivo}]`;
+                      console.log(`[AutoFix] ✅ ${fix.motivo} — re-tentando emissão NF ${nfId}`);
+
+                      // Recarrega entidades do banco se foram alteradas
+                      const cli2 = fix.recarregar?.cliente
+                        ? db.prepare('SELECT * FROM clientes WHERE id = ?').get(contato.cliente_id)
+                        : clienteCompleto;
+                      const tom2 = fix.recarregar?.tomador
+                        ? db.prepare('SELECT * FROM tomadores WHERE id = ?').get(tomador.id)
+                        : tomadorCompleto;
+
+                      try {
+                        const r2 = await nfseService.emitirNFSe(notaCompleta, cli2, tom2);
+                        if (r2.sucesso) {
+                          db.prepare('UPDATE notas_fiscais SET status = ?, numero_nfse = ?, chave_acesso = ?, data_emissao = datetime(?), observacoes = ? WHERE id = ?')
+                            .run('emitida', r2.numeroNfse, r2.chaveAcesso, new Date().toISOString(), `[AutoFix aplicado: ${fix.motivo}]`, nfId);
+                          emissaoStatus = 'emitida';
+                          emissaoInfo = r2.numeroNfse;
+                          emissaoChaveAcesso = r2.chaveAcesso;
+                          console.log(`[WhatsApp] ✅ NF ${nfId} emitida APÓS AutoFix: numero=${r2.numeroNfse}`);
+                        } else {
+                          errMsg = `${errMsg} (auto-fix tentado: ${fix.motivo}; SEFIN ainda recusou: ${r2.erro})`;
+                        }
+                      } catch (e2) {
+                        const e2Msg = e2.mensagem || e2.message || String(e2);
+                        errMsg = `${errMsg} (auto-fix tentado: ${fix.motivo}; nova falha: ${e2Msg.substring(0, 200)})`;
+                      }
+                    }
+                  } catch (autoFixErr) {
+                    console.warn('[AutoFix] erro no service:', autoFixErr.message);
+                  }
+                }
+
+                // Persiste erro só se a re-emissão não conseguiu salvar
+                if (emissaoStatus !== 'emitida') {
+                  db.prepare('UPDATE notas_fiscais SET status = ?, observacoes = ? WHERE id = ?')
+                    .run('erro_emissao', `${errMsg}${errDetalhes ? ' | ' + errDetalhes : ''}${autoFixObs}`, nfId);
+                  emissaoStatus = 'erro_emissao';
+                  emissaoInfo = errMsg;
+                }
               }
 
               // Armazena feedback para a resposta
