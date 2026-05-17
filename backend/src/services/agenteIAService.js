@@ -14,6 +14,7 @@ const anaRouterService = require('./anaRouterService');
 const anaGroundingValidator = require('./anaGroundingValidator');
 const joaoService = require('./joaoService');
 const clienteCadastroAuditor = require('./clienteCadastroAuditor');
+const clienteSyncService = require('./clienteSyncService');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -373,9 +374,10 @@ class AgenteIAService {
         return { texto: respostaLimpa + `\n\n⚠️ ${fb.erro || 'Não consegui consultar o cadastro.'}`, acoes };
       }
 
-      // Feedback dos jobs João (back-office Domínio enfileirado pro daemon local)
+      // Feedback dos jobs João enfileirados (back-office Domínio via daemon local).
+      // MONITORAR_ONVIO foi separado pra atualização imediata (sem job).
       const acoesJoao = acoes.filter(a =>
-        ['CLASSIFICAR_EXTRATO', 'IMPORTAR_TXT_DOMINIO', 'GERAR_OBRIGACAO', 'MONITORAR_ONVIO'].includes(a.tipo)
+        ['CLASSIFICAR_EXTRATO', 'IMPORTAR_TXT_DOMINIO', 'GERAR_OBRIGACAO'].includes(a.tipo)
         && a.feedback
       );
       if (acoesJoao.length > 0) {
@@ -391,6 +393,18 @@ class AgenteIAService {
         }
         const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
         return { texto: respostaLimpa + blocos, acoes };
+      }
+
+      // Feedback MONITORAR_ONVIO (resposta imediata, sem job)
+      const acaoMonOnvio = acoes.find(a => a.tipo === 'MONITORAR_ONVIO' && a.feedback);
+      if (acaoMonOnvio?.feedback) {
+        const fb = acaoMonOnvio.feedback;
+        const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+        if (fb.sucesso) {
+          const emoji = fb.estado === 'on' ? '🟢' : '⚪';
+          return { texto: respostaLimpa + `\n\n${emoji} ${fb.mensagem}`, acoes };
+        }
+        return { texto: respostaLimpa + `\n\n⚠️ ${fb.erro}`, acoes };
       }
     }
 
@@ -2025,17 +2039,65 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           break;
 
         case 'MONITORAR_ONVIO':
-          this._enfileirarJobJoao(acao, contato, conversaId, {
-            tipo: 'monitorar_onvio',
-            campos: ['cliente_id', 'estado'],  // estado = 'on' | 'off'
-            rotulo: 'monitorar Onvio Documentos',
-            requerAprovacao: false,  // ligar/desligar polling não é destrutivo
-          });
+          this._executarMonitorarOnvio(acao, contato);
           break;
 
         default:
           console.log(`[WhatsApp] Ação não implementada: ${acao.tipo}`);
       }
+    }
+  }
+
+  /**
+   * Liga/desliga monitoramento Onvio Documentos pra um cliente. Resposta imediata
+   * (atualiza tabela onvio_monitored_clients direto, sem precisar do daemon).
+   * Daemon João consome a tabela na próxima rodada do watcher.
+   *
+   * Parâmetro: cliente_id|estado (estado = 'on' | 'off')
+   * Modo equipe only.
+   */
+  _executarMonitorarOnvio(acao, contato) {
+    const rotulo = 'monitorar Onvio Documentos';
+    const ehContextoEquipe = !!(contato?.modoEquipe?.ehEquipe || contato?.ehAdmin);
+    if (!ehContextoEquipe) {
+      acao.feedback = { sucesso: false, rotulo, erro: 'Ação só pra equipe Marçal.' };
+      return;
+    }
+    if (!acao.parametro) {
+      acao.feedback = { sucesso: false, rotulo, erro: 'Parâmetro obrigatório: cliente_id|on|off' };
+      return;
+    }
+    const partes = String(acao.parametro).split('|');
+    const clienteId = parseInt(partes[0], 10);
+    const estado = (partes[1] || '').trim().toLowerCase();
+    if (!Number.isFinite(clienteId)) {
+      acao.feedback = { sucesso: false, rotulo, erro: `cliente_id inválido: "${partes[0]}"` };
+      return;
+    }
+    if (!['on', 'off'].includes(estado)) {
+      acao.feedback = { sucesso: false, rotulo, erro: `estado deve ser 'on' ou 'off' (recebido: "${estado}")` };
+      return;
+    }
+
+    try {
+      const ativadoPor = `ana:${contato?.modoEquipe?.operador || (contato?.ehAdmin ? 'admin' : 'desconhecido')}`;
+      const r = clienteSyncService.setOnvioMonitorado(clienteId, {
+        ativo: estado === 'on',
+        ativado_por: ativadoPor,
+      });
+      acao.feedback = {
+        sucesso: true,
+        rotulo,
+        cliente_id: clienteId,
+        estado,
+        mensagem: estado === 'on'
+          ? `Monitoramento Onvio LIGADO pro cliente #${clienteId}. Daemon vai checar a pasta a cada rodada.`
+          : `Monitoramento Onvio DESLIGADO pro cliente #${clienteId}.`,
+      };
+      console.log(`[WhatsApp] ✓ Onvio monitor ${estado}: cliente=${clienteId} por ${ativadoPor}`);
+    } catch (err) {
+      acao.feedback = { sucesso: false, rotulo, erro: err.message };
+      console.warn(`[WhatsApp] ❌ Falha em MONITORAR_ONVIO: ${err.message}`);
     }
   }
 

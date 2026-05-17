@@ -24,6 +24,7 @@
 const express = require('express');
 const router = express.Router();
 const joaoService = require('../services/joaoService');
+const clienteSyncService = require('../services/clienteSyncService');
 const { autenticado, apenasEscritorio } = require('../middleware/auth');
 
 // Notifica a origem via WhatsApp quando job finaliza (fire-and-forget).
@@ -100,6 +101,59 @@ router.post('/daemon/jobs/:id/falhar', autenticarDaemon, express.json(), (req, r
     const job = joaoService.falhar(jobId, erro || 'erro não informado');
     _notificarOrigemJob(job);
     res.json({ ok: true, job });
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+});
+
+// ── Endpoints de sync (autenticados pelo segredo do daemon) ─────────────────
+//
+// O daemon João envia upserts em lote (skill dominio-sync-clientes) e
+// gerencia clientes monitorados pra Onvio (skill onvio-doc-watcher).
+
+router.post('/sync/clientes', autenticarDaemon, express.json({ limit: '10mb' }), (req, res) => {
+  try {
+    const { clientes, fonte, job_id, parcial } = req.body || {};
+    if (!Array.isArray(clientes)) {
+      return res.status(400).json({ erro: 'body.clientes deve ser array' });
+    }
+    const resumo = clienteSyncService.aplicarSync({ clientes, fonte, job_id });
+    res.json({ ok: true, parcial: !!parcial, ...resumo });
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+});
+
+router.get('/sync/clientes/historico', autenticarDaemon, (req, res) => {
+  try {
+    const limite = req.query.limite ? parseInt(req.query.limite, 10) : 20;
+    res.json({ historico: clienteSyncService.historicoSyncs({ limite }) });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+router.get('/sync/onvio-monitored', autenticarDaemon, (req, res) => {
+  try {
+    const apenas_ativos = req.query.todos !== '1';
+    res.json({ clientes: clienteSyncService.listarOnvioMonitorados({ apenas_ativos }) });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+router.post('/sync/onvio-monitored/:cliente_id', autenticarDaemon, express.json(), (req, res) => {
+  try {
+    const clienteId = parseInt(req.params.cliente_id, 10);
+    if (!clienteId) return res.status(400).json({ erro: 'cliente_id inválido' });
+
+    // 2 modos: ativar/desativar OU registrar verificação (com arquivos_vistos)
+    if (req.body && req.body.arquivos_vistos !== undefined) {
+      const r = clienteSyncService.registrarVerificacaoOnvio(clienteId, req.body);
+      return res.json({ ok: true, monitorado: r });
+    }
+    const r = clienteSyncService.setOnvioMonitorado(clienteId, req.body || {});
+    res.json({ ok: true, monitorado: r });
   } catch (err) {
     res.status(400).json({ erro: err.message });
   }

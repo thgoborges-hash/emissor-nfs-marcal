@@ -462,3 +462,60 @@ CREATE TABLE IF NOT EXISTS joao_daemon_heartbeat (
   metadata TEXT                           -- JSON livre com info do daemon (Mac, Chrome, etc)
 );
 INSERT OR IGNORE INTO joao_daemon_heartbeat (id, ultimo_ping) VALUES (1, NULL);
+
+-- =====================================================
+-- Sync Domínio → Emissor (cadastro de clientes)
+-- =====================================================
+-- Log de cada operação de sync (skill `dominio-sync-clientes` envia upserts em
+-- lote via POST /api/joao/sync/clientes; servidor reconcilia com a tabela
+-- `clientes` e registra aqui o que mudou. Painel mostra "última sync" + diff.
+CREATE TABLE IF NOT EXISTS clientes_sync_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  iniciado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+  finalizado_em DATETIME,
+  fonte TEXT NOT NULL DEFAULT 'dominio',  -- 'dominio' | 'manual' | etc
+  total_recebidos INTEGER NOT NULL DEFAULT 0,
+  novos INTEGER NOT NULL DEFAULT 0,
+  atualizados INTEGER NOT NULL DEFAULT 0,
+  inalterados INTEGER NOT NULL DEFAULT 0,
+  conflitos INTEGER NOT NULL DEFAULT 0,
+  erros INTEGER NOT NULL DEFAULT 0,
+  job_id INTEGER,                         -- FK joao_jobs (se veio de job)
+  detalhes TEXT,                          -- JSON com diff por cliente_id
+  status TEXT NOT NULL DEFAULT 'running'  -- 'running' | 'done' | 'failed'
+);
+
+CREATE INDEX IF NOT EXISTS idx_clientes_sync_log_data ON clientes_sync_log(iniciado_em DESC);
+
+-- Última sync por cliente — pra detectar drift, e pra equipe ver
+-- "ESTUDIO SOMA: sincronizado pela última vez há 3d" no painel.
+CREATE TABLE IF NOT EXISTS clientes_sync_status (
+  cliente_id INTEGER PRIMARY KEY,
+  ultima_sync_em DATETIME,
+  ultimo_log_id INTEGER,                  -- FK clientes_sync_log
+  hash_dominio TEXT,                      -- hash do snapshot Domínio na última sync
+  campos_dessincronizados TEXT,           -- JSON: campos que divergem (se conflito)
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+);
+
+-- =====================================================
+-- Onvio doc-watcher — clientes monitorados + arquivos vistos
+-- =====================================================
+-- Quando equipe pede `[ACAO:MONITORAR_ONVIO:cliente_id|on]`, cria/atualiza
+-- linha aqui. Skill `onvio-doc-watcher` (rodando como job recorrente do João)
+-- lê esta tabela pra saber quem monitorar, varre Onvio Documentos via Chrome
+-- MCP, e enfileira `classificar_extrato` pra cada PDF novo.
+CREATE TABLE IF NOT EXISTS onvio_monitored_clients (
+  cliente_id INTEGER PRIMARY KEY,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  pasta_path TEXT,                        -- caminho da pasta de extratos no Onvio (cache)
+  ultima_verificacao DATETIME,
+  arquivos_vistos TEXT,                   -- JSON: array de file IDs/nomes já processados
+  total_extratos_processados INTEGER DEFAULT 0,
+  ultimo_extrato_em DATETIME,
+  ativado_por TEXT,
+  ativado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_onvio_monitored_ativo ON onvio_monitored_clients(ativo);
