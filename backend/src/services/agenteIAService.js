@@ -13,6 +13,7 @@ const anaModoEquipeService = require('./anaModoEquipeService');
 const anaRouterService = require('./anaRouterService');
 const anaGroundingValidator = require('./anaGroundingValidator');
 const joaoService = require('./joaoService');
+const clienteCadastroAuditor = require('./clienteCadastroAuditor');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -359,6 +360,17 @@ class AgenteIAService {
         }
         const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
         return { texto: respostaLimpa + blocos, acoes };
+      }
+
+      // Feedback de CONSULTAR_CADASTRO_CLIENTE
+      const acaoCadastro = acoes.find(a => a.tipo === 'CONSULTAR_CADASTRO_CLIENTE' && a.feedback);
+      if (acaoCadastro?.feedback) {
+        const fb = acaoCadastro.feedback;
+        const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+        if (fb.sucesso && fb.relatorio) {
+          return { texto: (respostaLimpa ? respostaLimpa + '\n\n' : '') + fb.relatorio, acoes };
+        }
+        return { texto: respostaLimpa + `\n\n⚠️ ${fb.erro || 'Não consegui consultar o cadastro.'}`, acoes };
       }
 
       // Feedback dos jobs João (back-office Domínio enfileirado pro daemon local)
@@ -719,6 +731,17 @@ Se a mensagem já trouxer todos os dados, dispara a ação direto, sem template.
 \`📝 *CANCELAR NF*\` • Número OU chave (47 dígitos) _____ • Motivo (≥15 chars) _____
 
 \`📝 *DARF (Sicalc)*\` • CNPJ _____ • Tributo _____ (IRPJ/CSLL/COFINS/PIS/IRRF/INSS ou código 4 dígitos) • Período __/____ • Valor R$ _____ — vencimento calculo sozinha (último dia útil do mês seguinte) salvo aviso
+
+## Ação de consulta de cadastro (anti-alucinação)
+
+\`[ACAO:CONSULTAR_CADASTRO_CLIENTE:cnpj_prestador|cnpj_ou_cpf_tomador]\` (2º campo opcional)
+
+Quando usar:
+- Rejeição SEFIN do tipo schema (RNG6110, "Falha Schema Xml") → 90% das vezes é campo vazio no cadastro. Consulta antes de chutar lista genérica.
+- Equipe perguntando "tá faltando algo no cadastro do X?" → consulta e responde fato, não suposição.
+- Antes de emitir NF cliente novo → ver se cadastro tá pronto.
+
+Resposta volta com checklist do prestador (e tomador se informado): 🔴 crítico vazio, 🟡 não-crítico, ✅ ok. NÃO INVENTE — só fale o que o relatório retornar.
 
 ## Ações extras (Integra Contador — só dígitos do CNPJ, 14 chars)
 - \`[ACAO:CONSULTAR_PGDASD_ULTIMA:cnpj]\` — última PGDAS-D (Simples) do cliente
@@ -1972,6 +1995,10 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           await this._executarAcaoDarf(acao);
           break;
 
+        case 'CONSULTAR_CADASTRO_CLIENTE':
+          this._executarConsultarCadastro(acao, contato);
+          break;
+
         // ── Ações João (back-office Domínio via daemon local) ─────────────
         case 'CLASSIFICAR_EXTRATO':
           this._enfileirarJobJoao(acao, contato, conversaId, {
@@ -2009,6 +2036,73 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
         default:
           console.log(`[WhatsApp] Ação não implementada: ${acao.tipo}`);
       }
+    }
+  }
+
+  /**
+   * Consulta o cadastro de um cliente (prestador) e opcionalmente um tomador,
+   * retornando relatório com campos faltando/inválidos. Substitui a alucinação
+   * "campos faltando: pode ser X, Y, Z" pelo dado real do banco.
+   *
+   * Parametro: cnpj_prestador|cnpj_ou_cpf_tomador (tomador opcional)
+   * Modo equipe only — cliente externo não consulta cadastro de carteira.
+   */
+  _executarConsultarCadastro(acao, contato) {
+    const rotulo = 'consultar cadastro';
+    const ehContextoEquipe = !!(contato?.modoEquipe?.ehEquipe || contato?.ehAdmin);
+    if (!ehContextoEquipe) {
+      acao.feedback = {
+        sucesso: false,
+        rotulo,
+        erro: 'Consulta de cadastro é só pra equipe Marçal.',
+      };
+      console.warn('[WhatsApp] 🛑 CONSULTAR_CADASTRO_CLIENTE bloqueado: contexto não-equipe');
+      return;
+    }
+
+    if (!acao.parametro) {
+      acao.feedback = { sucesso: false, rotulo, erro: 'Parâmetro obrigatório: cnpj_prestador (e cnpj_tomador opcional separado por "|").' };
+      return;
+    }
+
+    const partes = String(acao.parametro).split('|');
+    const cnpjPrestador = (partes[0] || '').replace(/\D/g, '');
+    const docTomador = partes[1] ? partes[1].replace(/\D/g, '') : null;
+
+    if (cnpjPrestador.length !== 14) {
+      acao.feedback = { sucesso: false, rotulo, erro: `CNPJ do prestador inválido: "${partes[0]}". Tem que ter 14 dígitos.` };
+      return;
+    }
+
+    try {
+      const cliente = clienteCadastroAuditor.buscarClientePorCnpj(cnpjPrestador);
+      if (!cliente) {
+        acao.feedback = { sucesso: false, rotulo, erro: `Não achei cliente com CNPJ ${cnpjPrestador} na carteira.` };
+        return;
+      }
+      const auditCli = clienteCadastroAuditor.auditarCliente(cliente);
+
+      let auditTom = null;
+      if (docTomador && docTomador.length >= 11) {
+        const tomador = clienteCadastroAuditor.buscarTomadorDoCliente(cliente.id, docTomador);
+        if (!tomador) {
+          const relatorio = clienteCadastroAuditor.formatarRelatorio(auditCli, null);
+          acao.feedback = {
+            sucesso: true,
+            rotulo,
+            relatorio: relatorio + `\n\n⚠️ Tomador com documento ${docTomador} NÃO cadastrado pra esse prestador. Antes de emitir, cadastra o tomador no painel.`,
+          };
+          return;
+        }
+        auditTom = clienteCadastroAuditor.auditarTomador(tomador);
+      }
+
+      const relatorio = clienteCadastroAuditor.formatarRelatorio(auditCli, auditTom);
+      acao.feedback = { sucesso: true, rotulo, relatorio, auditCli, auditTom };
+      console.log(`[WhatsApp] ✓ Cadastro consultado: cliente=${cliente.id}/${cliente.razao_social} | criticos=${auditCli.criticos}${auditTom ? ` | tomador_criticos=${auditTom.criticos}` : ''}`);
+    } catch (err) {
+      console.error('[WhatsApp] erro em CONSULTAR_CADASTRO_CLIENTE:', err);
+      acao.feedback = { sucesso: false, rotulo, erro: `Erro consultando cadastro: ${err.message}` };
     }
   }
 
