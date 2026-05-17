@@ -12,6 +12,7 @@ const integraContadorService = require('./integraContadorService');
 const anaModoEquipeService = require('./anaModoEquipeService');
 const anaRouterService = require('./anaRouterService');
 const anaGroundingValidator = require('./anaGroundingValidator');
+const joaoService = require('./joaoService');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -350,6 +351,26 @@ class AgenteIAService {
         let blocos = '';
         for (const a of acoesIntegra) {
           blocos += '\n\n' + this._formatarFeedbackIntegraContador(a.feedback);
+        }
+        const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+        return { texto: respostaLimpa + blocos, acoes };
+      }
+
+      // Feedback dos jobs João (back-office Domínio enfileirado pro daemon local)
+      const acoesJoao = acoes.filter(a =>
+        ['CLASSIFICAR_EXTRATO', 'IMPORTAR_TXT_DOMINIO', 'GERAR_OBRIGACAO', 'MONITORAR_ONVIO'].includes(a.tipo)
+        && a.feedback
+      );
+      if (acoesJoao.length > 0) {
+        let blocos = '';
+        for (const a of acoesJoao) {
+          const fb = a.feedback;
+          if (fb.sucesso) {
+            const emoji = fb.status === 'pending_approval' ? '⏸️' : '⏳';
+            blocos += `\n\n${emoji} *${fb.rotulo}* — job #${fb.job_id} ${fb.status === 'pending_approval' ? 'aguardando aprovação no painel' : 'na fila'}.`;
+          } else {
+            blocos += `\n\n⚠️ Não consegui agendar *${fb.rotulo || a.tipo.toLowerCase()}*: ${fb.erro}`;
+          }
         }
         const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
         return { texto: respostaLimpa + blocos, acoes };
@@ -705,6 +726,17 @@ Se a mensagem já trouxer todos os dados, dispara a ação direto, sem template.
 - \`[ACAO:SOLICITAR_SITFIS:cnpj]\` — Relatório Situação Fiscal (substitui CND)
 - \`[ACAO:EMITIR_CCMEI:cnpj]\` — Certificado de MEI
 - \`[ACAO:EMITIR_DARF:cnpj|codigoReceita|YYYYMM|DDMMYYYY|valor]\` — DARF via Sicalc
+
+## Ações João (back-office / Domínio Web — fila assíncrona, daemon local executa)
+
+Estas ações enfileiram jobs pro daemon João que roda no Mac do Thiago e opera o GO-Global do Domínio via computer-use. **Ações sensíveis** (importar TXT, gerar obrigação) entram em \`pending_approval\` — operador aprova no painel antes de rodar. Tempo médio: alguns minutos.
+
+- \`[ACAO:CLASSIFICAR_EXTRATO:cliente_id|pdf_url]\` — pega PDF de extrato bancário (link de download), classifica lançamentos por categoria, gera entradas.txt. Responde: "tô na fila, daemon vai puxar em instantes".
+- \`[ACAO:IMPORTAR_TXT_DOMINIO:cliente_id|codigo_empresa|caminho_txt|conjunto_dados]\` — importa TXT de lançamentos no Domínio Web (skill dominio-importar-txt). conjunto_dados típico: "Lançamentos Contábeis (Partida Múltiplas) (3.1) (5)". Validação CNPJ antes.
+- \`[ACAO:GERAR_OBRIGACAO:cliente_id|sub_tipo|periodo]\` — sub_tipo ∈ {ecd, balancete, encerramento, dre}. periodo formato YYYY-MM (mensal) ou YYYY (anual). Roda computer-use no Domínio.
+- \`[ACAO:MONITORAR_ONVIO:cliente_id|on|off]\` — liga ou desliga polling Chrome MCP no Onvio Documentos. Quando "on", daemon checa a cada 15min se tem extrato novo.
+
+Quando equipe pedir algo do back-office, dispare a ação e responda curto: "Já enfileirei, daemon avisa quando terminar. Levam alguns minutos."
 
 Apoio: cliente sem A1 → dispatcher devolve "Fulano não tem A1 configurado" — passe pro operador e peça pra subir o certificado.`;
     }
@@ -1935,9 +1967,128 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           await this._executarAcaoDarf(acao);
           break;
 
+        // ── Ações João (back-office Domínio via daemon local) ─────────────
+        case 'CLASSIFICAR_EXTRATO':
+          this._enfileirarJobJoao(acao, contato, conversaId, {
+            tipo: 'classificar_extrato',
+            campos: ['cliente_id', 'pdf_url'],
+            rotulo: 'classificar extrato',
+          });
+          break;
+
+        case 'IMPORTAR_TXT_DOMINIO':
+          this._enfileirarJobJoao(acao, contato, conversaId, {
+            tipo: 'importar_txt',
+            campos: ['cliente_id', 'codigo_empresa', 'caminho_txt', 'conjunto_dados'],
+            rotulo: 'importar TXT no Domínio',
+          });
+          break;
+
+        case 'GERAR_OBRIGACAO':
+          this._enfileirarJobJoao(acao, contato, conversaId, {
+            tipo: 'gerar_obrigacao',
+            campos: ['cliente_id', 'sub_tipo', 'periodo'],
+            rotulo: 'gerar obrigação contábil',
+          });
+          break;
+
+        case 'MONITORAR_ONVIO':
+          this._enfileirarJobJoao(acao, contato, conversaId, {
+            tipo: 'monitorar_onvio',
+            campos: ['cliente_id', 'estado'],  // estado = 'on' | 'off'
+            rotulo: 'monitorar Onvio Documentos',
+            requerAprovacao: false,  // ligar/desligar polling não é destrutivo
+          });
+          break;
+
         default:
           console.log(`[WhatsApp] Ação não implementada: ${acao.tipo}`);
       }
+    }
+  }
+
+  /**
+   * Enfileira um job pro daemon João. Só permite em modo equipe (clientes finais
+   * não devem disparar back-office). Marca feedback na ação pra o caller responder
+   * algo tipo "tô na fila, daemon avisa quando terminar".
+   *
+   * @param {Object} acao
+   * @param {Object} contato — contatoExpandido com modoEquipe/ehAdmin
+   * @param {number} conversaId
+   * @param {Object} cfg
+   * @param {string} cfg.tipo — joaoService TIPOS_VALIDOS
+   * @param {string[]} cfg.campos — nomes ordenados dos campos do parametro pipe-separado
+   * @param {string} cfg.rotulo — descrição humana ("classificar extrato")
+   * @param {boolean} [cfg.requerAprovacao] — sobrescreve default (sensível por tipo)
+   */
+  _enfileirarJobJoao(acao, contato, conversaId, cfg) {
+    // Bloqueia se não for modo equipe — clientes finais não disparam back-office
+    const ehContextoEquipe = !!(contato?.modoEquipe?.ehEquipe || contato?.ehAdmin);
+    if (!ehContextoEquipe) {
+      acao.feedback = {
+        sucesso: false,
+        rotulo: cfg.rotulo,
+        erro: 'Essa ação é do back-office, só posso disparar a pedido da equipe Marçal. Vou chamar o Thiago.',
+      };
+      console.warn(`[WhatsApp] 🛑 ${acao.tipo} bloqueado: cliente externo não pode disparar back-office`);
+      return;
+    }
+
+    if (!acao.parametro) {
+      acao.feedback = { sucesso: false, rotulo: cfg.rotulo, erro: `Parâmetros obrigatórios: ${cfg.campos.join('|')}` };
+      return;
+    }
+
+    const partes = String(acao.parametro).split('|');
+    const parametros = {};
+    for (let i = 0; i < cfg.campos.length; i++) {
+      const valor = (partes[i] || '').trim();
+      if (!valor) {
+        acao.feedback = {
+          sucesso: false,
+          rotulo: cfg.rotulo,
+          erro: `Campo "${cfg.campos[i]}" faltando. Esperado: ${cfg.campos.join('|')}.`,
+        };
+        return;
+      }
+      parametros[cfg.campos[i]] = valor;
+    }
+
+    // cliente_id é número se estiver presente
+    if (parametros.cliente_id) {
+      const n = parseInt(parametros.cliente_id, 10);
+      if (!Number.isFinite(n)) {
+        acao.feedback = { sucesso: false, rotulo: cfg.rotulo, erro: `cliente_id inválido: ${parametros.cliente_id}` };
+        return;
+      }
+      parametros.cliente_id = n;
+    }
+
+    try {
+      const r = joaoService.enfileirar({
+        tipo: cfg.tipo,
+        cliente_id: parametros.cliente_id || null,
+        parametros,
+        criado_por: `ana:${contato?.modoEquipe?.operador || (contato?.ehAdmin ? 'admin' : 'desconhecido')}`,
+        requer_aprovacao: cfg.requerAprovacao,
+        origem_conversa_id: conversaId,
+        origem_telefone: contato?.telefone || null,
+        prioridade: 5,
+      });
+      const precisaAprovacao = r.status === 'pending_approval';
+      acao.feedback = {
+        sucesso: true,
+        rotulo: cfg.rotulo,
+        job_id: r.id,
+        status: r.status,
+        mensagem: precisaAprovacao
+          ? `Job #${r.id} (${cfg.rotulo}) criado e aguardando aprovação no painel. Aprovado → daemon executa.`
+          : `Job #${r.id} (${cfg.rotulo}) enfileirado. Daemon vai puxar em instantes — eu te aviso aqui quando terminar.`,
+      };
+      console.log(`[WhatsApp] ✓ João job enfileirado: id=${r.id} tipo=${cfg.tipo} status=${r.status}`);
+    } catch (err) {
+      acao.feedback = { sucesso: false, rotulo: cfg.rotulo, erro: err.message };
+      console.warn(`[WhatsApp] ❌ Falha enfileirando João job (${cfg.tipo}): ${err.message}`);
     }
   }
 

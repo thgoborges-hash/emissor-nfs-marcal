@@ -49,16 +49,19 @@ Agente conversacional em WhatsApp da Marçal. Atende clientes finais (PMEs, MEIs
 
 ## Status dos sprints (revisão arquitetural ANA)
 
-Plano completo em `ana-revisao-arquitetural.md` (raiz do projeto). Diagnóstico: prompt monolítico de 462 linhas + 20 actions planas. 3 sintomas reportados pelo Thiago: (1) não entende intenção, (2) inventa info, (3) erra ações sensíveis.
+Plano completo em `ana-revisao-arquitetural.md` (raiz do projeto). Diagnóstico original: prompt monolítico de 462 linhas + 20 actions planas. 3 sintomas reportados pelo Thiago: (1) não entende intenção, (2) inventa info, (3) erra ações sensíveis.
 
-**Sprint 1 (alto impacto, baixo esforço):**
-- ✅ **1.2 — Detecção de modo equipe robusta** (commit `fc8515f`, em produção). Whitelist + filtros stop-words.
-- ⏳ **1.1 — Router Haiku como pré-classificador** (código pronto em `backend/src/services/anaRouterService.js`, **não pushado**). Promove o Haiku validador a router que classifica intenção+modo+confiança ANTES de chamar Sonnet.
-- ⏳ **1.3 — Grounding obrigatório com validação pré-envio** (código pronto em `backend/src/services/anaGroundingValidator.js`, **não pushado**). Saída do Sonnet em modo consulta exige fontes (tool result ou skill); validador Haiku bloqueia pré-envio se fonte vazia.
+**Sprint 1 — todo em produção:**
+- ✅ **1.1 — Router Haiku como pré-classificador** (`backend/src/services/anaRouterService.js`, 241 linhas, plugado em `agenteIAService.js:143-168`). Early-exit em `deve_ignorar` (grupo) e `deve_handoff` (confiança <60). Hint da intenção injetada no system prompt do Sonnet.
+- ✅ **1.2 — Detecção de modo equipe robusta** (commit `fc8515f`). 3 camadas: admin → grupo staff → prefixo+whitelist.
+- ✅ **1.3 — Grounding obrigatório com validação pré-envio** (`backend/src/services/anaGroundingValidator.js`, 329 linhas, plugado em `agenteIAService.js:179-194`). Regex pré-filtro pra promessa vazia + fato sem fonte; Haiku confirma antes de bloquear. Bloqueia → substitui por transferência humana sem cliente ver promessa vazia.
+- ✅ **1.5 — ANA pró-ativa (auto-fix antes de transferir)** (commit `55225fa`). Quando detecta erro de emissão tratável, tenta corrigir antes de pedir humano.
 
-**Sprint 2 (médio impacto):**
-- 🔲 **2.1 — Plano-antes-de-executar** pra ações irreversíveis (EMITIR_NF, CANCELAR_NF, EMITIR_DARF, ATUALIZAR_CLIENTE)
+**Sprint 2 — parcial:**
+- ✅ **2.1 — Confirmação antes de emitir** (commit `408509b`, modo cliente externo). Plano-antes-de-executar pra EMITIR_NF — pede "Confirma?" antes de disparar.
 - 🔲 **2.2 — Tier de autonomia por ação** via tabela `ana_acoes_config`
+
+**Refactor prompt** (commit `32b8ac8`): system prompt podado 460→250 linhas. Reduz vazamento de regras de equipe pra modo cliente.
 
 **Sprint 3 (refactor estrutural):**
 - 🔲 **3.1 — Tool design hierárquico** (6 meta-tools no lugar de 20 planas)
@@ -70,6 +73,18 @@ Plano completo em `ana-revisao-arquitetural.md` (raiz do projeto). Diagnóstico:
 
 **Sprint 5 (memória):**
 - 🔲 **5.1 — Memória em 3 camadas** (short, mid resumo, long perfil cliente)
+
+## Fusão com projeto João — Analista Contábil
+
+Projeto irmão em `/Users/thgob/Documents/Claude/Projects/joao-analista-contabil/` (plugin Claude Code, agente + 9 skills). João é o "back-office" — opera o Domínio Web via computer-use no GO-Global pra coisas que NÃO têm API: importação TXT de lançamentos, classificação de extrato, ECD/PVA, integração Fiscal/Folha→Contábil.
+
+**Arquitetura cliente-servidor proposta (em construção 2026-05-17):**
+- Emissor expõe `POST /api/joao/jobs` que enfileira tarefas na tabela `joao_jobs` (SQLite).
+- Daemon local no Mac do Thiago faz long-poll na fila, executa skill correspondente via computer-use, devolve resultado.
+- Ana ganha 4 novas tools: `EXECUTAR_NO_DOMINIO`, `CLASSIFICAR_EXTRATO`, `GERAR_OBRIGACAO`, `MONITORAR_ONVIO`.
+- Ações irreversíveis (importar TXT, transmitir ECD) entram em `pending_approval` no painel.
+
+Detalhamento completo em `STATUS.md` do projeto João.
 
 ## Decisões arquiteturais não-óbvias
 
@@ -149,6 +164,8 @@ Adicionar ao `.gitignore`:
 ```
 
 ## Próximos passos pra Claude Code
+
+> **Nota 2026-05-17**: Sprints 1.1/1.3/1.5/2.1 e refactor do prompt JÁ ESTÃO EM PRODUÇÃO. As instruções abaixo de "validar e plugar Sprint 1.1/1.3" são históricas — preservadas como referência mas não precisam mais ser executadas. Para diagnóstico do sintoma "Ana com dificuldade pra emitir NF no Portal Nacional", a tarefa real agora é: pegar logs de produção e fazer análise causa-raiz.
 
 ### 1. Pegar logs reais da ANA (~10 min)
 

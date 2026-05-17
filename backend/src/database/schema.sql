@@ -401,3 +401,64 @@ CREATE INDEX IF NOT EXISTS idx_nfs_cliente ON notas_fiscais(cliente_id);
 CREATE INDEX IF NOT EXISTS idx_nfs_status ON notas_fiscais(status);
 CREATE INDEX IF NOT EXISTS idx_nfs_data_competencia ON notas_fiscais(data_competencia);
 CREATE INDEX IF NOT EXISTS idx_log_cliente ON log_atividades(cliente_id);
+
+-- =====================================================
+-- JOÃO — Fila de jobs assíncronos
+-- =====================================================
+-- Tarefas que o daemon do João (rodando no Mac do Thiago) consome via long-poll.
+-- O daemon executa skills via computer-use no GO-Global do Domínio Web.
+--
+-- Fluxo:
+--   1. Ana ou painel chama POST /api/joao/jobs → linha entra como 'pending' ou
+--      'pending_approval' (se ação sensível e não auto-aprovada)
+--   2. Operador aprova via painel/WhatsApp → vira 'pending'
+--   3. Daemon long-poll → marca 'running' → executa → marca 'done' ou 'failed'
+--   4. Se origem_telefone setada, hook posterior dispara notificação no WhatsApp
+--      com o resultado
+--
+-- Tipos suportados (parametros tem schema próprio por tipo):
+--   - importar_txt: importa arquivo TXT de lançamentos no Domínio Web (skill dominio-importar-txt)
+--   - classificar_extrato: PDF Itaú → entradas.txt categorizado (skill dominio-extrato-bancario-itau)
+--   - gerar_obrigacao: ECD/balancete/encerramento exercício (varia por sub-tipo nos params)
+--   - monitorar_onvio: ativa/desativa polling do Onvio Documentos pra um cliente
+--   - generico: payload livre, daemon decide skill apropriada
+CREATE TABLE IF NOT EXISTS joao_jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo TEXT NOT NULL,
+  cliente_id INTEGER,
+  parametros TEXT NOT NULL,            -- JSON com params específicos do tipo
+  status TEXT NOT NULL DEFAULT 'pending',
+  -- Valores: pending | pending_approval | running | done | failed | cancelled
+  resultado TEXT,                       -- JSON com retorno (logs, paths, etc) quando done
+  erro TEXT,                            -- mensagem de erro quando failed
+  prioridade INTEGER NOT NULL DEFAULT 5, -- 1=alta, 10=baixa; daemon serve por prioridade asc + criado_em
+  criado_por TEXT,                      -- 'ana' | 'painel' | nome do operador
+  origem_conversa_id INTEGER,           -- FK whatsapp_conversas se veio de Ana
+  origem_telefone TEXT,                 -- pra notificar via WhatsApp ao terminar
+  iniciado_em DATETIME,
+  finalizado_em DATETIME,
+  aprovado_por TEXT,                    -- quem aprovou (operador) se pending_approval
+  aprovado_em DATETIME,
+  tentativas INTEGER NOT NULL DEFAULT 0,
+  ultima_tentativa DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_joao_jobs_status ON joao_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_joao_jobs_tipo_status ON joao_jobs(tipo, status);
+CREATE INDEX IF NOT EXISTS idx_joao_jobs_cliente ON joao_jobs(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_joao_jobs_origem ON joao_jobs(origem_conversa_id);
+
+-- Heartbeat do daemon (registro mais recente que o daemon do João tá vivo).
+-- Painel mostra "João online (último ping há 12s)" / "João offline (3h)".
+CREATE TABLE IF NOT EXISTS joao_daemon_heartbeat (
+  id INTEGER PRIMARY KEY CHECK (id = 1),  -- singleton: só uma linha
+  ultimo_ping DATETIME,
+  hostname TEXT,
+  versao TEXT,
+  jobs_ativos INTEGER DEFAULT 0,
+  metadata TEXT                           -- JSON livre com info do daemon (Mac, Chrome, etc)
+);
+INSERT OR IGNORE INTO joao_daemon_heartbeat (id, ultimo_ping) VALUES (1, NULL);
