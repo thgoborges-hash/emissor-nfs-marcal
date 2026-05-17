@@ -240,7 +240,12 @@ class AgenteIAService {
           } else if (_codigosSefin.includes('E0617') || _codigosSefin.includes('E0713')) {
             feedbackMsg = `\n\n⚠️ A prefeitura rejeitou (${_codigosSefin[0]}): regime tributário do prestador inconsistente — alíquota informada não bate com Optante/Não Optante do Simples. Thiago notificado pra ajustar o cadastro.`;
           } else if (_codigosSefin.some(c => c.startsWith('RNG'))) {
-            feedbackMsg = `\n\n⚠️ A prefeitura rejeitou por validação de schema (${_codigosSefin[0]})${_primeiraDesc ? ': ' + _primeiraDesc : ''}. Thiago notificado pra olhar o XML.`;
+            // RNG6110 (e RNG genéricos) = "falha de schema XML" → campo obrigatório
+            // faltando ou inválido no cadastro. Auditoria 2026-05-17 mostrou 4 tentativas
+            // em loop com a mesma rejeição RNG6110 porque a mensagem não dizia o que
+            // ajustar — equipe só descobria por tentativa-e-erro mexendo no cadastro.
+            // Agora damos checklist concreto pra equipe conferir antes do retry.
+            feedbackMsg = `\n\n⚠️ A prefeitura rejeitou por schema XML (${_codigosSefin[0]})${_primeiraDesc ? ': ' + _primeiraDesc : ''}.\n\nIsso geralmente é *campo obrigatório vazio ou inválido* no cadastro. Antes de pedir pra emitir de novo, confere no cadastro do *prestador* e do *tomador*:\n  • Inscrição Municipal (formato aceito pelo município)\n  • Código IBGE do município (7 dígitos)\n  • Endereço completo: CEP, logradouro, número, bairro\n  • Regime tributário (Simples Nacional optante/não optante)\n  • cTribNac (6 dígitos no formato iissdd)\n\nAjusta o que estiver vazio/errado e me chama de volta. Reenviar sem ajustar nada vai dar o mesmo erro.`;
           } else if (_codigosSefin.length > 0 || erroStr.includes('rejeição') || erroStr.includes('rejeicao') || erroStr.includes('sefin')) {
             const _codeStr = _codigosSefin.length > 0 ? _codigosSefin.join(', ') : 'rejeição';
             feedbackMsg = `\n\n⚠️ A prefeitura rejeitou a emissão (${_codeStr})${_primeiraDesc ? ': ' + _primeiraDesc : ''}. Thiago notificado pra ajustar.`;

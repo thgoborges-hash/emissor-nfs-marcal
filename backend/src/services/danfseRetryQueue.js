@@ -70,7 +70,18 @@ async function _processarItem(item) {
 
   item.tentativa += 1;
   if (item.tentativa >= INTERVALOS_RETRY_MS.length) {
-    console.warn(`[DANFSe-Retry] ⚠️ Desistindo da NF ${item.nfId} apos ${item.tentativa} tentativas (${Math.round((Date.now() - item.iniciado) / 1000)}s)`);
+    const totalMin = Math.round((Date.now() - item.iniciado) / 60000);
+    console.warn(`[DANFSe-Retry] ⚠️ Desistindo da NF ${item.nfId} apos ${item.tentativa} tentativas (${totalMin}min)`);
+    // Avisa o destino que vamos cuidar manualmente, em vez de sumir em silêncio.
+    // Auditoria 2026-05-17 mostrou que 33% das promessas "te envio em alguns minutos"
+    // ficavam sem follow-up — cliente esperando indefinidamente.
+    try {
+      const zapiService = require('./zapiService');
+      const msg = `⚠️ Sobre a NF ${item.numDisplay}: o Portal Nacional segue indisponível após ${totalMin}min de tentativas. A NF foi emitida com sucesso e o XML está válido no sistema. Vou pedir pro Thiago olhar a entrega do PDF manualmente — quando o Portal voltar você pode pedir 2ª via que eu busco aqui na hora.`;
+      await zapiService.enviarTexto(item.destino, msg);
+    } catch (e) {
+      console.error(`[DANFSe-Retry] Falha ao avisar destino sobre desistencia da NF ${item.nfId}: ${e.message}`);
+    }
     fila.delete(item.nfId);
     return;
   }
