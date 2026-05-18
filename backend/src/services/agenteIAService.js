@@ -15,6 +15,7 @@ const anaGroundingValidator = require('./anaGroundingValidator');
 const joaoService = require('./joaoService');
 const clienteCadastroAuditor = require('./clienteCadastroAuditor');
 const clienteSyncService = require('./clienteSyncService');
+const pgdasdFechamento = require('./pgdasdFechamentoService');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -361,6 +362,27 @@ class AgenteIAService {
         }
         const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
         return { texto: respostaLimpa + blocos, acoes };
+      }
+
+      // Feedback de CALCULAR_PGDASD (fechamento Simples Nacional)
+      const acaoPgdasd = acoes.find(a => a.tipo === 'CALCULAR_PGDASD' && a.feedback);
+      if (acaoPgdasd?.feedback) {
+        const fb = acaoPgdasd.feedback;
+        const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
+        if (fb.sucesso) {
+          const valor = Number(fb.valor_das).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+          const aliq = (Number(fb.aliquota_efetiva) * 100).toFixed(2);
+          const receita = Number(fb.receita_bruta_mes).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+          const bloco = `\n\n📊 *Fechamento PGDAS-D calculado* (rascunho #${fb.fechamento_id})\n` +
+            `*Cliente:* ${fb.cliente}\n` +
+            `*Período:* ${fb.periodo.slice(4)}/${fb.periodo.slice(0,4)} · Anexo ${fb.anexo}\n` +
+            `*Receita:* R$ ${receita} (${fb.total_nfs} NF${fb.total_nfs === 1 ? '' : 's'})\n` +
+            `*Alíquota efetiva:* ${aliq}%\n` +
+            `*DAS:* *R$ ${valor}*\n\n` +
+            `⏸️ Status: draft. Pra transmitir o PGDAS-D no SERPRO, aprova no painel em Fiscal & Tributos.`;
+          return { texto: respostaLimpa + bloco, acoes };
+        }
+        return { texto: respostaLimpa + `\n\n⚠️ ${fb.erro}`, acoes };
       }
 
       // Feedback de CONSULTAR_CADASTRO_CLIENTE
@@ -756,6 +778,31 @@ Quando usar:
 - Antes de emitir NF cliente novo → ver se cadastro tá pronto.
 
 Resposta volta com checklist do prestador (e tomador se informado): 🔴 crítico vazio, 🟡 não-crítico, ✅ ok. NÃO INVENTE — só fale o que o relatório retornar.
+
+## Fechamento mensal Simples Nacional (PGDAS-D)
+
+\`[ACAO:CALCULAR_PGDASD:cnpj|YYYYMM|anexo|rba12m]\`
+
+- cnpj: 14 dígitos do cliente (só números)
+- YYYYMM: período de apuração (ex: 202604 = abril/2026)
+- anexo: I (comércio) / III (serviços limpeza, vigilância, folha + Fator R) / IV (advocacia, construção, técnicos) / V (tecnologia, intelectual sem Fator R). **Anexo II (indústria) NÃO suportado.**
+- rba12m: receita bruta acumulada últimos 12m (decimal, ex: 60000.00)
+
+**Importante:** essa ação **só CALCULA** (lê receita das NFs no Emissor, calcula DAS via fórmula LC 123/2006, persiste em status='draft'). Não transmite no SERPRO — transmissão exige aprovação humana no painel Fiscal & Tributos.
+
+Quando equipe pedir "fechamento PGDAS-D do cliente X de abril":
+1. Confirma anexo (cadastro do cliente ou pergunta)
+2. Pergunta RBA12M (próxima versão vai buscar do SERPRO; por ora, equipe informa)
+3. Dispara CALCULAR_PGDASD com os 4 campos
+4. Responde com receita do mês, alíquota efetiva, valor DAS calculado, e link "aprova no painel pra transmitir"
+
+Cenários FORA de escopo (responde "ainda não suporto, vou pedir pro Thiago"):
+- MEI (DAS-MEI é fluxo separado — já tem ações DAS_MEI próprias)
+- Indústria (anexo II)
+- Receita externa (exportação)
+- Múltiplas atividades concomitantes no mesmo PA
+- ISS retido na fonte (a v1 assume zero)
+- Retificação de declaração já transmitida (tipoDeclaracao=2)
 
 ## Ações extras (Integra Contador — só dígitos do CNPJ, 14 chars)
 - \`[ACAO:CONSULTAR_PGDASD_ULTIMA:cnpj]\` — última PGDAS-D (Simples) do cliente
@@ -2013,6 +2060,10 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           this._executarConsultarCadastro(acao, contato);
           break;
 
+        case 'CALCULAR_PGDASD':
+          this._executarCalcularPgdasd(acao, contato);
+          break;
+
         // ── Ações João (back-office Domínio via daemon local) ─────────────
         case 'CLASSIFICAR_EXTRATO':
           this._enfileirarJobJoao(acao, contato, conversaId, {
@@ -2045,6 +2096,104 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
         default:
           console.log(`[WhatsApp] Ação não implementada: ${acao.tipo}`);
       }
+    }
+  }
+
+  /**
+   * Calcula o fechamento PGDAS-D de um cliente do Simples Nacional.
+   * Lê receita do mês das NFs emitidas no Emissor, calcula DAS com base no anexo
+   * e RBA12M informados, persiste em status='draft' pra revisão humana.
+   *
+   * Parâmetro: cnpj|periodo_apuracao|anexo|rba12m
+   *   - cnpj: 14 dígitos do cliente
+   *   - periodo_apuracao: YYYYMM
+   *   - anexo: I (comércio) | III | IV | V (serviços)
+   *   - rba12m: receita bruta acumulada últimos 12 meses (Real)
+   *
+   * NÃO transmite — só calcula. Transmissão exige aprovação humana no painel
+   * (POST /api/integra-contador/pgdasd/fechamento/:id/transmitir).
+   *
+   * Modo equipe only.
+   */
+  _executarCalcularPgdasd(acao, contato) {
+    const rotulo = 'calcular PGDAS-D';
+    const ehContextoEquipe = !!(contato?.modoEquipe?.ehEquipe || contato?.ehAdmin);
+    if (!ehContextoEquipe) {
+      acao.feedback = {
+        sucesso: false, rotulo,
+        erro: 'Fechamento PGDAS-D é operação interna. Cliente final não solicita.',
+      };
+      return;
+    }
+    if (!acao.parametro) {
+      acao.feedback = { sucesso: false, rotulo, erro: 'Parâmetros: cnpj|YYYYMM|anexo(I/III/IV/V)|rba12m' };
+      return;
+    }
+    const partes = String(acao.parametro).split('|');
+    if (partes.length < 4) {
+      acao.feedback = { sucesso: false, rotulo, erro: 'Faltam campos. Esperado: cnpj|YYYYMM|anexo|rba12m' };
+      return;
+    }
+    const [cnpjRaw, periodo, anexoRaw, rbaRaw] = partes;
+    const cnpj = String(cnpjRaw).replace(/\D/g, '');
+    const anexo = String(anexoRaw).toUpperCase().trim();
+    const rba12m = Number(String(rbaRaw).replace(',', '.'));
+
+    if (cnpj.length !== 14) {
+      acao.feedback = { sucesso: false, rotulo, erro: `CNPJ inválido: "${cnpjRaw}"` };
+      return;
+    }
+    if (!/^\d{6}$/.test(periodo)) {
+      acao.feedback = { sucesso: false, rotulo, erro: `periodo_apuracao deve ser YYYYMM (recebido "${periodo}")` };
+      return;
+    }
+    if (!['I', 'III', 'IV', 'V'].includes(anexo)) {
+      acao.feedback = { sucesso: false, rotulo, erro: `Anexo "${anexo}" inválido. Use I, III, IV ou V.` };
+      return;
+    }
+    if (!Number.isFinite(rba12m) || rba12m < 0) {
+      acao.feedback = { sucesso: false, rotulo, erro: `rba12m inválido: "${rbaRaw}". Use número decimal positivo.` };
+      return;
+    }
+
+    try {
+      const db = getDb();
+      const cliente = db.prepare(
+        `SELECT id, razao_social FROM clientes
+         WHERE REPLACE(REPLACE(REPLACE(cnpj, '.', ''), '/', ''), '-', '') = ?
+         LIMIT 1`
+      ).get(cnpj);
+      if (!cliente) {
+        acao.feedback = { sucesso: false, rotulo, erro: `CNPJ ${cnpj} não encontrado na carteira.` };
+        return;
+      }
+
+      const draft = pgdasdFechamento.calcularDraft({
+        cliente_id: cliente.id,
+        periodo_apuracao: periodo,
+        anexo,
+        rba12m,
+        criado_por: `ana:${contato?.modoEquipe?.operador || (contato?.ehAdmin ? 'admin' : 'desconhecido')}`,
+        origem: 'ana',
+      });
+
+      acao.feedback = {
+        sucesso: true,
+        rotulo,
+        fechamento_id: draft.id,
+        cliente: cliente.razao_social,
+        periodo,
+        anexo,
+        receita_bruta_mes: draft.receita_bruta_mes,
+        total_nfs: draft.total_nfs,
+        aliquota_efetiva: draft.aliquota_efetiva,
+        valor_das: draft.valor_das,
+        status: draft.status,
+      };
+      console.log(`[WhatsApp] ✓ PGDAS-D draft calculado: cliente=${cliente.id} PA=${periodo} valor_das=R$${draft.valor_das}`);
+    } catch (err) {
+      acao.feedback = { sucesso: false, rotulo, erro: err.message };
+      console.warn(`[WhatsApp] ❌ Falha CALCULAR_PGDASD: ${err.message}`);
     }
   }
 

@@ -241,6 +241,37 @@ class IntegraContadorService {
   }
 
   /**
+   * Transmite a declaração mensal PGDAS-D (TRANSDECLARACAO11).
+   * Ação SEFIN: Declarar.
+   *
+   * @param {string} cnpjContribuinte
+   * @param {string} periodoApuracao - YYYYMM
+   * @param {Object} declaracao - Objeto da declaração (será aninhado em `dados.declaracao`).
+   *   Campos típicos: tipoDeclaracao, receitaPaCompetenciaInterno, receitaPaCompetenciaExterno,
+   *   valorFixoIcms, receitasBrutasAnteriores, atividades, deduções, ISS retido, fator R.
+   *   O payload "dados" stringifica { cnpjCompleto, pa, declaracao }.
+   * @returns {Object} retorno SERPRO com número do recibo + status
+   */
+  async transmitirDeclaracaoPGDASD(cnpjContribuinte, periodoApuracao, declaracao) {
+    const servico = config.servicos.PGDASD.TRANSMITIR_DECLARACAO;
+    const cnpjLimpo = String(cnpjContribuinte).replace(/\D/g, '');
+    if (cnpjLimpo.length !== 14) throw new Error(`CNPJ inválido: ${cnpjContribuinte}`);
+    if (!/^\d{6}$/.test(String(periodoApuracao))) {
+      throw new Error(`periodoApuracao deve ser YYYYMM (recebido: "${periodoApuracao}")`);
+    }
+    if (!declaracao || typeof declaracao !== 'object') {
+      throw new Error('declaracao obrigatória (objeto)');
+    }
+    // SERPRO TRANSDECLARACAO11 — dados é string JSON com cnpjCompleto + pa + declaracao
+    const dadosString = JSON.stringify({
+      cnpjCompleto: cnpjLimpo,
+      pa: parseInt(periodoApuracao, 10),
+      declaracao,
+    });
+    return await this.chamar('Declarar', cnpjContribuinte, 'PGDASD', servico.idServico, servico.versao, dadosString);
+  }
+
+  /**
    * Consulta procurações eletrônicas vigentes do contribuinte
    * Útil pra validar se a procuração coletiva da Marçal ainda está ativa
    */
