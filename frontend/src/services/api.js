@@ -168,6 +168,23 @@ export const dominioApi = {
 };
 
 // === JOÃO (fila assíncrona + daemon) ===
+// === PGDAS-D (fechamento Simples Nacional) ===
+export const pgdasdApi = {
+  calcular: (dados) => api.post('/integra-contador/pgdasd/fechamento/calcular', dados),
+  listar: (filtros = {}) => {
+    const params = new URLSearchParams();
+    if (filtros.status) params.set('status', Array.isArray(filtros.status) ? filtros.status.join(',') : filtros.status);
+    if (filtros.cliente_id) params.set('cliente_id', filtros.cliente_id);
+    if (filtros.periodo) params.set('periodo', filtros.periodo);
+    if (filtros.limite) params.set('limite', filtros.limite);
+    return api.get(`/integra-contador/pgdasd/fechamento?${params}`);
+  },
+  obter: (id) => api.get(`/integra-contador/pgdasd/fechamento/${id}`),
+  aprovar: (id) => api.post(`/integra-contador/pgdasd/fechamento/${id}/aprovar`, {}),
+  transmitir: (id) => api.post(`/integra-contador/pgdasd/fechamento/${id}/transmitir`, {}),
+  cancelar: (id, motivo) => api.post(`/integra-contador/pgdasd/fechamento/${id}/cancelar`, { motivo }),
+};
+
 export const joaoApi = {
   status: () => api.get('/joao/status'),
   listarJobs: (filtros = {}) => {

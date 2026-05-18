@@ -21,7 +21,14 @@ const TABS = [
       { to: '/escritorio/certificados', label: 'Certificados A1' },
     ],
   },
-  { to: '/escritorio/apuracao', label: 'Apuração', icon: '💰', destaque: true },
+  {
+    label: 'Apuração', icon: '💰', destaque: true,
+    match: ['/escritorio/apuracao', '/escritorio/fechamento-simples'],
+    sub: [
+      { to: '/escritorio/apuracao', label: 'Apuração mensal' },
+      { to: '/escritorio/fechamento-simples', label: 'Fechamento Simples (PGDAS-D)' },
+    ],
+  },
   { to: '/escritorio/entregas', label: 'Entregas', icon: '📦', destaque: true },
   {
     label: 'ANA', icon: '🤖', match: ['/escritorio/fila-ana', '/escritorio/ana', '/escritorio/testar-agente'],
