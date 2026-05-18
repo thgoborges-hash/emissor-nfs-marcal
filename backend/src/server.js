@@ -42,6 +42,13 @@ try {
 } catch (e) {
   console.warn('[server] Erro inicializando backup cron:', e.message);
 }
+
+// Inicializa crons do João (sync diário + onvio watcher) — controle via JOAO_CRONS_ENABLED
+try {
+  require('./services/joaoCronService').iniciarCron();
+} catch (e) {
+  console.warn('[server] Erro inicializando João cron:', e.message);
+}
 app.use('/api/sieg', require('./routes/sieg'));
 app.use('/api/painel', require('./routes/painel'));
 app.use('/api/apuracao', require('./routes/apuracao'));
