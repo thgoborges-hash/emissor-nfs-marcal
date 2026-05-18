@@ -120,6 +120,133 @@ router.post('/das/mei', async (req, res) => {
   }
 });
 
+// ─── Fechamento mensal Simples Nacional (PGDAS-D) — pipeline ──────────────
+// Coordena cálculo + revisão + transmissão + DAS num único fluxo gerenciado.
+
+const pgdasdFechamento = require('../services/pgdasdFechamentoService');
+const { getDb: _getDb } = require('../database/init');
+
+// Calcula draft (lê receita do mês, calcula DAS, persiste em status='draft')
+// POST /api/integra-contador/pgdasd/fechamento/calcular
+// body: { cliente_id, periodo_apuracao (YYYYMM), anexo, rba12m? }
+router.post('/pgdasd/fechamento/calcular', async (req, res) => {
+  try {
+    const { cliente_id, periodo_apuracao, anexo, rba12m, origem } = req.body || {};
+    if (!cliente_id || !periodo_apuracao || !anexo) {
+      return res.status(400).json({ erro: 'cliente_id, periodo_apuracao (YYYYMM) e anexo (I/III/IV/V) obrigatórios' });
+    }
+
+    // Se rba12m não foi fornecido, tenta buscar via SERPRO (CONSULTIMADECREC14 do mês anterior)
+    let rbaUsado = rba12m;
+    if (rbaUsado == null) {
+      try {
+        // Busca CNPJ do cliente
+        const cliente = _getDb().prepare('SELECT cnpj FROM clientes WHERE id = ?').get(cliente_id);
+        if (!cliente) return res.status(404).json({ erro: `Cliente ${cliente_id} não encontrado` });
+        // CONSULTIMADECREC14 retorna receitas dos últimos 12m — útil pra calcular RBA12M
+        // Por enquanto, deixamos o caller passar rba12m manualmente (UI no painel pede)
+        return res.status(400).json({
+          erro: 'rba12m obrigatório nesta versão. Próxima iteração: busca automática via SERPRO consultarUltimaDeclaracao + agregação 12m.',
+        });
+      } catch (err) {
+        return res.status(500).json({ erro: `Erro buscando RBA12M: ${err.message}` });
+      }
+    }
+
+    const fechamento = pgdasdFechamento.calcularDraft({
+      cliente_id, periodo_apuracao, anexo, rba12m: rbaUsado,
+      criado_por: req.usuario?.nome || req.usuario?.email || 'painel',
+      origem: origem || 'painel',
+    });
+    res.status(201).json({ ok: true, fechamento });
+  } catch (err) {
+    console.error('[PGDASD] Erro calcular draft:', err.message);
+    res.status(400).json({ erro: err.message });
+  }
+});
+
+// Lista fechamentos (com filtros)
+// GET /api/integra-contador/pgdasd/fechamento?status=draft&cliente_id=1&periodo=202604&limite=20
+router.get('/pgdasd/fechamento', (req, res) => {
+  try {
+    const status = req.query.status ? req.query.status.split(',') : undefined;
+    const cliente_id = req.query.cliente_id ? parseInt(req.query.cliente_id, 10) : undefined;
+    const periodo_apuracao = req.query.periodo;
+    const limite = req.query.limite ? parseInt(req.query.limite, 10) : 50;
+    const fechamentos = pgdasdFechamento.listar({ status, cliente_id, periodo_apuracao, limite });
+    res.json({ fechamentos });
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+});
+
+// Detalhe de um fechamento
+router.get('/pgdasd/fechamento/:id', (req, res) => {
+  try {
+    const f = pgdasdFechamento.obter(parseInt(req.params.id, 10));
+    if (!f) return res.status(404).json({ erro: 'fechamento não encontrado' });
+    res.json({ fechamento: f });
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+});
+
+// Aprova draft pra transmissão (não dispara transmissão — só marca pending_approval → ready)
+router.post('/pgdasd/fechamento/:id/aprovar', (req, res) => {
+  try {
+    const aprovadoPor = req.usuario?.nome || req.usuario?.email || 'painel';
+    const f = pgdasdFechamento.aprovar(parseInt(req.params.id, 10), aprovadoPor);
+    res.json({ ok: true, fechamento: f });
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+});
+
+// Transmite a declaração PGDAS-D via SERPRO TRANSDECLARACAO11.
+// IRREVERSÍVEL — exige aprovação prévia (status pending_approval).
+// POST /api/integra-contador/pgdasd/fechamento/:id/transmitir
+router.post('/pgdasd/fechamento/:id/transmitir', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    let f = pgdasdFechamento.obter(id);
+    if (!f) return res.status(404).json({ erro: 'fechamento não encontrado' });
+    if (f.status !== 'pending_approval') {
+      return res.status(400).json({ erro: `Fechamento em "${f.status}" — só transmite a partir de "pending_approval"` });
+    }
+    if (!f.cnpj) return res.status(500).json({ erro: 'Cliente sem CNPJ no cadastro' });
+
+    const declaracao = pgdasdFechamento.montarPayloadDeclaracao(f);
+    const resposta = await integraContadorService.transmitirDeclaracaoPGDASD(
+      f.cnpj, f.periodo_apuracao, declaracao
+    );
+
+    // Extrai recibo da resposta (formato SERPRO varia por sistema — tentamos campos comuns)
+    const recibo = resposta?.dados?.numeroRecibo
+                || resposta?.numeroRecibo
+                || resposta?.dados?.recibo
+                || null;
+
+    f = pgdasdFechamento.marcarTransmitido(id, { recibo, resposta });
+    res.json({ ok: true, fechamento: f, recibo });
+  } catch (err) {
+    console.error('[PGDASD] Erro transmitir:', err.message);
+    try { pgdasdFechamento.marcarFalha(id, err.message); } catch {}
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// Cancela fechamento (só permitido enquanto não transmitido)
+router.post('/pgdasd/fechamento/:id/cancelar', (req, res) => {
+  try {
+    const { motivo } = req.body || {};
+    const canceladoPor = req.usuario?.nome || req.usuario?.email || 'painel';
+    const f = pgdasdFechamento.cancelar(parseInt(req.params.id, 10), motivo, canceladoPor);
+    res.json({ ok: true, fechamento: f });
+  } catch (err) {
+    res.status(400).json({ erro: err.message });
+  }
+});
+
 // Consulta última declaração PGDAS-D transmitida
 router.get('/pgdasd/ultima-declaracao/:cnpj', async (req, res) => {
   try {

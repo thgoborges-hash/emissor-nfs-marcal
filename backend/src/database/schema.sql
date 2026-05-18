@@ -519,3 +519,71 @@ CREATE TABLE IF NOT EXISTS onvio_monitored_clients (
 );
 
 CREATE INDEX IF NOT EXISTS idx_onvio_monitored_ativo ON onvio_monitored_clients(ativo);
+
+-- =====================================================
+-- Fechamento mensal Simples Nacional (PGDAS-D)
+-- =====================================================
+-- Registra cada tentativa de fechar o mês de um cliente. Fluxo:
+--   1. Coleta receita do mês (notas_fiscais filtradas por cliente_id + data_competencia + status='emitida')
+--   2. Calcula DAS (RBA12M via SERPRO + faixa + alíquota efetiva)
+--   3. Transmite PGDAS-D via SERPRO entregarDeclaracaoMensal
+--   4. Gera DAS pagamento
+--   5. (futuro) João lança apuração contábil no Domínio
+--
+-- Status:
+--   draft           — calculado mas não transmitido (aguarda revisão humana)
+--   pending_approval — aguarda aprovação humana antes de transmitir
+--   transmitting    — em transmissão pra SERPRO
+--   transmitted     — declaração entregue (recibo SERPRO obtido)
+--   das_generated   — DAS pdf gerado
+--   contab_lancado  — apuração contábil lançada no Domínio (etapa João)
+--   done            — ciclo completo (transmitted + DAS + contab)
+--   failed          — erro irrecuperável
+--   cancelled       — cancelado por humano antes de transmitir
+CREATE TABLE IF NOT EXISTS pgdasd_fechamentos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL,
+  periodo_apuracao TEXT NOT NULL,         -- YYYYMM
+  status TEXT NOT NULL DEFAULT 'draft',
+  -- Dados coletados
+  receita_bruta_mes REAL,                  -- valor total emitido no mês (NFs)
+  total_nfs INTEGER DEFAULT 0,
+  iss_retido_total REAL DEFAULT 0,
+  rba12m REAL,                             -- receita bruta acumulada 12 meses
+  anexo TEXT,                              -- 'I' | 'III' | 'IV' | 'V'
+  aliquota_nominal REAL,                   -- alíquota da faixa (ex: 0.073)
+  parcela_deduzir REAL DEFAULT 0,
+  aliquota_efetiva REAL,                   -- ((rba12m * aliq_nominal) - PD) / rba12m
+  valor_das REAL,                          -- DAS calculado
+  -- Transmissão
+  payload_serpro TEXT,                     -- JSON enviado
+  recibo_serpro TEXT,                      -- nº do recibo retornado
+  resposta_serpro TEXT,                    -- JSON completo da resposta
+  transmitido_em DATETIME,
+  -- DAS (após transmissão)
+  das_numero TEXT,
+  das_pdf_path TEXT,                       -- caminho do PDF salvo localmente
+  das_vencimento DATE,
+  das_gerado_em DATETIME,
+  -- Aprovação
+  aprovado_por TEXT,
+  aprovado_em DATETIME,
+  motivo_cancelamento TEXT,
+  cancelado_em DATETIME,
+  -- Erros
+  erro TEXT,
+  tentativas INTEGER NOT NULL DEFAULT 0,
+  ultima_tentativa DATETIME,
+  -- João (etapa final contábil)
+  joao_job_id INTEGER,                     -- FK joao_jobs quando João lançar no Domínio
+  -- Auditoria
+  criado_por TEXT,
+  origem TEXT,                             -- 'painel' | 'ana' | 'cron' | 'manual'
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id),
+  UNIQUE(cliente_id, periodo_apuracao)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pgdasd_status ON pgdasd_fechamentos(status);
+CREATE INDEX IF NOT EXISTS idx_pgdasd_cliente_pa ON pgdasd_fechamentos(cliente_id, periodo_apuracao);
