@@ -24,6 +24,7 @@ import ApiDominio from './pages/escritorio/ApiDominio';
 import Apuracao from './pages/escritorio/Apuracao';
 import Entregas from './pages/escritorio/Entregas';
 import PainelJoao from './pages/escritorio/PainelJoao';
+import FechamentoSimples from './pages/escritorio/FechamentoSimples';
 
 import './styles/global.css';
 
@@ -73,6 +74,7 @@ function App() {
             <Route path="relatorios" element={<Relatorios />} />
             <Route path="testar-agente" element={<TestarAgente />} />
             <Route path="joao" element={<PainelJoao />} />
+            <Route path="fechamento-simples" element={<FechamentoSimples />} />
           </Route>
 
           {/* 404 */}
