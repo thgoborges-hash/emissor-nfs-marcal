@@ -2833,3 +2833,184 @@ tbody tr:hover { background: var(--bg-hover); }
   color: var(--warning);
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
+
+/* =====================================================
+ * Refinamentos v2 (2026-05-18) — microinterações e polish
+ * ===================================================== */
+
+/* Tipografia: kerning melhor pra display, ligaduras pra texto técnico */
+.page-title, h1, h2, h3 {
+  letter-spacing: -0.02em;
+  font-feature-settings: 'kern', 'ss01', 'cv02', 'cv03';
+}
+code, pre, .font-mono {
+  font-feature-settings: 'liga' 0, 'calt' 0;
+}
+
+/* Cards com lift suave no hover (não-destrutivo: só aplica em .card[role=button] OU .card.interactive) */
+.card.interactive,
+.card[role="button"],
+button.card {
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+              box-shadow 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+              border-color 0.18s ease;
+  will-change: transform;
+}
+.card.interactive:hover,
+.card[role="button"]:hover,
+button.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  border-color: var(--border-strong);
+}
+.card.interactive:active,
+.card[role="button"]:active,
+button.card:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Botões: gradiente sutil + depth no primary */
+.btn-primary {
+  background: linear-gradient(180deg, var(--primary-hover), var(--primary));
+  border-color: var(--primary-dark);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 2px 6px rgba(124,58,237,0.25);
+  transition: box-shadow 0.15s, transform 0.1s, background 0.15s;
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--primary-hover), var(--primary-dark));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.15),
+    0 4px 12px rgba(139,92,246,0.4);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(1px); }
+
+/* Status chips com brilho sutil */
+.home-status-chip {
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.home-status-chip:hover {
+  transform: translateY(-1px);
+}
+.home-status-chip.success .home-status-dot,
+.home-status-chip.danger .home-status-dot {
+  animation: status-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
+  50% { opacity: 0.65; box-shadow: 0 0 0 4px transparent; }
+}
+
+/* Skeleton shimmer pro estado loading */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.04),
+    transparent
+  );
+  animation: skeleton-shimmer 1.6s infinite;
+}
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* Focus ring acessível — usar onde precisar */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--primary-ring);
+  border-radius: var(--radius-sm);
+}
+
+/* Painel João — refinamentos específicos */
+.painel-joao .card {
+  transition: background 0.12s, border-color 0.12s, transform 0.1s;
+}
+.painel-joao .card:hover {
+  background: var(--bg-hover);
+}
+.painel-joao details summary {
+  padding: 4px 0;
+  font-weight: 500;
+  user-select: none;
+}
+.painel-joao details summary:hover {
+  color: var(--text);
+}
+.painel-joao details[open] summary {
+  margin-bottom: 4px;
+}
+.painel-joao pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Tabela: linhas com hover sutil + zebra opcional */
+.table-container table tbody tr {
+  transition: background 0.1s;
+}
+.table-container table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+/* Empty state — mais centrado e suave */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-light);
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+.empty-state .icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+/* Scrollbar dark theme (Webkit) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Page header layout — quando título + descrição + ações precisam alinhar */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.page-header .page-title {
+  display: flex;
+  align-items: center;
+}

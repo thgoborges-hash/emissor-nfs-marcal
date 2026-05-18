@@ -23,6 +23,7 @@ import IntegraContador from './pages/escritorio/IntegraContador';
 import ApiDominio from './pages/escritorio/ApiDominio';
 import Apuracao from './pages/escritorio/Apuracao';
 import Entregas from './pages/escritorio/Entregas';
+import PainelJoao from './pages/escritorio/PainelJoao';
 
 import './styles/global.css';
 
@@ -71,6 +72,7 @@ function App() {
             <Route path="ana" element={<PainelAna />} />
             <Route path="relatorios" element={<Relatorios />} />
             <Route path="testar-agente" element={<TestarAgente />} />
+            <Route path="joao" element={<PainelJoao />} />
           </Route>
 
           {/* 404 */}

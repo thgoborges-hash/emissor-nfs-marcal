@@ -31,6 +31,7 @@ const TABS = [
       { to: '/escritorio/testar-agente', label: 'Sandbox' },
     ],
   },
+  { to: '/escritorio/joao', label: 'João', icon: '🛠️' },
 ];
 
 // Config (menu engrenagem à direita)

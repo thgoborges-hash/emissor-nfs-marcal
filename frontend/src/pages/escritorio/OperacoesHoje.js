@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { painelApi } from '../../services/api';
+import { painelApi, joaoApi } from '../../services/api';
 
 // =====================================================
 // HOME do Cockpit — v4 "futurista enxuto"
@@ -11,6 +11,7 @@ import { painelApi } from '../../services/api';
 
 export default function OperacoesHoje() {
   const [dados, setDados] = useState(null);
+  const [joaoStatus, setJoaoStatus] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
   const [saudacao, setSaudacao] = useState('Bom dia');
@@ -18,8 +19,12 @@ export default function OperacoesHoje() {
   const carregar = async () => {
     try {
       setErro(null);
-      const { data } = await painelApi.operacoesHoje();
-      setDados(data);
+      const [opRes, joaoRes] = await Promise.allSettled([
+        painelApi.operacoesHoje(),
+        joaoApi.status(),
+      ]);
+      if (opRes.status === 'fulfilled') setDados(opRes.value.data);
+      if (joaoRes.status === 'fulfilled') setJoaoStatus(joaoRes.value.data);
     } catch (err) {
       setErro(err.response?.data?.erro || err.message);
     } finally {
@@ -120,12 +125,33 @@ export default function OperacoesHoje() {
             {dados ? `Atualizado ${fmtDataHora(dados.geradoEm)} · auto-refresh 1min` : 'Sincronizando dashboard…'}
           </p>
         </div>
-        {!temRisco && totalCarteira > 0 && (
-          <div className="home-status-chip success">
-            <span className="home-status-dot" />
-            DCTFWeb · {dctf.em_dia}/{totalCarteira} em dia
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {!temRisco && totalCarteira > 0 && (
+            <div className="home-status-chip success">
+              <span className="home-status-dot" />
+              DCTFWeb · {dctf.em_dia}/{totalCarteira} em dia
+            </div>
+          )}
+          {joaoStatus?.daemon && (
+            <Link
+              to="/escritorio/joao"
+              className={`home-status-chip ${joaoStatus.daemon.online ? 'success' : 'danger'}`}
+              style={{ textDecoration: 'none' }}
+              title={joaoStatus.daemon.online
+                ? `João online · ${joaoStatus.daemon.hostname || ''} · ${joaoStatus.fila.pending + joaoStatus.fila.running} jobs ativos`
+                : `João offline há ${joaoStatus.daemon.age_sec ? Math.floor(joaoStatus.daemon.age_sec/60) + 'min' : '—'}`
+              }
+            >
+              <span className="home-status-dot" />
+              João {joaoStatus.daemon.online ? 'online' : 'offline'}
+              {joaoStatus.fila.pending_approval > 0 && (
+                <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 8, background: 'var(--warning)', color: 'var(--text-inverse)', fontSize: 10, fontWeight: 700 }}>
+                  {joaoStatus.fila.pending_approval} aguarda OK
+                </span>
+              )}
+            </Link>
+          )}
+        </div>
       </header>
 
       {/* Banner DCTFWeb — so aparece quando ha risco */}
