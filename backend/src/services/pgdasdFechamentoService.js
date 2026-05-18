@@ -187,6 +187,8 @@ function _hidratar(row) {
     ...row,
     payload_serpro: _safeParse(row.payload_serpro, null),
     resposta_serpro: _safeParse(row.resposta_serpro, null),
+    detalhes_calculo: _safeParse(row.detalhes_calculo, null),
+    divergencia_receita: row.divergencia_receita === 1,
   };
 }
 
@@ -198,33 +200,139 @@ function _safeParse(s, fallback = null) {
 /**
  * Cria/atualiza um fechamento em status 'draft' com cálculo do DAS.
  *
+ * Modos:
+ *   - v1 (manual): caller passa cliente_id + periodo + anexo + rba12m. Receita
+ *     do mês vem só do Emissor. Mantido pra compatibilidade.
+ *   - v2 (auto-fill): caller passa só cliente_id + periodo_apuracao. Auto-fill
+ *     resolve anexo (cTribNac), RBT12 (SERPRO histórico), receita (SERPRO +
+ *     Emissor com reconciliação). Overrides opcionais via campos manuais.
+ *
  * @param {Object} params
  * @param {number} params.cliente_id
  * @param {string} params.periodo_apuracao - YYYYMM
- * @param {string} params.anexo - 'I' | 'III' | 'IV' | 'V'
- * @param {number} params.rba12m - se omitido, o caller deve buscar via SERPRO antes
+ * @param {string} [params.anexo] - 'I' | 'III' | 'IV' | 'V'. Se omitido, auto via cTribNac.
+ * @param {number} [params.rba12m] - se omitido, auto via SERPRO histórico
+ * @param {number} [params.receita_override] - força usar este valor (ignora reconciliação)
+ * @param {string} [params.fonte_receita_override] - 'serpro' | 'emissor' (escolhe ao invés de auto-decidir)
  * @param {string} [params.criado_por]
- * @param {string} [params.origem]
- * @returns {Object} fechamento criado (com cálculo)
+ * @param {string} [params.origem='painel']
+ * @param {boolean} [params.autoFill=true] - desabilita auto-fill (modo v1)
+ * @returns {Promise<Object>} fechamento criado (com cálculo + reconciliação)
  */
-function calcularDraft({ cliente_id, periodo_apuracao, anexo, rba12m, criado_por, origem = 'manual' } = {}) {
+async function calcularDraft(params = {}) {
+  const {
+    cliente_id, periodo_apuracao,
+    anexo: anexoInput, rba12m: rba12mInput,
+    receita_override, fonte_receita_override,
+    criado_por, origem = 'painel',
+    autoFill = true,
+  } = params;
+
   if (!cliente_id) throw new Error('cliente_id obrigatório');
   if (!periodo_apuracao) throw new Error('periodo_apuracao obrigatório');
-  if (!anexo) throw new Error('anexo obrigatório');
-  if (rba12m == null) throw new Error('rba12m obrigatório (busque via SERPRO ou últimos 12 fechamentos)');
+  if (!/^\d{6}$/.test(String(periodo_apuracao))) {
+    throw new Error(`periodo_apuracao deve ser YYYYMM (recebido: "${periodo_apuracao}")`);
+  }
 
-  const receita = coletarReceitaMes(cliente_id, periodo_apuracao);
-  const calculo = calcularDAS({ anexo, rba12m, receitaPa: receita.receita_bruta });
-
+  // Busca cliente
   const db = getDb();
-  // Upsert pela UNIQUE(cliente_id, periodo_apuracao)
+  const cliente = db.prepare(`
+    SELECT id, razao_social, cnpj, codigo_servico, regime_tributario, optante_simples
+    FROM clientes WHERE id = ?
+  `).get(cliente_id);
+  if (!cliente) throw new Error(`Cliente ${cliente_id} não encontrado`);
+
+  const detalhes = { v2: autoFill, passos: [], avisos: [], origens: {} };
+
+  // ── 1. Resolver ANEXO ────────────────────────────────────────────────
+  let anexo = anexoInput;
+  let anexoOrigem = 'manual';
+  if (!anexo && autoFill) {
+    const autoFillSvc = require('./pgdasdAutoFillService');
+    const r = autoFillSvc.anexoPorCtribNac(cliente.codigo_servico);
+    if (r.anexo) {
+      anexo = r.anexo;
+      anexoOrigem = 'cadastro';
+      detalhes.passos.push(`Anexo = ${anexo} (auto via cTribNac=${cliente.codigo_servico})`);
+      if (r.observacao) detalhes.avisos.push(r.observacao);
+    }
+  }
+  if (!anexo) throw new Error('Anexo não informado e não foi possível inferir do cadastro (cTribNac ausente/inválido)');
+  detalhes.origens.anexo = anexoOrigem;
+
+  // ── 2. Resolver RECEITA do mês ───────────────────────────────────────
+  let receitaPa, receitaSerpro = null, receitaEmissor = null, fonteReceita, divergencia = 0;
+  if (receita_override != null) {
+    receitaPa = Number(receita_override);
+    fonteReceita = 'manual';
+    detalhes.passos.push(`Receita = R$ ${receitaPa.toFixed(2)} (override manual)`);
+  } else if (autoFill) {
+    const autoFillSvc = require('./pgdasdAutoFillService');
+    const recon = await autoFillSvc.reconciliarReceita(cliente.cnpj, cliente_id, periodo_apuracao);
+    receitaSerpro = recon.serpro.receita;
+    receitaEmissor = recon.emissor.receita;
+    divergencia = recon.divergencia ? 1 : 0;
+    fonteReceita = fonte_receita_override || recon.escolha_sugerida;
+    if (fonteReceita === 'serpro') receitaPa = receitaSerpro;
+    else if (fonteReceita === 'emissor') receitaPa = receitaEmissor;
+    else receitaPa = receitaEmissor != null ? receitaEmissor : receitaSerpro;  // fallback
+    detalhes.reconciliacao = {
+      serpro: receitaSerpro,
+      emissor: receitaEmissor,
+      divergencia: recon.divergencia,
+      diferenca: recon.diferenca_centavos,
+      escolha: fonteReceita,
+      aviso: recon.aviso,
+    };
+    if (recon.aviso) detalhes.avisos.push(recon.aviso);
+    detalhes.passos.push(`Receita = R$ ${(receitaPa || 0).toFixed(2)} (fonte: ${fonteReceita || 'indefinida'})`);
+  } else {
+    // v1 puro — só Emissor
+    const r = coletarReceitaMes(cliente_id, periodo_apuracao);
+    receitaPa = r.receita_bruta;
+    receitaEmissor = r.receita_bruta;
+    fonteReceita = 'emissor';
+  }
+  if (receitaPa == null) throw new Error('Não foi possível determinar receita do mês — nenhuma fonte respondeu. Forneça receita_override.');
+  detalhes.origens.receita = fonteReceita;
+
+  // ── 3. Resolver RBT12 ────────────────────────────────────────────────
+  let rba12m = rba12mInput;
+  let rbt12Origem = 'manual';
+  if (rba12m == null && autoFill) {
+    const autoFillSvc = require('./pgdasdAutoFillService');
+    try {
+      const r = await autoFillSvc.buscarRBT12(cliente.cnpj, periodo_apuracao);
+      if (r.rbt12 != null) {
+        rba12m = r.rbt12;
+        rbt12Origem = r.origem;
+        detalhes.passos.push(`RBT12 = R$ ${rba12m.toFixed(2)} (auto via ${r.origem})`);
+        if (r.detalhes?.avisos) detalhes.avisos.push(...r.detalhes.avisos);
+      }
+    } catch (err) {
+      detalhes.avisos.push(`Falha buscando RBT12: ${err.message}`);
+    }
+  }
+  if (rba12m == null) throw new Error('RBT12 não informado e não foi possível buscar via SERPRO. Forneça rba12m manualmente.');
+  detalhes.origens.rbt12 = rbt12Origem;
+
+  // ── 4. Calcular DAS ──────────────────────────────────────────────────
+  const calculo = calcularDAS({ anexo, rba12m, receitaPa });
+  detalhes.calculo = calculo;
+
+  // Receita por ISS retido (placeholder — v2 não calcula ainda)
+  const issRetidoTotal = 0;
+  const totalNfs = receitaEmissor != null
+    ? coletarReceitaMes(cliente_id, periodo_apuracao).total_nfs
+    : 0;
+
+  // ── 5. Persistir ─────────────────────────────────────────────────────
   const existente = db.prepare(`
     SELECT id FROM pgdasd_fechamentos
     WHERE cliente_id = ? AND periodo_apuracao = ?
   `).get(cliente_id, periodo_apuracao);
 
   if (existente) {
-    // Permite atualizar enquanto status='draft' ou 'pending_approval'
     const atual = db.prepare(`SELECT status FROM pgdasd_fechamentos WHERE id = ?`).get(existente.id);
     if (!['draft', 'pending_approval', 'failed'].includes(atual.status)) {
       throw new Error(`Fechamento já em status "${atual.status}" — não pode ser recalculado`);
@@ -234,12 +342,18 @@ function calcularDraft({ cliente_id, periodo_apuracao, anexo, rba12m, criado_por
       SET receita_bruta_mes = ?, total_nfs = ?, iss_retido_total = ?,
           rba12m = ?, anexo = ?, aliquota_nominal = ?, parcela_deduzir = ?,
           aliquota_efetiva = ?, valor_das = ?, status = 'draft',
+          receita_serpro = ?, receita_emissor = ?,
+          fonte_receita_escolhida = ?, divergencia_receita = ?,
+          anexo_origem = ?, rbt12_origem = ?, detalhes_calculo = ?,
           erro = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
-      receita.receita_bruta, receita.total_nfs, receita.iss_retido_total,
+      receitaPa, totalNfs, issRetidoTotal,
       rba12m, anexo, calculo.aliquota_nominal, calculo.parcela_deduzir,
       calculo.aliquota_efetiva, calculo.valor_das,
+      receitaSerpro, receitaEmissor,
+      fonteReceita || 'manual', divergencia,
+      anexoOrigem, rbt12Origem, JSON.stringify(detalhes),
       existente.id,
     );
     return obter(existente.id);
@@ -251,13 +365,19 @@ function calcularDraft({ cliente_id, periodo_apuracao, anexo, rba12m, criado_por
       receita_bruta_mes, total_nfs, iss_retido_total,
       rba12m, anexo, aliquota_nominal, parcela_deduzir,
       aliquota_efetiva, valor_das,
+      receita_serpro, receita_emissor,
+      fonte_receita_escolhida, divergencia_receita,
+      anexo_origem, rbt12_origem, detalhes_calculo,
       criado_por, origem
-    ) VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     cliente_id, periodo_apuracao,
-    receita.receita_bruta, receita.total_nfs, receita.iss_retido_total,
+    receitaPa, totalNfs, issRetidoTotal,
     rba12m, anexo, calculo.aliquota_nominal, calculo.parcela_deduzir,
     calculo.aliquota_efetiva, calculo.valor_das,
+    receitaSerpro, receitaEmissor,
+    fonteReceita || 'manual', divergencia,
+    anexoOrigem, rbt12Origem, JSON.stringify(detalhes),
     criado_por || 'sistema', origem,
   );
   return obter(r.lastInsertRowid);

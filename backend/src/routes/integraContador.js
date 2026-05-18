@@ -126,37 +126,32 @@ router.post('/das/mei', async (req, res) => {
 const pgdasdFechamento = require('../services/pgdasdFechamentoService');
 const { getDb: _getDb } = require('../database/init');
 
-// Calcula draft (lê receita do mês, calcula DAS, persiste em status='draft')
+// Calcula draft com auto-fill v2:
+//   - Anexo: inferido do cTribNac do cadastro (override via body.anexo)
+//   - RBT12: buscado do SERPRO histórico (override via body.rba12m)
+//   - Receita: reconciliação 2 fontes SERPRO + Emissor (overrides via
+//             body.receita_override + body.fonte_receita_override)
+//
 // POST /api/integra-contador/pgdasd/fechamento/calcular
-// body: { cliente_id, periodo_apuracao (YYYYMM), anexo, rba12m? }
+// body MÍNIMO: { cliente_id, periodo_apuracao (YYYYMM) }
 router.post('/pgdasd/fechamento/calcular', async (req, res) => {
   try {
-    const { cliente_id, periodo_apuracao, anexo, rba12m, origem } = req.body || {};
-    if (!cliente_id || !periodo_apuracao || !anexo) {
-      return res.status(400).json({ erro: 'cliente_id, periodo_apuracao (YYYYMM) e anexo (I/III/IV/V) obrigatórios' });
+    const {
+      cliente_id, periodo_apuracao,
+      anexo, rba12m,
+      receita_override, fonte_receita_override,
+      origem, autoFill,
+    } = req.body || {};
+    if (!cliente_id || !periodo_apuracao) {
+      return res.status(400).json({ erro: 'cliente_id e periodo_apuracao (YYYYMM) obrigatórios' });
     }
-
-    // Se rba12m não foi fornecido, tenta buscar via SERPRO (CONSULTIMADECREC14 do mês anterior)
-    let rbaUsado = rba12m;
-    if (rbaUsado == null) {
-      try {
-        // Busca CNPJ do cliente
-        const cliente = _getDb().prepare('SELECT cnpj FROM clientes WHERE id = ?').get(cliente_id);
-        if (!cliente) return res.status(404).json({ erro: `Cliente ${cliente_id} não encontrado` });
-        // CONSULTIMADECREC14 retorna receitas dos últimos 12m — útil pra calcular RBA12M
-        // Por enquanto, deixamos o caller passar rba12m manualmente (UI no painel pede)
-        return res.status(400).json({
-          erro: 'rba12m obrigatório nesta versão. Próxima iteração: busca automática via SERPRO consultarUltimaDeclaracao + agregação 12m.',
-        });
-      } catch (err) {
-        return res.status(500).json({ erro: `Erro buscando RBA12M: ${err.message}` });
-      }
-    }
-
-    const fechamento = pgdasdFechamento.calcularDraft({
-      cliente_id, periodo_apuracao, anexo, rba12m: rbaUsado,
+    const fechamento = await pgdasdFechamento.calcularDraft({
+      cliente_id, periodo_apuracao,
+      anexo, rba12m,
+      receita_override, fonte_receita_override,
       criado_por: req.usuario?.nome || req.usuario?.email || 'painel',
       origem: origem || 'painel',
+      autoFill: autoFill !== false,  // default true (v2)
     });
     res.status(201).json({ ok: true, fechamento });
   } catch (err) {

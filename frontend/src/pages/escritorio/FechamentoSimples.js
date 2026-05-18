@@ -313,16 +313,70 @@ function LinhaFechamento({ f, expandido, processando, onToggle, onAprovar, onTra
 function DetalheFechamento({ f }) {
   return (
     <div style={{ width: '100%', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-subtle)' }}>
+      {/* Alerta de divergência (v2) */}
+      {f.divergencia_receita && (
+        <div
+          className="alert"
+          style={{
+            background: 'var(--warning-subtle)',
+            border: '1px solid var(--warning)',
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 12,
+            fontSize: 13,
+          }}
+        >
+          <strong>⚠ Divergência de receita entre fontes</strong>
+          <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <div className="text-muted" style={{ fontSize: 11 }}>SERPRO (NFS-e Nacional)</div>
+              <div style={{ fontWeight: 600 }}>{fmtMoeda(f.receita_serpro)}</div>
+            </div>
+            <div>
+              <div className="text-muted" style={{ fontSize: 11 }}>Emissor (NFs locais)</div>
+              <div style={{ fontWeight: 600 }}>{fmtMoeda(f.receita_emissor)}</div>
+            </div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12 }}>
+            Fonte escolhida: <strong>{f.fonte_receita_escolhida || 'pendente'}</strong>.
+            Pode indicar que o cliente emitiu NF fora do portal Marçal.
+            Confira antes de aprovar.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 12 }}>
         <Campo label="CNPJ" valor={f.cnpj} />
-        <Campo label="Receita bruta mês" valor={fmtMoeda(f.receita_bruta_mes)} />
-        <Campo label="RBA 12m" valor={fmtMoeda(f.rba12m)} />
+        <Campo
+          label={`Receita do mês${f.fonte_receita_escolhida ? ' · ' + f.fonte_receita_escolhida : ''}`}
+          valor={fmtMoeda(f.receita_bruta_mes)}
+        />
+        <Campo
+          label={`RBT12${f.rbt12_origem ? ' · ' + f.rbt12_origem : ''}`}
+          valor={fmtMoeda(f.rba12m)}
+        />
+        <Campo
+          label={`Anexo${f.anexo_origem ? ' · ' + f.anexo_origem : ''}`}
+          valor={f.anexo}
+        />
         <Campo label="Alíquota nominal" valor={fmtPct(f.aliquota_nominal)} />
         <Campo label="Parcela a deduzir" valor={fmtMoeda(f.parcela_deduzir)} />
         <Campo label="Alíquota efetiva" valor={fmtPct(f.aliquota_efetiva)} highlight />
         <Campo label="DAS calculado" valor={fmtMoeda(f.valor_das)} highlight />
         <Campo label="ISS retido total" valor={fmtMoeda(f.iss_retido_total)} />
       </div>
+
+      {/* Avisos do cálculo */}
+      {f.detalhes_calculo?.avisos?.length > 0 && (
+        <details style={{ marginBottom: 10 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-light)' }}>
+            💡 {f.detalhes_calculo.avisos.length} aviso(s) do cálculo
+          </summary>
+          <ul style={{ marginTop: 8, paddingLeft: 20, fontSize: 12, color: 'var(--text-light)' }}>
+            {f.detalhes_calculo.avisos.map((a, i) => <li key={i} style={{ marginBottom: 4 }}>{a}</li>)}
+          </ul>
+        </details>
+      )}
 
       {f.recibo_serpro && (
         <div className="alert" style={{ background: 'var(--success-subtle)', border: '1px solid var(--success)', padding: 10, borderRadius: 8, marginBottom: 12 }}>
@@ -361,8 +415,10 @@ function Campo({ label, valor, highlight }) {
 function ModalNovoFechamento({ clientes, onClose, onSuccess }) {
   const [clienteId, setClienteId] = useState('');
   const [periodo, setPeriodo] = useState(periodoMesAnterior());
-  const [anexo, setAnexo] = useState('III');
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [anexo, setAnexo] = useState('');
   const [rba12m, setRba12m] = useState('');
+  const [receitaOverride, setReceitaOverride] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [erro, setErro] = useState(null);
 
@@ -372,18 +428,28 @@ function ModalNovoFechamento({ clientes, onClose, onSuccess }) {
 
     if (!clienteId) return setErro('Selecione um cliente');
     if (!/^\d{6}$/.test(periodo)) return setErro('Período deve ser YYYYMM (ex: 202604)');
-    const rba = parseFloat(String(rba12m).replace(',', '.'));
-    if (!Number.isFinite(rba) || rba < 0) return setErro('RBA 12m inválido');
+
+    const payload = {
+      cliente_id: Number(clienteId),
+      periodo_apuracao: periodo,
+      origem: 'painel',
+    };
+    // Overrides opcionais (só envia se preenchido)
+    if (anexo) payload.anexo = anexo;
+    if (rba12m) {
+      const v = parseFloat(String(rba12m).replace(',', '.'));
+      if (!Number.isFinite(v) || v < 0) return setErro('RBT12 inválido');
+      payload.rba12m = v;
+    }
+    if (receitaOverride) {
+      const v = parseFloat(String(receitaOverride).replace(',', '.'));
+      if (!Number.isFinite(v) || v < 0) return setErro('Receita inválida');
+      payload.receita_override = v;
+    }
 
     setSubmitting(true);
     try {
-      const { data } = await pgdasdApi.calcular({
-        cliente_id: Number(clienteId),
-        periodo_apuracao: periodo,
-        anexo,
-        rba12m: rba,
-        origem: 'painel',
-      });
+      const { data } = await pgdasdApi.calcular(payload);
       onSuccess(data.fechamento);
     } catch (err) {
       setErro(err.response?.data?.erro || err.message);
@@ -407,12 +473,13 @@ function ModalNovoFechamento({ clientes, onClose, onSuccess }) {
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
         className="card"
-        style={{ padding: 24, maxWidth: 540, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
+        style={{ padding: 24, maxWidth: 560, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
       >
         <h2 style={{ marginBottom: 6 }}>Novo fechamento PGDAS-D</h2>
         <p className="text-light" style={{ fontSize: 13, marginBottom: 20 }}>
-          O sistema busca as NFs emitidas no mês e calcula o DAS conforme a faixa.
-          Você aprova/transmite depois.
+          O sistema vai resolver automaticamente: <strong>anexo</strong> via cTribNac do cadastro,
+          <strong> RBT12</strong> via SERPRO (12 últimas declarações), <strong>receita do mês</strong> reconciliando
+          SERPRO + Emissor (avisa se divergir).
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -441,60 +508,74 @@ function ModalNovoFechamento({ clientes, onClose, onSuccess }) {
             )}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, color: 'var(--text-light)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Período (YYYYMM)
-              </label>
-              <input
-                type="text"
-                value={periodo}
-                onChange={(e) => setPeriodo(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="202604"
-                pattern="\d{6}"
-                className="form-control"
-                style={{ width: '100%' }}
-                required
-              />
-              <div className="text-muted text-sm" style={{ marginTop: 4 }}>
-                {periodo.length === 6 ? fmtPeriodo(periodo) : 'Ex: 202604 = abril/2026'}
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 12, color: 'var(--text-light)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Anexo
-              </label>
-              <select
-                value={anexo}
-                onChange={(e) => setAnexo(e.target.value)}
-                className="form-control"
-                style={{ width: '100%' }}
-                required
-              >
-                {ANEXOS.map(a => <option key={a.v} value={a.v}>{a.label}</option>)}
-              </select>
-            </div>
-          </div>
-
           <div>
             <label style={{ display: 'block', fontSize: 12, color: 'var(--text-light)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              RBA 12m (Receita Bruta Acumulada últimos 12 meses)
+              Período (YYYYMM)
             </label>
             <input
               type="text"
-              inputMode="decimal"
-              value={rba12m}
-              onChange={(e) => setRba12m(e.target.value.replace(/[^\d.,]/g, ''))}
-              placeholder="Ex: 60000.00"
+              value={periodo}
+              onChange={(e) => setPeriodo(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="202604"
+              pattern="\d{6}"
               className="form-control"
               style={{ width: '100%' }}
               required
             />
             <div className="text-muted text-sm" style={{ marginTop: 4 }}>
-              Define a faixa de alíquota. Próxima versão vai buscar automático do SERPRO. Por enquanto, informe manualmente.
+              {periodo.length === 6 ? fmtPeriodo(periodo) : 'Ex: 202604 = abril/2026'}
             </div>
           </div>
+
+          {/* Overrides — opcionais */}
+          <details
+            open={overrideOpen}
+            onToggle={(e) => setOverrideOpen(e.target.open)}
+            style={{ background: 'var(--bg-elevated)', padding: 12, borderRadius: 8, border: '1px solid var(--border-subtle)' }}
+          >
+            <summary style={{ cursor: 'pointer', userSelect: 'none', fontSize: 13, fontWeight: 600 }}>
+              Avançado — forçar valores (opcional, deixa vazio pra auto-fill)
+            </summary>
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-light)', marginBottom: 4 }}>
+                  Anexo (auto: via cTribNac do cliente)
+                </label>
+                <select value={anexo} onChange={(e) => setAnexo(e.target.value)} className="form-control" style={{ width: '100%' }}>
+                  <option value="">— auto —</option>
+                  {ANEXOS.map(a => <option key={a.v} value={a.v}>{a.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-light)', marginBottom: 4 }}>
+                  RBT12 (auto: SERPRO últimas 12 declarações)
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={rba12m}
+                  onChange={(e) => setRba12m(e.target.value.replace(/[^\d.,]/g, ''))}
+                  placeholder="Ex: 60000.00 — deixa vazio pra auto"
+                  className="form-control"
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-light)', marginBottom: 4 }}>
+                  Receita do mês (auto: reconciliação SERPRO + Emissor)
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={receitaOverride}
+                  onChange={(e) => setReceitaOverride(e.target.value.replace(/[^\d.,]/g, ''))}
+                  placeholder="Deixa vazio pra auto"
+                  className="form-control"
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+          </details>
         </div>
 
         {erro && <div className="alert alert-danger" style={{ marginTop: 16 }}>{erro}</div>}
