@@ -185,6 +185,27 @@ function initDatabase() {
     console.warn('[migration] regime_tributario:', e.message);
   }
 
+  // Migração v2 PGDAS-D: campos pra reconciliação de receita (2 fontes:
+  // SERPRO Integra Contador + Emissor notas_fiscais) e origem do anexo/RBT12.
+  try {
+    const colsP = db.prepare("PRAGMA table_info(pgdasd_fechamentos)").all();
+    const adicionaSeFaltando = (nome, tipo) => {
+      if (!colsP.some(c => c.name === nome)) {
+        db.exec(`ALTER TABLE pgdasd_fechamentos ADD COLUMN ${nome} ${tipo}`);
+        console.log(`[migration] pgdasd_fechamentos.${nome} adicionada`);
+      }
+    };
+    adicionaSeFaltando('receita_serpro', 'REAL');
+    adicionaSeFaltando('receita_emissor', 'REAL');
+    adicionaSeFaltando('fonte_receita_escolhida', 'TEXT'); // 'serpro' | 'emissor' | 'manual'
+    adicionaSeFaltando('divergencia_receita', 'INTEGER DEFAULT 0'); // 0/1 — true se serpro != emissor
+    adicionaSeFaltando('anexo_origem', 'TEXT'); // 'cadastro' | 'manual'
+    adicionaSeFaltando('rbt12_origem', 'TEXT'); // 'serpro' | 'manual' | 'historico_emissor'
+    adicionaSeFaltando('detalhes_calculo', 'TEXT'); // JSON livre com explicação (passos, fórmulas, etc)
+  } catch (e) {
+    console.warn('[migration] pgdasd_fechamentos v2:', e.message);
+  }
+
   // Insere dados iniciais se o banco estiver vazio
   const escritorioCount = db.prepare('SELECT COUNT(*) as count FROM escritorio').get();
   if (escritorioCount.count === 0) {

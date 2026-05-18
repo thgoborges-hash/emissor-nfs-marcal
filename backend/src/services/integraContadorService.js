@@ -241,6 +241,34 @@ class IntegraContadorService {
   }
 
   /**
+   * Consulta TODAS as declarações PGDAS-D entregues em um ano-calendário.
+   * Retorna índice de declarações (com PA, número recibo, tipo, etc) — útil pra
+   * reconstruir série histórica de RPA pra cálculo automático de RBT12.
+   *
+   * @param {string} cnpjContribuinte
+   * @param {string|number} anoCalendario - YYYY
+   */
+  async consultarDeclaracoesPorAno(cnpjContribuinte, anoCalendario) {
+    const servico = config.servicos.PGDASD.CONSULTAR_DECLARACOES;
+    const ano = String(anoCalendario);
+    if (!/^\d{4}$/.test(ano)) throw new Error(`anoCalendario deve ser YYYY (recebido: "${ano}")`);
+    return await this.chamar('Consultar', cnpjContribuinte, 'PGDASD', servico.idServico, servico.versao, { anoCalendario: ano });
+  }
+
+  /**
+   * Consulta declaração específica pelo número do recibo (CONSDECREC15).
+   * Retorna a declaração completa (com RBT12 informado, atividades, receitas
+   * por anexo). Útil quando temos o nº do recibo via consultarDeclaracoesPorAno.
+   *
+   * @param {string} cnpjContribuinte
+   * @param {string} numeroDeclaracao
+   */
+  async consultarDeclaracaoPorNumero(cnpjContribuinte, numeroDeclaracao) {
+    const servico = config.servicos.PGDASD.CONSULTAR_DECLARACAO_NUMERO;
+    return await this.chamar('Consultar', cnpjContribuinte, 'PGDASD', servico.idServico, servico.versao, { numeroDeclaracao });
+  }
+
+  /**
    * Transmite a declaração mensal PGDAS-D (TRANSDECLARACAO11).
    * Ação SEFIN: Declarar.
    *

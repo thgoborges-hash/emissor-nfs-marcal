@@ -370,16 +370,27 @@ class AgenteIAService {
         const fb = acaoPgdasd.feedback;
         const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
         if (fb.sucesso) {
-          const valor = Number(fb.valor_das).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+          const fmtR = (v) => v == null ? '—' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
           const aliq = (Number(fb.aliquota_efetiva) * 100).toFixed(2);
-          const receita = Number(fb.receita_bruta_mes).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-          const bloco = `\n\n📊 *Fechamento PGDAS-D calculado* (rascunho #${fb.fechamento_id})\n` +
+          const periodoF = `${fb.periodo.slice(4)}/${fb.periodo.slice(0,4)}`;
+          let bloco = `\n\n📊 *Fechamento PGDAS-D calculado* (rascunho #${fb.fechamento_id})\n` +
             `*Cliente:* ${fb.cliente}\n` +
-            `*Período:* ${fb.periodo.slice(4)}/${fb.periodo.slice(0,4)} · Anexo ${fb.anexo}\n` +
-            `*Receita:* R$ ${receita} (${fb.total_nfs} NF${fb.total_nfs === 1 ? '' : 's'})\n` +
-            `*Alíquota efetiva:* ${aliq}%\n` +
-            `*DAS:* *R$ ${valor}*\n\n` +
-            `⏸️ Status: draft. Pra transmitir o PGDAS-D no SERPRO, aprova no painel em Fiscal & Tributos.`;
+            `*Período:* ${periodoF} · *Anexo ${fb.anexo}* (${fb.anexo_origem})\n` +
+            `*RBT12:* R$ ${fmtR(fb.rbt12)} (${fb.rbt12_origem})\n`;
+          if (fb.divergencia_receita) {
+            bloco += `*Receita:* R$ ${fmtR(fb.receita_bruta_mes)} (fonte: ${fb.fonte_receita})\n`;
+            bloco += `  ⚠ *Divergência detectada:*\n`;
+            bloco += `  • SERPRO: R$ ${fmtR(fb.receita_serpro)}\n`;
+            bloco += `  • Emissor: R$ ${fmtR(fb.receita_emissor)}\n`;
+            bloco += `  Pode ser cliente emitindo fora do portal Marçal.\n`;
+          } else {
+            bloco += `*Receita do mês:* R$ ${fmtR(fb.receita_bruta_mes)} (${fb.fonte_receita || 'auto'}, ${fb.total_nfs || 0} NF${fb.total_nfs === 1 ? '' : 's'})\n`;
+          }
+          bloco += `*Alíquota efetiva:* ${aliq}%\n*DAS:* *R$ ${fmtR(fb.valor_das)}*\n`;
+          if (fb.avisos && fb.avisos.length > 0) {
+            bloco += `\n_Avisos:_\n` + fb.avisos.slice(0, 3).map(a => `• ${a}`).join('\n') + '\n';
+          }
+          bloco += `\n⏸️ Status: draft. Aprova no painel pra transmitir.`;
           return { texto: respostaLimpa + bloco, acoes };
         }
         return { texto: respostaLimpa + `\n\n⚠️ ${fb.erro}`, acoes };
@@ -779,29 +790,35 @@ Quando usar:
 
 Resposta volta com checklist do prestador (e tomador se informado): 🔴 crítico vazio, 🟡 não-crítico, ✅ ok. NÃO INVENTE — só fale o que o relatório retornar.
 
-## Fechamento mensal Simples Nacional (PGDAS-D)
+## Fechamento mensal Simples Nacional (PGDAS-D) — v2 com auto-fill
 
-\`[ACAO:CALCULAR_PGDASD:cnpj|YYYYMM|anexo|rba12m]\`
+\`[ACAO:CALCULAR_PGDASD:cnpj|YYYYMM]\` (mínimo — 2 campos)
+\`[ACAO:CALCULAR_PGDASD:cnpj|YYYYMM|anexo|rba12m]\` (com overrides opcionais)
 
-- cnpj: 14 dígitos do cliente (só números)
-- YYYYMM: período de apuração (ex: 202604 = abril/2026)
-- anexo: I (comércio) / III (serviços limpeza, vigilância, folha + Fator R) / IV (advocacia, construção, técnicos) / V (tecnologia, intelectual sem Fator R). **Anexo II (indústria) NÃO suportado.**
-- rba12m: receita bruta acumulada últimos 12m (decimal, ex: 60000.00)
+- **cnpj**: 14 dígitos do cliente (só números)
+- **YYYYMM**: período de apuração (ex: 202604 = abril/2026)
+- **anexo** (opcional, default = auto via cTribNac do cadastro): I (comércio) / III (serviços) / IV (advocacia, construção) / V (tecnologia)
+- **rba12m** (opcional, default = auto via SERPRO histórico): receita bruta acumulada 12m (decimal)
 
-**Importante:** essa ação **só CALCULA** (lê receita das NFs no Emissor, calcula DAS via fórmula LC 123/2006, persiste em status='draft'). Não transmite no SERPRO — transmissão exige aprovação humana no painel Fiscal & Tributos.
+**O que faz automaticamente (v2):**
+- Resolve anexo via cTribNac do cadastro do cliente
+- Busca RBT12 do SERPRO somando últimas 12 declarações
+- Reconcilia receita do mês entre SERPRO (NFS-e Nacional) e Emissor (notas_fiscais). Se divergem, AVISA (cliente pode estar emitindo fora do portal)
+- Calcula DAS via fórmula LC 123/2006
+
+**NÃO transmite** — só CALCULA + persiste em status='draft'. Transmissão exige aprovação humana no painel Fiscal & Tributos (irreversível).
 
 Quando equipe pedir "fechamento PGDAS-D do cliente X de abril":
-1. Confirma anexo (cadastro do cliente ou pergunta)
-2. Pergunta RBA12M (próxima versão vai buscar do SERPRO; por ora, equipe informa)
-3. Dispara CALCULAR_PGDASD com os 4 campos
-4. Responde com receita do mês, alíquota efetiva, valor DAS calculado, e link "aprova no painel pra transmitir"
+1. Identifica CNPJ (extrai da mensagem ou pergunta)
+2. Dispara CALCULAR_PGDASD com os 2 campos (cnpj|YYYYMM) — auto-fill resolve o resto
+3. Responde com anexo (origem), RBT12 (origem), receita (avisa divergência se houver), alíquota efetiva, DAS, status
 
 Cenários FORA de escopo (responde "ainda não suporto, vou pedir pro Thiago"):
 - MEI (DAS-MEI é fluxo separado — já tem ações DAS_MEI próprias)
 - Indústria (anexo II)
 - Receita externa (exportação)
 - Múltiplas atividades concomitantes no mesmo PA
-- ISS retido na fonte (a v1 assume zero)
+- ISS retido na fonte (a v2 ainda assume zero)
 - Retificação de declaração já transmitida (tipoDeclaracao=2)
 
 ## Ações extras (Integra Contador — só dígitos do CNPJ, 14 chars)
@@ -2061,7 +2078,7 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
           break;
 
         case 'CALCULAR_PGDASD':
-          this._executarCalcularPgdasd(acao, contato);
+          await this._executarCalcularPgdasd(acao, contato);
           break;
 
         // ── Ações João (back-office Domínio via daemon local) ─────────────
@@ -2115,7 +2132,7 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
    *
    * Modo equipe only.
    */
-  _executarCalcularPgdasd(acao, contato) {
+  async _executarCalcularPgdasd(acao, contato) {
     const rotulo = 'calcular PGDAS-D';
     const ehContextoEquipe = !!(contato?.modoEquipe?.ehEquipe || contato?.ehAdmin);
     if (!ehContextoEquipe) {
@@ -2126,18 +2143,15 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
       return;
     }
     if (!acao.parametro) {
-      acao.feedback = { sucesso: false, rotulo, erro: 'Parâmetros: cnpj|YYYYMM|anexo(I/III/IV/V)|rba12m' };
+      acao.feedback = { sucesso: false, rotulo, erro: 'Parâmetros: cnpj|YYYYMM (anexo/rba12m opcionais — auto-fill)' };
       return;
     }
     const partes = String(acao.parametro).split('|');
-    if (partes.length < 4) {
-      acao.feedback = { sucesso: false, rotulo, erro: 'Faltam campos. Esperado: cnpj|YYYYMM|anexo|rba12m' };
-      return;
-    }
-    const [cnpjRaw, periodo, anexoRaw, rbaRaw] = partes;
-    const cnpj = String(cnpjRaw).replace(/\D/g, '');
-    const anexo = String(anexoRaw).toUpperCase().trim();
-    const rba12m = Number(String(rbaRaw).replace(',', '.'));
+    const cnpjRaw = partes[0];
+    const periodo = partes[1];
+    const anexoRaw = partes[2];  // opcional
+    const rbaRaw = partes[3];    // opcional
+    const cnpj = String(cnpjRaw || '').replace(/\D/g, '');
 
     if (cnpj.length !== 14) {
       acao.feedback = { sucesso: false, rotulo, erro: `CNPJ inválido: "${cnpjRaw}"` };
@@ -2147,13 +2161,22 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
       acao.feedback = { sucesso: false, rotulo, erro: `periodo_apuracao deve ser YYYYMM (recebido "${periodo}")` };
       return;
     }
-    if (!['I', 'III', 'IV', 'V'].includes(anexo)) {
-      acao.feedback = { sucesso: false, rotulo, erro: `Anexo "${anexo}" inválido. Use I, III, IV ou V.` };
-      return;
+
+    // Overrides opcionais
+    let anexo = null, rba12m = null;
+    if (anexoRaw) {
+      anexo = String(anexoRaw).toUpperCase().trim();
+      if (!['I', 'III', 'IV', 'V'].includes(anexo)) {
+        acao.feedback = { sucesso: false, rotulo, erro: `Anexo "${anexo}" inválido. Use I, III, IV ou V.` };
+        return;
+      }
     }
-    if (!Number.isFinite(rba12m) || rba12m < 0) {
-      acao.feedback = { sucesso: false, rotulo, erro: `rba12m inválido: "${rbaRaw}". Use número decimal positivo.` };
-      return;
+    if (rbaRaw) {
+      rba12m = Number(String(rbaRaw).replace(',', '.'));
+      if (!Number.isFinite(rba12m) || rba12m < 0) {
+        acao.feedback = { sucesso: false, rotulo, erro: `rba12m inválido: "${rbaRaw}".` };
+        return;
+      }
     }
 
     try {
@@ -2168,13 +2191,14 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
         return;
       }
 
-      const draft = pgdasdFechamento.calcularDraft({
+      const draft = await pgdasdFechamento.calcularDraft({
         cliente_id: cliente.id,
         periodo_apuracao: periodo,
         anexo,
         rba12m,
         criado_por: `ana:${contato?.modoEquipe?.operador || (contato?.ehAdmin ? 'admin' : 'desconhecido')}`,
         origem: 'ana',
+        autoFill: true,  // v2: anexo+RBT12+receita resolvidos automaticamente
       });
 
       acao.feedback = {
@@ -2183,14 +2207,22 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
         fechamento_id: draft.id,
         cliente: cliente.razao_social,
         periodo,
-        anexo,
+        anexo: draft.anexo,
+        anexo_origem: draft.anexo_origem,
         receita_bruta_mes: draft.receita_bruta_mes,
+        receita_serpro: draft.receita_serpro,
+        receita_emissor: draft.receita_emissor,
+        fonte_receita: draft.fonte_receita_escolhida,
+        divergencia_receita: draft.divergencia_receita,
+        rbt12: draft.rba12m,
+        rbt12_origem: draft.rbt12_origem,
         total_nfs: draft.total_nfs,
         aliquota_efetiva: draft.aliquota_efetiva,
         valor_das: draft.valor_das,
         status: draft.status,
+        avisos: draft.detalhes_calculo?.avisos || [],
       };
-      console.log(`[WhatsApp] ✓ PGDAS-D draft calculado: cliente=${cliente.id} PA=${periodo} valor_das=R$${draft.valor_das}`);
+      console.log(`[WhatsApp] ✓ PGDAS-D draft v2: cliente=${cliente.id} PA=${periodo} anexo=${draft.anexo}(${draft.anexo_origem}) rbt12=${draft.rba12m}(${draft.rbt12_origem}) receita=${draft.receita_bruta_mes}(${draft.fonte_receita_escolhida}) das=R$${draft.valor_das}`);
     } catch (err) {
       acao.feedback = { sucesso: false, rotulo, erro: err.message };
       console.warn(`[WhatsApp] ❌ Falha CALCULAR_PGDASD: ${err.message}`);

@@ -576,6 +576,15 @@ CREATE TABLE IF NOT EXISTS pgdasd_fechamentos (
   ultima_tentativa DATETIME,
   -- João (etapa final contábil)
   joao_job_id INTEGER,                     -- FK joao_jobs quando João lançar no Domínio
+  -- Reconciliação 2 fontes (v2): receita vem de SERPRO + Emissor em paralelo.
+  -- Se valores diferem, equipe escolhe fonte_receita_escolhida ou ajusta manualmente.
+  receita_serpro REAL,                     -- receita do mês via SERPRO (NFS-e Nacional + SPED Fiscal)
+  receita_emissor REAL,                    -- receita do mês via tabela notas_fiscais local
+  fonte_receita_escolhida TEXT,            -- 'serpro' | 'emissor' | 'manual'
+  divergencia_receita INTEGER DEFAULT 0,   -- 1 se receita_serpro != receita_emissor
+  anexo_origem TEXT,                       -- 'cadastro' (via cTribNac) | 'manual'
+  rbt12_origem TEXT,                       -- 'serpro' | 'manual' | 'historico_emissor'
+  detalhes_calculo TEXT,                   -- JSON com passos/fórmulas/avisos (transparência)
   -- Auditoria
   criado_por TEXT,
   origem TEXT,                             -- 'painel' | 'ana' | 'cron' | 'manual'
