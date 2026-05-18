@@ -290,6 +290,14 @@ class AgenteIAService {
         }
 
         if (feedbackMsg) {
+          // Quando action FALHOU, o Sonnet às vezes escreveu "Emitindo!" ou
+          // até "✅ NF emitida com sucesso!" PREDITIVAMENTE (antes de saber o
+          // resultado real). Concatenar isso com o feedback de erro gera
+          // mensagem contraditória pro operador. Solução: pra falha, descarta
+          // resposta do Sonnet e mantém só o feedback real.
+          if (!fb.sucesso) {
+            return { texto: feedbackMsg.replace(/^\n+/, '').trim(), acoes };
+          }
           const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
           return { texto: respostaLimpa + feedbackMsg, acoes };
         }
@@ -322,6 +330,13 @@ class AgenteIAService {
           }
         }
         if (feedbackMsg) {
+          // Mesmo motivo do EMITIR_NF: pra falha, descarta texto preditivo do Sonnet
+          // (caso real 2026-05-18 NF 90 LEW: Sonnet escreveu "\u2705 NF 90 cancelada com
+          // sucesso!" + "Agora pode re-emitir..." e sistema concatenou "\u26a0\ufe0f Insisti
+          // com a Receita..." embaixo, gerando mensagem contradit\u00f3ria pro operador).
+          if (!fb.sucesso) {
+            return { texto: feedbackMsg.replace(/^\n+/, '').trim(), acoes };
+          }
           const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
           return { texto: respostaLimpa + feedbackMsg, acoes };
         }
