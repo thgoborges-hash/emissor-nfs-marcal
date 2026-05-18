@@ -146,30 +146,59 @@ class AgenteIAService {
 
     // 3.7. Sprint 1.1 — Router Haiku pré-classifica intenção/modo/confiança ANTES do Sonnet.
     // Early-exits: ignorar (grupo) ou handoff (baixa confiança/intenção handoff_humano).
-    const router = await anaRouterService.classificar({
-      mensagem: modoEquipe.mensagemSemPrefixo || mensagem,
-      modoDetectado: modoEquipe.ehEquipe ? 'equipe' : 'cliente',
-      tipoContato: contato?.tipo || 'desconhecido',
-      ultimas3Msgs: historico.slice(-3),
-    });
-    console.log(
-      `[AgenteIA] Router: intencao=${router.intencao} modo_inferido=${router.modo_inferido} ` +
-      `conf=${router.confianca} motivo="${router.motivo}"`
-    );
+    //
+    // BYPASS pra modo equipe validado (admin/staff_group/prefixo-whitelistado):
+    // operadores autenticados (Janaina, Lucas, Thiago) mandam pedidos técnicos
+    // longos e completos (cTribNac específico, retenção dupla, NBS, IBPT). O
+    // Haiku — calibrado pra cliente final com regra "na dúvida, handoff" — vinha
+    // matando esses pedidos antes do Sonnet ver. O Sonnet (que tem acesso a
+    // todas as 20 tools) é o juiz certo pra equipe interna; o pré-filtro é
+    // valor pra cliente desconhecido, não pra operador whitelistado.
+    //
+    // Bypass NÃO se aplica quando modoEquipe.ambiguo === true (prefixo "Nome:"
+    // detectado mas nome fora da whitelist) — esses casos ainda passam pelo
+    // Router como salvaguarda.
+    let router = null;
+    if (modoEquipe.ehEquipe && !modoEquipe.ambiguo) {
+      console.log(
+        `[AgenteIA] Router BYPASS (modo equipe validado): fonte=${modoEquipe.fonte}, operador=${modoEquipe.operador || '?'}`
+      );
+    } else {
+      router = await anaRouterService.classificar({
+        mensagem: modoEquipe.mensagemSemPrefixo || mensagem,
+        modoDetectado: modoEquipe.ehEquipe ? 'equipe' : 'cliente',
+        tipoContato: contato?.tipo || 'desconhecido',
+        ultimas3Msgs: historico.slice(-3),
+      });
+      console.log(
+        `[AgenteIA] Router: intencao=${router.intencao} modo_inferido=${router.modo_inferido} ` +
+        `conf=${router.confianca}/${router.confianca_minima ?? '?'} motivo="${router.motivo}"`
+      );
 
-    if (router.deve_ignorar) {
-      // Mensagem de grupo que não é pra ANA — fica em silêncio.
-      return { texto: '', acoes: [{ tipo: 'IGNORAR' }] };
-    }
-    if (router.deve_handoff) {
-      // Confiança baixa ou handoff_humano explícito — transfere direto, sem queimar Sonnet.
-      const textoTransfer = `Essa eu prefiro deixar o Thiago te responder com calma — já tô chamando ele aqui mesmo 👍 [ACAO:TRANSFERIR_HUMANO]`;
-      return { texto: textoTransfer, acoes: [{ tipo: 'TRANSFERIR_HUMANO' }] };
+      if (router.deve_ignorar) {
+        // Mensagem de grupo que não é pra ANA — fica em silêncio.
+        return { texto: '', acoes: [{ tipo: 'IGNORAR' }] };
+      }
+      if (router.deve_handoff) {
+        // Confiança baixa ou handoff_humano explícito — transfere direto, sem queimar Sonnet.
+        // Em modo equipe ambíguo isso pode acontecer; em modo cliente é o caminho normal.
+        if (modoEquipe.ehEquipe) {
+          // Modo equipe ambíguo (prefixo sem whitelist) — alerta admin pra revisar.
+          console.warn(
+            `[AgenteIA] ⚠ Handoff em modo equipe AMBÍGUO (prefixo "${modoEquipe.operador || '?'}" fora da whitelist). ` +
+            `Router: intencao=${router.intencao}, conf=${router.confianca}, motivo="${router.motivo}"`
+          );
+        }
+        const textoTransfer = `Essa eu prefiro deixar o Thiago te responder com calma — já tô chamando ele aqui mesmo 👍 [ACAO:TRANSFERIR_HUMANO]`;
+        return { texto: textoTransfer, acoes: [{ tipo: 'TRANSFERIR_HUMANO' }] };
+      }
     }
 
     // 4. Monta o prompt do sistema (com hint do router pra reduzir alucinação de intenção)
     let systemPrompt = this.montarSystemPrompt(contato, dadosCliente, modoEquipe, { ehAdmin });
-    systemPrompt += `\n\n[ROUTER]: intencao=${router.intencao}, modo_inferido=${router.modo_inferido}, confianca=${router.confianca}, campos_faltantes=${JSON.stringify(router.campos_faltantes || [])}, motivo="${router.motivo}"`;
+    if (router) {
+      systemPrompt += `\n\n[ROUTER]: intencao=${router.intencao}, modo_inferido=${router.modo_inferido}, confianca=${router.confianca}, campos_faltantes=${JSON.stringify(router.campos_faltantes || [])}, motivo="${router.motivo}"`;
+    }
 
     // 5. Monta mensagens para a API
     const messages = this.montarMensagens(historico, mensagem);

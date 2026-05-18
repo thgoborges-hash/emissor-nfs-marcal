@@ -156,14 +156,24 @@ function _interpretarRespostaHaiku(textoBruto) {
   const camposFaltantes = Array.isArray(parsed.campos_faltantes) ? parsed.campos_faltantes.slice(0, 10) : [];
   const motivo = String(parsed.motivo || '').slice(0, 300);
 
+  // Threshold configurável via env (default 40, era 60 hardcoded).
+  // 60 era conservador demais — pedidos técnicos completos (cTribNac, retenções,
+  // descrições longas) caíam <60 e iam pra handoff mesmo sendo claramente
+  // emitir_nf. 40 deixa o Sonnet (que conhece todas as tools) lidar com a nuance.
+  const thresholdEnv = Number(process.env.ANA_ROUTER_HANDOFF_THRESHOLD);
+  const confiancaMinima = Number.isFinite(thresholdEnv) && thresholdEnv > 0 && thresholdEnv <= 100
+    ? thresholdEnv
+    : 40;
+
   const deveIgnorar = intencao === 'ignorar_grupo';
-  const deveHandoff = intencao === 'handoff_humano' || confianca < 60;
+  const deveHandoff = intencao === 'handoff_humano' || confianca < confiancaMinima;
   const deveChamarSonnet = !deveIgnorar && !deveHandoff;
 
   return {
     intencao,
     modo_inferido: modoInferido,
     confianca,
+    confianca_minima: confiancaMinima,
     campos_faltantes: camposFaltantes,
     motivo,
     deve_chamar_sonnet: deveChamarSonnet,
