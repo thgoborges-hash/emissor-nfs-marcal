@@ -316,6 +316,38 @@ async function calcularDraft(params = {}) {
   if (rba12m == null) throw new Error('RBT12 não informado e não foi possível buscar via SERPRO. Forneça rba12m manualmente.');
   detalhes.origens.rbt12 = rbt12Origem;
 
+  // ── 3.5. Guard: ambas fontes zeradas + SERPRO sem histórico ──────────
+  // Sem este guard, o cálculo continua com rba12m=0 e receitaPa=0 (não null —
+  // os auto-fills retornam 0 quando SERPRO sem histórico ou Emissor sem NFs),
+  // resultando em DAS=R$ 0,00 gravado como rascunho. Quando recálculo sobrescreve
+  // um draft anteriormente válido (com receita+RBT12 corretos), o cálculo bom
+  // se perde sem aviso.
+  //
+  // Caso disparador (2026-05-18): Marçal Contabilidade tinha draft válido às
+  // 14:25 (RBT12 R$ 177.630, receita R$ 14.815, DAS R$ 888,90). Recálculo às
+  // 17:25 pegou SERPRO sem histórico + Emissor com 0 NFs (provavelmente
+  // instabilidade momentânea), sobrescreveu pra tudo zerado, e o cockpit
+  // mostrou "DAS R$ 0,00 / 0 NFs" sem indicar que o cálculo original foi
+  // perdido.
+  //
+  // Empresa nova legítima (rba12m=0 de fato) deve passar rba12m=0 via override
+  // manual — isso pula este guard.
+  const ambasFontesZeradas = receitaPa === 0
+                          && rba12m === 0
+                          && rbt12Origem === 'serpro_sem_historico'
+                          && (receitaEmissor === 0 || receitaEmissor == null)
+                          && (receitaSerpro === 0 || receitaSerpro == null);
+  const semOverrideManual = receita_override == null && rba12mInput == null;
+  if (ambasFontesZeradas && semOverrideManual) {
+    throw new Error(
+      `Não foi possível obter receita e RBT12 do CNPJ ${cliente.cnpj} no PA ${periodo_apuracao}: ` +
+      `SERPRO sem histórico (consulta retornou vazio) e Emissor sem NFs do mês. ` +
+      `Causas possíveis: (a) instabilidade momentânea do SERPRO — tente novamente em alguns minutos; ` +
+      `(b) NFs do mês foram canceladas e o cliente não emitiu mais nenhuma; ` +
+      `(c) primeira apuração do cliente — passe receita_override e rba12m manualmente.`
+    );
+  }
+
   // ── 4. Calcular DAS ──────────────────────────────────────────────────
   const calculo = calcularDAS({ anexo, rba12m, receitaPa });
   detalhes.calculo = calculo;
