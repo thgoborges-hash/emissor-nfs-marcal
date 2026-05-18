@@ -201,28 +201,60 @@ class NfseNacionalService {
   /**
    * Cancela uma NFS-e emitida com retry automatico em erros transitorios.
    * Tenta ate `maxTentativas` vezes com backoff (delaySeconds[i]).
+   *
+   * IMPORTANTE — opts.cnpjAutor e opts.numeroNfse:
+   *   O schema NFS-e Nacional v1.00 de eventos exige <CNPJAutor> e <nDFSe> dentro
+   *   do <infPedReg>. Sem isso o SEFIN retorna HTTP 500 ("An error has occurred")
+   *   sem detalhe — foi a causa da Ana não conseguir cancelar a NF 90 em 18/05/2026.
+   *   Os callers devem passar:
+   *     opts.cnpjAutor   — CNPJ do prestador da NF (14 dígitos, só números)
+   *     opts.numeroNfse  — número da NFS-e a cancelar (string ou number; vai em <nDFSe>)
+   *   Se não passados, tenta extrair (cnpjAutor das posições 6-19 da chave de acesso;
+   *   numeroNfse de '0' por padrão). Mas o ideal é passar explicitamente.
    */
   async cancelarNFSe(chaveAcesso, motivo, clienteId, senhaEncrypted, opts = {}) {
     const maxTentativas = opts.maxTentativas || 4;
     const delays = opts.delays || [15, 45, 90]; // segundos entre tentativas (3 retries -> 4 tentativas total)
     const cert = certificadoService.carregarCertificado(clienteId, senhaEncrypted);
 
-    // Gera XML do evento de cancelamento (uma vez — dhEvento e nPedRegEvento sao gerados a cada retry, ver abaixo)
+    // Resolve CNPJAutor — preferência por opts.cnpjAutor, fallback: extrai da chave
+    // (chave NFS-e Nacional posições 6-19 = inscrição federal do prestador, 14 dígitos)
+    let cnpjAutor = (opts.cnpjAutor || '').replace(/\D/g, '');
+    if (cnpjAutor.length !== 14 && chaveAcesso && chaveAcesso.length >= 20) {
+      cnpjAutor = chaveAcesso.substring(6, 20);
+    }
+    if (cnpjAutor.length !== 14) {
+      throw new Error(`cancelarNFSe: CNPJAutor não pôde ser determinado (passe opts.cnpjAutor com 14 dígitos)`);
+    }
+
+    // nDFSe — número da NFS-e. Se não informado, usa '0' (algumas implementações
+    // aceitam zero pra cancelamento; se SEFIN reclamar, caller deve passar opts.numeroNfse).
+    const numeroNfse = String(opts.numeroNfse || '0').replace(/\D/g, '') || '0';
+
     let lastErr = null;
     for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
-      // Regenera XML a cada tentativa (dhEvento atualizado, nPedRegEvento incrementa)
-      const eventoXml = this._gerarEventoCancelamentoXml(chaveAcesso, motivo, tentativa);
-      console.log(`[NFS-e CANC] Tentativa ${tentativa}/${maxTentativas} chave=${chaveAcesso} motivo="${motivo.substring(0, 60)}"`);
+      // Regenera XML a cada tentativa (dhEvento atualizado, nSeqEvento incrementa)
+      const eventoXml = this._gerarEventoCancelamentoXml({
+        chaveAcesso,
+        motivo,
+        cnpjAutor,
+        numeroNfse,
+        nSeqEvento: tentativa,
+      });
+      console.log(`[NFS-e CANC] Tentativa ${tentativa}/${maxTentativas} chave=${chaveAcesso} cnpjAutor=${cnpjAutor} nDFSe=${numeroNfse} motivo="${motivo.substring(0, 60)}"`);
       if (tentativa === 1) {
-        console.log(`[NFS-e CANC DEBUG] XML: ${eventoXml.substring(0, 1500)}`);
+        console.log(`[NFS-e CANC DEBUG] XML: ${eventoXml.substring(0, 2000)}`);
       }
 
       try {
+        // Id assinado vem do <infEvento> (raiz do envelope <evento>). O assinador
+        // detecta via heurística <infEvento e referencia o Id correto.
+        const idInfEvento = `EVT${chaveAcesso}101101${String(tentativa).padStart(3, '0')}`;
         const eventoXmlAssinado = xmlSignerService.assinarXml(
           eventoXml,
           cert.pfxBuffer,
           cert.senha,
-          `CANC_${chaveAcesso}_${tentativa}`
+          idInfEvento
         );
         const xmlGzipBase64 = await this._comprimirECodificar(eventoXmlAssinado);
         const payload = { eventoXmlGZipB64: xmlGzipBase64 };
@@ -361,18 +393,62 @@ class NfseNacionalService {
           </piscofins>
         </tribFed>`;
     } else {
-      // Regime normal: retenções federais se houver
-      const temTribFed = (nota.valor_ir > 0) || (nota.valor_csll > 0) || (nota.valor_inss > 0);
-      if (temTribFed) {
+      // Regime normal (Não Optante):
+      //   - Retenções federais individuais: vRetCP (INSS), vRetIRRF, vRetCSLL.
+      //   - PIS/COFINS retidos: vRetPIS, vRetCOFINS (TODO: confirmar tag exata schema 1.01).
+      //   - PIS/COFINS débito apuração própria (devido pelo prestador): bloco piscofins
+      //     com CST + base + alíquotas + valores (TODO: confirmar tags exatas schema 1.01).
+      // Estrutura: tenta gerar o XML quando há valores; se SEFIN rejeitar com RNG6110
+      // (schema inválido), a tag/posição precisa ser ajustada — investigar com payload de
+      // homologação. As tags <vRetPIS>, <vRetCOFINS>, e bloco piscofins NãoOptante são
+      // best-guess até confirmação com schema oficial.
+      const vRetCP    = parseFloat(nota.valor_inss)        || 0;
+      const vRetIRRF  = parseFloat(nota.valor_ir)          || 0;
+      const vRetCSLL  = parseFloat(nota.valor_csll)        || 0;
+      const vRetPIS   = parseFloat(nota.valor_pis_retido)  || 0;
+      const vRetCOFINS= parseFloat(nota.valor_cofins_retido)|| 0;
+      const vPisProp   = parseFloat(nota.valor_pis_proprio)   || 0;
+      const vCofinsProp= parseFloat(nota.valor_cofins_proprio)|| 0;
+      const aliqPis    = parseFloat(nota.aliquota_pis)        || 0;
+      const aliqCofins = parseFloat(nota.aliquota_cofins)     || 0;
+      const bcPisCofins= parseFloat(nota.base_calculo_pis_cofins) || 0;
+      const cstPC      = nota.cst_piscofins || '';
+
+      const temRet = vRetCP > 0 || vRetIRRF > 0 || vRetCSLL > 0 || vRetPIS > 0 || vRetCOFINS > 0;
+      const temPCProprio = (vPisProp > 0 || vCofinsProp > 0) && bcPisCofins > 0;
+
+      // Bloco piscofins (débito apuração própria + retenções) — só emite se tem CST OU
+      // valor pra evitar tag vazia que vira RNG6110.
+      let piscofinsXml = '';
+      if (temPCProprio || cstPC) {
+        // pAliqPis/pAliqCofins em percentual (0.65, 3.00) — alíquota_pis no banco vem como
+        // decimal (0.0065) ou percentual (0.65)? Convenção: armazenamos como decimal e
+        // multiplicamos por 100 aqui. Se já vier > 1, assume que é percentual.
+        const _pctPis    = aliqPis > 1 ? aliqPis : aliqPis * 100;
+        const _pctCofins = aliqCofins > 1 ? aliqCofins : aliqCofins * 100;
+        piscofinsXml = `<piscofins>
+              ${cstPC ? `<CST>${cstPC}</CST>` : ''}
+              ${bcPisCofins > 0 ? `<vBCPisCofins>${fmt(bcPisCofins)}</vBCPisCofins>` : ''}
+              ${_pctPis    > 0 ? `<pAliqPis>${fmt(_pctPis)}</pAliqPis>` : ''}
+              ${vPisProp   > 0 ? `<vPis>${fmt(vPisProp)}</vPis>` : ''}
+              ${_pctCofins > 0 ? `<pAliqCofins>${fmt(_pctCofins)}</pAliqCofins>` : ''}
+              ${vCofinsProp> 0 ? `<vCofins>${fmt(vCofinsProp)}</vCofins>` : ''}
+            </piscofins>`;
+      }
+
+      if (temRet || piscofinsXml) {
         tribFedXml = `<tribFed>
-            ${nota.valor_inss > 0 ? `<vRetCP>${fmt(nota.valor_inss)}</vRetCP>` : ''}
-            ${nota.valor_ir > 0 ? `<vRetIRRF>${fmt(nota.valor_ir)}</vRetIRRF>` : ''}
-            ${nota.valor_csll > 0 ? `<vRetCSLL>${fmt(nota.valor_csll)}</vRetCSLL>` : ''}
+            ${piscofinsXml}
+            ${vRetCP    > 0 ? `<vRetCP>${fmt(vRetCP)}</vRetCP>` : ''}
+            ${vRetIRRF  > 0 ? `<vRetIRRF>${fmt(vRetIRRF)}</vRetIRRF>` : ''}
+            ${vRetCSLL  > 0 ? `<vRetCSLL>${fmt(vRetCSLL)}</vRetCSLL>` : ''}
+            ${vRetPIS   > 0 ? `<vRetPIS>${fmt(vRetPIS)}</vRetPIS>` : ''}
+            ${vRetCOFINS> 0 ? `<vRetCOFINS>${fmt(vRetCOFINS)}</vRetCOFINS>` : ''}
           </tribFed>`;
       }
     }
 
-    // Total de tributos
+    // Total de tributos (IBPT — Lei 12.741/2012)
     let totTribXml = '';
     if (isSimplesNacional) {
       // Simples Nacional: percentual total do SN (ex: 6.00%)
@@ -385,17 +461,31 @@ class NfseNacionalService {
       //  - E0713 proíbe <pTotTribSN> e <indTotTrib> pra este caso.
       //  - <pTotTrib> é complexType TCTribTotalPercent — precisa dos 3 sub-elementos
       //    (pTotTribFed, pTotTribEst, pTotTribMun) em formato decimal com 2 casas.
-      // Calcula percentual aproximado de tributos federais (Lei 12.741/2012) sobre o
-      // valor do serviço; estaduais e municipais ficam em 0.00 (não há retenção
-      // específica pelo prestador nesta NFS-e).
-      const vTotFed = (parseFloat(nota.valor_ir) || 0) + (parseFloat(nota.valor_csll) || 0) + (parseFloat(nota.valor_inss) || 0);
-      const vServ = parseFloat(nota.valor_servico) || 0;
-      const pTotFed = vServ > 0 ? (vTotFed / vServ) * 100 : 0;
+      //
+      // Prioridade dos valores:
+      //   1. Override explícito da nota (nota.p_tot_trib_*) — vem do operador (IBPT da NF)
+      //   2. Fallback: percentual estimado pelas retenções federais sobre o valor do serviço
+      //      (precário — só pra notas legadas sem IBPT informado).
+      const _pFedOverride = nota.p_tot_trib_fed != null ? parseFloat(nota.p_tot_trib_fed) : null;
+      const _pEstOverride = nota.p_tot_trib_est != null ? parseFloat(nota.p_tot_trib_est) : null;
+      const _pMunOverride = nota.p_tot_trib_mun != null ? parseFloat(nota.p_tot_trib_mun) : null;
+
+      let pTotFed;
+      if (_pFedOverride != null && Number.isFinite(_pFedOverride)) {
+        pTotFed = _pFedOverride;
+      } else {
+        const vTotFed = (parseFloat(nota.valor_ir) || 0) + (parseFloat(nota.valor_csll) || 0) + (parseFloat(nota.valor_inss) || 0);
+        const vServ = parseFloat(nota.valor_servico) || 0;
+        pTotFed = vServ > 0 ? (vTotFed / vServ) * 100 : 0;
+      }
+      const pTotEst = (_pEstOverride != null && Number.isFinite(_pEstOverride)) ? _pEstOverride : 0;
+      const pTotMun = (_pMunOverride != null && Number.isFinite(_pMunOverride)) ? _pMunOverride : 0;
+
       totTribXml = `<totTrib>
             <pTotTrib>
               <pTotTribFed>${fmt(pTotFed)}</pTotTribFed>
-              <pTotTribEst>0.00</pTotTribEst>
-              <pTotTribMun>0.00</pTotTribMun>
+              <pTotTribEst>${fmt(pTotEst)}</pTotTribEst>
+              <pTotTribMun>${fmt(pTotMun)}</pTotTribMun>
             </pTotTrib>
           </totTrib>`;
     }
@@ -440,10 +530,16 @@ class NfseNacionalService {
 
     <serv>
       <locPrest>
-        <cLocPrestacao>${codMunicipio}</cLocPrestacao>
+        ${/* Local da prestação: override explícito da nota tem precedência (caso comum:
+              cliente em POA prestando serviço em Gravataí, NF deve ser de Gravataí).
+              Fallback: município do emitente. */ ''}
+        <cLocPrestacao>${(nota.codigo_municipio_prestacao && /^\d{7}$/.test(String(nota.codigo_municipio_prestacao)))
+          ? nota.codigo_municipio_prestacao
+          : codMunicipio}</cLocPrestacao>
       </locPrest>
       <cServ>
         <cTribNac>${nota.codigo_servico}</cTribNac>
+        ${nota.nbs ? `<NBSId>${this._escapeXml(String(nota.nbs))}</NBSId>` : ''}
         <xDescServ>${this._escapeXml(nota.descricao_servico)}</xDescServ>
       </cServ>
       ${(() => {
@@ -471,6 +567,12 @@ class NfseNacionalService {
           ${/* pAliq OMITIDO de propósito: a SEFIN rejeita (E0617) quando o municipio
                de incidência está ATIVO no Sistema Nacional NFS-e e o prestador é
                Não Optante — porque o município é quem fornece a alíquota. */ ''}
+          ${/* vISSRet (TENTATIVA): quando ISS é retido pelo tomador e há valor explícito.
+               Tag exata no schema 1.01 a confirmar — se SEFIN rejeitar com RNG6110,
+               remover ou trocar pra outra tag (vISS, vISSQNRet, etc). */ ''}
+          ${nota.iss_retido && (parseFloat(nota.valor_iss_retido) || 0) > 0
+              ? `<vISSRet>${fmt(parseFloat(nota.valor_iss_retido))}</vISSRet>`
+              : ''}
         </tribMun>
         ${tribFedXml}
         ${totTribXml}
@@ -483,25 +585,71 @@ class NfseNacionalService {
   }
 
   /**
-   * Gera XML de evento de cancelamento
+   * Gera XML de evento de cancelamento NFS-e Nacional (schema v1.00 — eventos
+   * usam versão diferente da DPS).
+   *
+   * Estrutura conforme manual NFS-e Padrão Nacional v1.01 (rev 17/03/2026):
+   *   <evento versao="1.00">                  ← raiz
+   *     <infEvento Id="EVT...">               ← elemento assinado
+   *       <verAplic>...</verAplic>
+   *       <ambGer>1|2</ambGer>                 ← ambiente gerador (1=prod, 2=hom)
+   *       <nSeqEvento>NNN</nSeqEvento>         ← sequencial do evento (3 dígitos)
+   *       <dhProc>YYYY-MM-DDTHH:MM:SS-03:00</dhProc>
+   *       <nDFSe>número</nDFSe>                ← número da NFS-e
+   *       <pedRegEvento versao="1.00">         ← container do pedido
+   *         <infPedReg Id="PRE...">
+   *           <tpAmb>1|2</tpAmb>
+   *           <verAplic>...</verAplic>
+   *           <dhEvento>...</dhEvento>
+   *           <CNPJAutor>...</CNPJAutor>       ← OBRIGATÓRIO (ausência → SEFIN 500)
+   *           <chNFSe>...</chNFSe>
+   *           <e101101>                        ← tag-container do tipo de evento
+   *             <xDesc>Cancelamento de NFS-e</xDesc>
+   *             <cMotivo>1..9</cMotivo>        ← código do motivo (1=erro emissão)
+   *             <xMotivo>...</xMotivo>         ← texto (≥15 chars)
+   *           </e101101>
+   *         </infPedReg>
+   *       </pedRegEvento>
+   *     </infEvento>
+   *   </evento>
+   *
+   * Bug histórico (corrigido em 2026-05-18 — NF 90 LEW): código antigo tinha
+   * elemento raiz <pedRegEvento>, faltava CNPJAutor/ambGer/nSeqEvento/dhProc/
+   * nDFSe, usava <tpEvento>e101101</tpEvento> em vez de <e101101> como container,
+   * e usava <desc> em vez de <xDesc>. SEFIN devolvia HTTP 500 sem detalhe.
    */
-  _gerarEventoCancelamentoXml(chaveAcesso, motivo, tentativa = 1) {
+  _gerarEventoCancelamentoXml({ chaveAcesso, motivo, cnpjAutor, numeroNfse, nSeqEvento = 1 }) {
+    const ambDigit = nfseConfig.ambienteNome === 'producao' ? '1' : '2';
+    const nSeqStr = String(nSeqEvento).padStart(3, '0');
+    const tpEvento = '101101'; // 101101 = Cancelamento de NFS-e
+    const dhUtc = this._formatarDataUTC(new Date());
+    const idInfEvento = `EVT${chaveAcesso}${tpEvento}${nSeqStr}`;
+    const idInfPedReg = `PRE${chaveAcesso}${tpEvento}`;
+
     return `<?xml version="1.0" encoding="UTF-8"?>
-<pedRegEvento xmlns="http://www.sped.fazenda.gov.br/nfse" versao="${nfseConfig.versaoLayout}">
-  <infPedReg Id="CANC_${chaveAcesso}_${tentativa}">
-    <tpAmb>${nfseConfig.ambienteNome === 'producao' ? '1' : '2'}</tpAmb>
+<evento xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.00">
+  <infEvento Id="${idInfEvento}">
     <verAplic>EmissorMarcal_1.0</verAplic>
-    <dhEvento>${this._formatarDataUTC(new Date())}</dhEvento>
-    <chNFSe>${chaveAcesso}</chNFSe>
-    <nPedRegEvento>${tentativa}</nPedRegEvento>
-    <tpEvento>e101101</tpEvento>
-    <infEvento>
-      <desc>Cancelamento de NFS-e</desc>
-      <cMotivo>1</cMotivo>
-      <xMotivo>${this._escapeXml(motivo)}</xMotivo>
-    </infEvento>
-  </infPedReg>
-</pedRegEvento>`;
+    <ambGer>${ambDigit}</ambGer>
+    <nSeqEvento>${nSeqStr}</nSeqEvento>
+    <dhProc>${dhUtc}</dhProc>
+    <nDFSe>${numeroNfse}</nDFSe>
+    <pedRegEvento versao="1.00">
+      <infPedReg Id="${idInfPedReg}">
+        <tpAmb>${ambDigit}</tpAmb>
+        <verAplic>EmissorMarcal_1.0</verAplic>
+        <dhEvento>${dhUtc}</dhEvento>
+        <CNPJAutor>${cnpjAutor}</CNPJAutor>
+        <chNFSe>${chaveAcesso}</chNFSe>
+        <e101101>
+          <xDesc>Cancelamento de NFS-e</xDesc>
+          <cMotivo>1</cMotivo>
+          <xMotivo>${this._escapeXml(motivo)}</xMotivo>
+        </e101101>
+      </infPedReg>
+    </pedRegEvento>
+  </infEvento>
+</evento>`;
   }
 
   /**

@@ -206,6 +206,52 @@ function initDatabase() {
     console.warn('[migration] pgdasd_fechamentos v2:', e.message);
   }
 
+  // Migração NF fiscal completo (2026-05-18): permite NFs com retenção ISSQN, retenções
+  // federais individuais (PIS/COFINS retidos), PIS/COFINS débito apuração própria,
+  // local da prestação diferente do emitente, IBPT explícito e NBS.
+  //
+  // Caso disparador: NF 90 LEW SERVICOS MEDICOS pra Santa Casa de Misericórdia (Gravataí)
+  // saiu com Valor Líquido = Valor Bruto, sem retenções, sem PIS/COFINS detalhado, com
+  // município de prestação errado (POA em vez de Gravataí) e IBPT zerado. Causa raiz:
+  // action [ACAO:EMITIR_NF] da Ana só aceitava 6 campos básicos.
+  try {
+    const colsN = db.prepare("PRAGMA table_info(notas_fiscais)").all();
+    const adicionaSeFaltando = (nome, tipo) => {
+      if (!colsN.some(c => c.name === nome)) {
+        db.exec(`ALTER TABLE notas_fiscais ADD COLUMN ${nome} ${tipo}`);
+        console.log(`[migration] notas_fiscais.${nome} adicionada`);
+      }
+    };
+    // Local da prestação — código IBGE 7 dígitos. NULL/vazio = usa município do emitente.
+    adicionaSeFaltando('codigo_municipio_prestacao', 'TEXT');
+    // ISSQN retido em valor — quando iss_retido=1, este é o valor que o tomador retém.
+    // Pode diferir de valor_iss em casos com base de cálculo reduzida.
+    adicionaSeFaltando('valor_iss_retido', 'REAL DEFAULT 0');
+    // Retenções federais PIS e COFINS (separadas das colunas valor_pis/valor_cofins
+    // legadas pra não quebrar código existente que trata aquelas como genéricas).
+    adicionaSeFaltando('valor_pis_retido', 'REAL DEFAULT 0');
+    adicionaSeFaltando('valor_cofins_retido', 'REAL DEFAULT 0');
+    // PIS/COFINS débito apuração própria (devidos pelo PRESTADOR — não retidos).
+    // Caso típico Não Optante com situação tributável 01.
+    adicionaSeFaltando('valor_pis_proprio', 'REAL DEFAULT 0');
+    adicionaSeFaltando('valor_cofins_proprio', 'REAL DEFAULT 0');
+    adicionaSeFaltando('aliquota_pis', 'REAL'); // ex 0.0065 = 0.65%
+    adicionaSeFaltando('aliquota_cofins', 'REAL'); // ex 0.03 = 3%
+    adicionaSeFaltando('base_calculo_pis_cofins', 'REAL');
+    // CST PIS/COFINS — Situação Tributária. Ex: '01' = Tributável Alíq Básica, '04' = Monofásico,
+    // '49' = Outras Operações de Saída, etc.
+    adicionaSeFaltando('cst_piscofins', 'TEXT');
+    // IBPT (Lei 12.741/2012) — percentuais aproximados de tributos. NULL = não informado
+    // (default cai pro cálculo atual baseado em retenções federais).
+    adicionaSeFaltando('p_tot_trib_fed', 'REAL');
+    adicionaSeFaltando('p_tot_trib_est', 'REAL DEFAULT 0');
+    adicionaSeFaltando('p_tot_trib_mun', 'REAL');
+    // NBS — Nomenclatura Brasileira de Serviços (separada do cTribNac da LC 116)
+    adicionaSeFaltando('nbs', 'TEXT');
+  } catch (e) {
+    console.warn('[migration] notas_fiscais fiscal completo:', e.message);
+  }
+
   // Insere dados iniciais se o banco estiver vazio
   const escritorioCount = db.prepare('SELECT COUNT(*) as count FROM escritorio').get();
   if (escritorioCount.count === 0) {

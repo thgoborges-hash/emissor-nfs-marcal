@@ -1784,17 +1784,25 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 break;
               }
 
-              const clienteEmit = db.prepare('SELECT id, razao_social, certificado_a1_senha_encrypted FROM clientes WHERE id = ?').get(nf.cliente_id);
+              const clienteEmit = db.prepare('SELECT id, razao_social, cnpj, certificado_a1_senha_encrypted FROM clientes WHERE id = ?').get(nf.cliente_id);
               if (!clienteEmit || !clienteEmit.certificado_a1_senha_encrypted) {
                 acao.feedback = { sucesso: false, erro: `Cliente emitente (ID ${nf.cliente_id}) sem certificado A1 configurado — não dá pra assinar o cancelamento.` };
                 break;
               }
 
-              console.log(`[WhatsApp] CANCELAR_NF: NF ${nf.id}, num=${nf.numero_nfse}, chave=${nf.chave_acesso}, emit=${clienteEmit.razao_social}`);
+              // CNPJAutor + nDFSe: schema NFS-e Nacional v1.00 de eventos exige.
+              // Sem isso o SEFIN retorna HTTP 500 ("An error has occurred").
+              const _cnpjAutorCanc = (clienteEmit.cnpj || '').replace(/\D/g, '');
+              const _numeroNfseCanc = nf.numero_nfse;
+
+              console.log(`[WhatsApp] CANCELAR_NF: NF ${nf.id}, num=${nf.numero_nfse}, chave=${nf.chave_acesso}, emit=${clienteEmit.razao_social}, cnpjAutor=${_cnpjAutorCanc}`);
               const nfseService = require('./nfseNacionalService');
               let resultadoCanc;
               try {
-                resultadoCanc = await nfseService.cancelarNFSe(nf.chave_acesso, motivo, clienteEmit.id, clienteEmit.certificado_a1_senha_encrypted);
+                resultadoCanc = await nfseService.cancelarNFSe(nf.chave_acesso, motivo, clienteEmit.id, clienteEmit.certificado_a1_senha_encrypted, {
+                  cnpjAutor: _cnpjAutorCanc,
+                  numeroNfse: _numeroNfseCanc,
+                });
               } catch (errCanc) {
                 const msg = errCanc.mensagem || errCanc.message || JSON.stringify(errCanc).substring(0, 400);
                 const tentativasUsadas = errCanc.tentativasUsadas || 1;
@@ -1807,14 +1815,19 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                   console.log(`[WhatsApp] CANCELAR_NF ${nf.id}: agendando retry final em 5min (background)`);
                   // Captura referencias do escopo atual antes do setTimeout
                   const _nfBg = { id: nf.id, chave: nf.chave_acesso, numero: nf.numero_nfse };
-                  const _emitBg = { id: clienteEmit.id, senha: clienteEmit.certificado_a1_senha_encrypted };
+                  const _emitBg = { id: clienteEmit.id, senha: clienteEmit.certificado_a1_senha_encrypted, cnpj: _cnpjAutorCanc };
                   const _motivoBg = motivo;
                   const _telBg = contato?.telefone || null;
                   const _wa = this._obterWhatsAppProvider ? this._obterWhatsAppProvider() : null;
                   setTimeout(async () => {
                     try {
                       console.log(`[WhatsApp] CANCELAR_NF ${_nfBg.id}: retry agendado disparado agora`);
-                      await nfseService.cancelarNFSe(_nfBg.chave, _motivoBg, _emitBg.id, _emitBg.senha, { maxTentativas: 2, delays: [30] });
+                      await nfseService.cancelarNFSe(_nfBg.chave, _motivoBg, _emitBg.id, _emitBg.senha, {
+                        maxTentativas: 2,
+                        delays: [30],
+                        cnpjAutor: _emitBg.cnpj,
+                        numeroNfse: _nfBg.numero,
+                      });
                       const dbBg = require('../database/db').getDb();
                       dbBg.prepare(`UPDATE notas_fiscais SET status = 'cancelada', data_cancelamento = datetime('now'), observacoes = COALESCE(observacoes || ' | ', '') || ? WHERE id = ?`).run('Cancelamento ANA (retry agendado): ' + _motivoBg, _nfBg.id);
                       console.log(`[WhatsApp] CANCELAR_NF ${_nfBg.id}: sucesso no retry agendado`);

@@ -509,11 +509,16 @@ router.put('/:id/cancelar', autenticado, apenasEscritorio, async (req, res) => {
       // Cancelamento real via API
       try {
         const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(nota.cliente_id);
+        // CNPJAutor + nDFSe: schema NFS-e Nacional v1.00 de eventos exige.
         await nfseNacionalService.cancelarNFSe(
           nota.chave_acesso,
           motivo || 'Cancelamento solicitado pelo contribuinte',
           cliente.id,
-          cliente.certificado_a1_senha_encrypted
+          cliente.certificado_a1_senha_encrypted,
+          {
+            cnpjAutor: (cliente.cnpj || '').replace(/\D/g, ''),
+            numeroNfse: nota.numero_nfse,
+          }
         );
       } catch (apiErr) {
         console.error('Erro ao cancelar na API:', apiErr);

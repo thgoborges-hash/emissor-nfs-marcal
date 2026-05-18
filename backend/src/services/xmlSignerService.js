@@ -35,9 +35,17 @@ class XmlSignerService {
       signatureAlgorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
     });
 
-    // Detecta nome do elemento a assinar pelo conteúdo do XML
-    // (DPS usa infDPS, eventos como cancelamento usam infPedReg)
-    const elementoAssinar = xml.includes('<infPedReg') ? 'infPedReg' : 'infDPS';
+    // Detecta nome do elemento a assinar pelo conteúdo do XML:
+    //   - DPS (emissão de NFS-e) → assina <infDPS>
+    //   - Evento (cancelamento, substituição) → assina <infEvento> (raiz do <evento>,
+    //     que ENVOLVE o <infPedReg>). Importante: <infEvento> tem precedência sobre
+    //     <infPedReg> porque o schema NFS-e Nacional v1.00 de eventos coloca ambos no
+    //     mesmo XML, mas a Signature deve referenciar o Id do <infEvento>.
+    const elementoAssinar = xml.includes('<infEvento')
+      ? 'infEvento'
+      : xml.includes('<infPedReg')
+        ? 'infPedReg'
+        : 'infDPS';
     sig.addReference({
       xpath: `//*[local-name(.)='${elementoAssinar}']`,
       digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256',
