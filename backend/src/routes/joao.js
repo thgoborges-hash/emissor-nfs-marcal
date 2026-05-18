@@ -235,4 +235,26 @@ router.post('/jobs/:id/cancelar', express.json(), (req, res) => {
   }
 });
 
+// ── Read-only do painel pra histórico de sync + clientes monitorados ────────
+// (versão JWT dos endpoints que existem em /daemon/sync — daemon usa secret,
+// painel usa JWT do escritório)
+
+router.get('/sync/historico', (req, res) => {
+  try {
+    const limite = req.query.limite ? parseInt(req.query.limite, 10) : 20;
+    res.json({ historico: clienteSyncService.historicoSyncs({ limite }) });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+router.get('/onvio-monitored', (req, res) => {
+  try {
+    const apenas_ativos = req.query.todos !== '1';
+    res.json({ clientes: clienteSyncService.listarOnvioMonitorados({ apenas_ativos }) });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 module.exports = router;

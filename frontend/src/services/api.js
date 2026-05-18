@@ -167,4 +167,25 @@ export const dominioApi = {
   consultarLote: (clienteId, loteId) => api.get(`/dominio/clientes/${clienteId}/lote/${loteId}`),
 };
 
+// === JOÃO (fila assíncrona + daemon) ===
+export const joaoApi = {
+  status: () => api.get('/joao/status'),
+  listarJobs: (filtros = {}) => {
+    const params = new URLSearchParams();
+    if (filtros.status) params.set('status', Array.isArray(filtros.status) ? filtros.status.join(',') : filtros.status);
+    if (filtros.tipo) params.set('tipo', Array.isArray(filtros.tipo) ? filtros.tipo.join(',') : filtros.tipo);
+    if (filtros.cliente_id) params.set('cliente_id', filtros.cliente_id);
+    if (filtros.limite) params.set('limite', filtros.limite);
+    if (filtros.offset) params.set('offset', filtros.offset);
+    return api.get(`/joao/jobs?${params}`);
+  },
+  obterJob: (id) => api.get(`/joao/jobs/${id}`),
+  criarJob: (dados) => api.post('/joao/jobs', dados),
+  aprovarJob: (id) => api.post(`/joao/jobs/${id}/aprovar`, {}),
+  cancelarJob: (id, motivo) => api.post(`/joao/jobs/${id}/cancelar`, { motivo }),
+  syncHistorico: (limite = 20) => api.get(`/joao/sync/historico?limite=${limite}`),
+  onvioMonitorados: (incluirInativos = false) =>
+    api.get(`/joao/onvio-monitored${incluirInativos ? '?todos=1' : ''}`),
+};
+
 export default api;
