@@ -801,6 +801,55 @@ Com cTribNac (mensagem traz "Código de Tributação Nacional X" ou "cTribNac Y"
   - Confiança alta → AUTO-APLICA e relata "código sugerido automaticamente: X — confirme depois no cadastro"
   - Confiança baixa → mostra opções numeradas, espera equipe escolher; equipe responde "usa o 1" ou direto o código → re-emita com o código no 6º campo
 
+### ⚠️ Detalhes fiscais (7º campo JSON) — pra NF com retenções, IBPT, ou local da prestação diferente
+
+Quando a equipe trouxer pedido com retenção ISSQN, PIS/COFINS, IRRF, contribuições, IBPT, OU município de prestação diferente do emitente, adicione um **7º campo com JSON** contendo essas informações. Sem isso, a NF sai com valores zerados e gera problema fiscal real.
+
+\`[ACAO:EMITIR_NF:cnpj_emit|valor|cnpj_tom|razao|descricao|cTribNac|{...JSON com detalhes...}]\`
+
+**Campos do JSON (todos opcionais — inclua só os que vierem na mensagem):**
+
+| Campo | Tipo | Significado |
+|---|---|---|
+| \`cMunPrest\` | string 7 dígitos | Código IBGE do local da prestação (quando diferente do emitente) |
+| \`issRet\` | bool | true se ISSQN é retido pelo tomador |
+| \`aliqIss\` | decimal | Alíquota ISSQN (0.02 = 2%) — só se diferente do cadastro |
+| \`vIssRet\` | número | Valor ISSQN efetivamente retido |
+| \`cstPC\` | string | CST PIS/COFINS ("01" = Tributável Alíq Básica, "04" = Monofásico, etc) |
+| \`bcPC\` | número | Base de cálculo PIS/COFINS |
+| \`aliqPis\` | decimal | Alíquota PIS (0.0065 = 0.65%) |
+| \`vPisProp\` | número | PIS débito apuração própria (devido pelo prestador) |
+| \`vPisRet\` | número | PIS retido pelo tomador |
+| \`aliqCofins\`, \`vCofinsProp\`, \`vCofinsRet\` | análogo COFINS |
+| \`vIRRF\` | número | IRRF retido |
+| \`vCSLL\` | número | CSLL retida |
+| \`vINSS\` | número | Contribuição Previdenciária retida |
+| \`pIbptFed\`, \`pIbptEst\`, \`pIbptMun\` | decimal | IBPT (Lei 12.741) em PERCENTUAL (6.15, não 0.0615) |
+| \`nbs\` | string | Código NBS (Nomenclatura Brasileira de Serviços) |
+
+**Exemplo real (NF LEW SERVICOS MEDICOS pra Santa Casa POA — pedido da Janaina, 2026-05-18):**
+
+\`[ACAO:EMITIR_NF:60685851000147|2443.94|92815000000834|IRMANDADE DA SANTA CASA DE MISERICORDIA DE PORTO ALEGRE|REFERENTE A PAGAMENTO DE PRODUÇÃO TRAUMATO SUS, COMPETÊNCIA: MARÇO/2026. OS SERVIÇOS OBJETO DA PRESENTE NOTA FISCAL FORAM PRESTADOS EXCLUSIVAMENTE POR SÓCIO DA EMPRESA, NO EXERCÍCIO DA PROFISSÃO REGULAMENTADA.|2026-03|040101|{"cMunPrest":"4308805","issRet":true,"aliqIss":0.02,"vIssRet":48.88,"cstPC":"01","bcPC":2443.94,"aliqPis":0.0065,"vPisProp":15.89,"vPisRet":15.89,"aliqCofins":0.03,"vCofinsProp":73.32,"vCofinsRet":73.32,"vIRRF":36.66,"vCSLL":24.44,"pIbptFed":6.15,"pIbptMun":2.00,"nbs":"123012200"}]\`
+
+(Observação: \`cMunPrest\` 4308805 = Gravataí/RS, IBGE 7 dígitos. O emitente é POA mas o serviço foi prestado em Gravataí — sem esse campo a NF sai com local errado.)
+
+**Como extrair os valores do pedido:**
+
+- "Há retenção do ISSQN: SIM" → \`issRet: true\` + \`vIssRet\` do "Valor ISSQN Retido"
+- "Local da Prestação: Gravataí - RS" → resolva o código IBGE 4308805 e ponha em \`cMunPrest\` (alguns municípios mais comuns: POA 4314902, Curitiba 4106902, SP 3550308, Rio 3304557)
+- "Situação Tributária do PIS/COFINS: 01..." → \`cstPC: "01"\`
+- "BC PIS/COFINS: R$ 2.443,94" → \`bcPC: 2443.94\`
+- "PIS - Alíquota: 0,65% (R$ 15,89)" → \`aliqPis: 0.0065, vPisProp: 15.89\`
+- "COFINS - Alíquota: 3,00% (R$ 73,32)" → \`aliqCofins: 0.03, vCofinsProp: 73.32\`
+- "PIS/COFINS/CSLL Retidos" + "IRRF: R$ 36,66" + "Contribuições Sociais - Retidas: R$ 113,64" → \`vIRRF: 36.66\` + a soma de 113.64 quebra em PIS(15.89)+COFINS(73.32)+CSLL(24.43); marque \`vPisRet, vCofinsRet, vCSLL\`
+- "Federal: 6,15% / Municipal: 2,00%" → \`pIbptFed: 6.15, pIbptMun: 2.00\` (PERCENTUAL, não decimal)
+
+**Regras importantes:**
+- JSON SEM quebras de linha (uma linha só) e SEM aspas tipográficas. Use aspas duplas ASCII.
+- Se a mensagem NÃO tem detalhes fiscais (pedido simples), NÃO adicione o 7º campo.
+- NÃO invente valores — se a equipe não mandou retenção, não ponha no JSON.
+- \`|\` dentro do JSON é OK (sistema rejoina).
+
 ### Uma tag por resposta
 Inclua \`[ACAO:EMITIR_NF:...]\` **uma única vez** por mensagem. Se a equipe pediu 2 NFs no mesmo texto, dispara UMA e diz "essa eu emito agora, qual é a segunda?".
 
@@ -1251,6 +1300,42 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 }
               }
 
+              // 8º campo (idx + 6) — JSON com detalhes fiscais (opcional).
+              // Usado quando o pedido vem com retenções complexas (ISSQN retido pelo
+              // tomador, PIS/COFINS débito próprio + retenções, IRRF, CSLL, IBPT,
+              // local da prestação diferente do emitente).
+              // Caso disparador: NF 90 LEW SERVICOS MEDICOS (Janaina Alves, 18/05/2026)
+              // saiu com retenções e IBPT zerados porque action só aceitava 6 campos.
+              //
+              // Schema do JSON (todos os campos opcionais):
+              //   cMunPrest    — código IBGE 7 dígitos do local da prestação
+              //   issRet       — true se ISSQN é retido pelo tomador
+              //   aliqIss      — override da alíquota ISSQN (ex 0.02 = 2%)
+              //   vIssRet      — valor ISSQN efetivamente retido
+              //   cstPC        — CST PIS/COFINS ("01" = Tributável Alíquota Básica)
+              //   bcPC         — base de cálculo PIS/COFINS
+              //   aliqPis      — alíquota PIS (decimal, ex 0.0065 = 0.65%)
+              //   vPisProp     — PIS débito apuração própria (devido pelo prestador)
+              //   vPisRet      — PIS retido pelo tomador
+              //   aliqCofins, vCofinsProp, vCofinsRet — análogo pra COFINS
+              //   vIRRF, vCSLL, vINSS — retenções federais individuais
+              //   pIbptFed, pIbptEst, pIbptMun — IBPT Lei 12.741 em percentual
+              //   nbs          — Nomenclatura Brasileira de Serviços
+              //
+              // Pode conter "|" dentro de strings — rejoin pra preservar.
+              let detalhesFiscais = null;
+              if (partes.length > idx + 6) {
+                const jsonStr = partes.slice(idx + 6).join('|').trim();
+                if (jsonStr.startsWith('{')) {
+                  try {
+                    detalhesFiscais = JSON.parse(jsonStr);
+                    console.log(`[WhatsApp] EMITIR_NF: detalhes fiscais parseados — ${Object.keys(detalhesFiscais).length} campos: ${Object.keys(detalhesFiscais).join(', ')}`);
+                  } catch (e) {
+                    console.warn(`[WhatsApp] EMITIR_NF: JSON fiscal inválido (${e.message}). Conteúdo: ${jsonStr.substring(0, 300)}. Emitindo sem detalhes fiscais.`);
+                  }
+                }
+              }
+
               if (!documentoTomador || valor <= 0) {
                 console.log(`[WhatsApp] NF não criada: CNPJ/CPF ausente (${documentoTomador}) ou valor inválido (${valor})`);
                 // Armazena feedback para a resposta
@@ -1364,11 +1449,38 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
               // Busca dados do cliente para alíquota e código de serviço
               const clienteData = db.prepare('SELECT codigo_servico, aliquota_iss FROM clientes WHERE id = ?').get(contato.cliente_id);
 
-              // Calcula valores fiscais
-              const aliquotaIss = clienteData?.aliquota_iss || 0;
-              const valorIss = valor * aliquotaIss;
+              // Extrai campos fiscais do JSON (com defaults seguros)
+              const _f = detalhesFiscais || {};
+              const _aliqIssOverride = (_f.aliqIss != null && Number.isFinite(parseFloat(_f.aliqIss))) ? parseFloat(_f.aliqIss) : null;
+              const _issRetido = _f.issRet === true || _f.issRet === 1 || _f.issRet === '1' ? 1 : 0;
+              const _vIssRet = parseFloat(_f.vIssRet) || 0;
+              const _vPisRet = parseFloat(_f.vPisRet) || 0;
+              const _vCofinsRet = parseFloat(_f.vCofinsRet) || 0;
+              const _vPisProp = parseFloat(_f.vPisProp) || 0;
+              const _vCofinsProp = parseFloat(_f.vCofinsProp) || 0;
+              const _aliqPis = (_f.aliqPis != null && Number.isFinite(parseFloat(_f.aliqPis))) ? parseFloat(_f.aliqPis) : null;
+              const _aliqCofins = (_f.aliqCofins != null && Number.isFinite(parseFloat(_f.aliqCofins))) ? parseFloat(_f.aliqCofins) : null;
+              const _bcPC = parseFloat(_f.bcPC) || 0;
+              const _cstPC = _f.cstPC ? String(_f.cstPC) : null;
+              const _vIRRF = parseFloat(_f.vIRRF) || 0;
+              const _vCSLL = parseFloat(_f.vCSLL) || 0;
+              const _vINSS = parseFloat(_f.vINSS) || 0;
+              const _pIbptFed = (_f.pIbptFed != null && Number.isFinite(parseFloat(_f.pIbptFed))) ? parseFloat(_f.pIbptFed) : null;
+              const _pIbptEst = (_f.pIbptEst != null && Number.isFinite(parseFloat(_f.pIbptEst))) ? parseFloat(_f.pIbptEst) : null;
+              const _pIbptMun = (_f.pIbptMun != null && Number.isFinite(parseFloat(_f.pIbptMun))) ? parseFloat(_f.pIbptMun) : null;
+              const _nbs = _f.nbs ? String(_f.nbs) : null;
+              const _cMunPrest = (_f.cMunPrest && /^\d{7}$/.test(String(_f.cMunPrest))) ? String(_f.cMunPrest) : null;
+
+              // Calcula valores fiscais — prioriza overrides do JSON, fallback pro cadastro.
+              const aliquotaIss = _aliqIssOverride != null ? _aliqIssOverride : (clienteData?.aliquota_iss || 0);
+              const valorIss = valor * aliquotaIss; // ISS APURADO (sempre calculado da BC × alíquota)
+              const valorIssRetEfetivo = _issRetido ? (_vIssRet > 0 ? _vIssRet : valorIss) : 0;
               const baseCalculo = valor;
-              const valorLiquido = valor - valorIss;
+              // Valor líquido considera TODAS as retenções (ISS + PIS + COFINS + IRRF + CSLL + INSS).
+              // Bug antigo: só descontava ISS. Caso LEW: 2443.94 - 48.88 = 2395.06 (errado),
+              // correto seria 2443.94 - 199.05 = 2244.89 (próximo do R$ 2.244,76 do PDF).
+              const totalRetencoes = valorIssRetEfetivo + _vPisRet + _vCofinsRet + _vIRRF + _vCSLL + _vINSS;
+              const valorLiquido = Math.max(0, valor - totalRetencoes);
 
               // Gera próximo numero_dps para o cliente
               const ultimaDps = db.prepare(`
@@ -1385,8 +1497,20 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                   data_competencia, status, codigo_servico, aliquota_iss,
                   valor_iss, base_calculo, valor_liquido, origem,
                   numero_dps, serie_dps,
+                  iss_retido, valor_iss_retido,
+                  valor_pis_retido, valor_cofins_retido,
+                  valor_pis_proprio, valor_cofins_proprio,
+                  aliquota_pis, aliquota_cofins, base_calculo_pis_cofins,
+                  valor_inss, valor_ir, valor_csll,
+                  cst_piscofins,
+                  p_tot_trib_fed, p_tot_trib_est, p_tot_trib_mun,
+                  nbs, codigo_municipio_prestacao,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'pendente_emissao', ?, ?, ?, ?, ?, 'whatsapp', ?, '1', datetime('now'), datetime('now'))
+                ) VALUES (
+                  ?, ?, ?, ?, ?, 'pendente_emissao', ?, ?, ?, ?, ?, 'whatsapp', ?, '1',
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  datetime('now'), datetime('now')
+                )
               `).run(
                 contato.cliente_id,
                 tomador.id,
@@ -1398,11 +1522,30 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 valorIss,
                 baseCalculo,
                 valorLiquido,
-                numeroDps
+                numeroDps,
+                // Detalhes fiscais (novos)
+                _issRetido,
+                valorIssRetEfetivo,
+                _vPisRet,
+                _vCofinsRet,
+                _vPisProp,
+                _vCofinsProp,
+                _aliqPis,
+                _aliqCofins,
+                _bcPC,
+                _vINSS,
+                _vIRRF,
+                _vCSLL,
+                _cstPC,
+                _pIbptFed,
+                _pIbptEst,
+                _pIbptMun,
+                _nbs,
+                _cMunPrest
               );
 
               const nfId = result.lastInsertRowid;
-              console.log(`[WhatsApp] NF criada: ID ${nfId}, R$ ${valor} para ${tomador.razao_social} (${tomador.documento})`);
+              console.log(`[WhatsApp] NF criada: ID ${nfId}, R$ ${valor} para ${tomador.razao_social} (${tomador.documento}) — retencoes total R$ ${totalRetencoes.toFixed(2)}, liquido R$ ${valorLiquido.toFixed(2)}`);
 
               // Auto-persistência: se a Ana passou cTribNac explicitamente (6º campo) E o cliente
               // emitente não tinha código cadastrado, grava no cadastro pra não precisar passar de
