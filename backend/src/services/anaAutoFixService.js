@@ -114,14 +114,49 @@ async function tentarCorrecao({ erroMsg, codigosSefin = [], cliente, tomador, no
   }
 
   // ────────────────────────────────────────────────────────────────────
-  // Padrão 4: E0116 — Inscrição Municipal não confere
-  // Limpa IM (vai cair no comportamento padrão de omitir <IM> do XML)
+  // Padrão 4: E0116 — "A IM deve ser informada para o emitente prestador"
+  //
+  // Significado real: município tem CNC ativo e EXIGE IM no XML.
+  // (Não é "IM não confere" como o código histórico assumia.)
+  //
+  // Bug histórico (corrigido em 2026-05-19): este padrão REMOVIA a IM do
+  // cadastro quando vinha E0116, fazendo a próxima tentativa cair no mesmo
+  // E0116 (agora sem IM no cadastro pra ser incluída). Causa raiz dos loops
+  // de erro vistos em DDA CLINICA MEDICA (3 NFs travadas, R$ 500 cada).
+  //
+  // Comportamento correto:
+  //   - Cliente SEM IM cadastrada → não há auto-fix; escala humano cadastrar.
+  //   - Cliente COM IM cadastrada com lixo (alfanum) → Padrão 2 acima normaliza.
+  //   - Cliente COM IM cadastrada válida → o XML builder agora inclui <IM> sempre
+  //     que cliente.inscricao_municipal estiver preenchida. Re-emissão deveria
+  //     funcionar sem mais ação. Se chegar aqui mesmo com IM válida, é cenário
+  //     inesperado → escala.
   // ────────────────────────────────────────────────────────────────────
-  if (codigos.includes('E0116') && cliente.inscricao_municipal) {
+  if (codigos.includes('E0116')) {
+    if (!cliente.inscricao_municipal) {
+      // Sem IM cadastrada — humano precisa cadastrar.
+      return null;  // escala
+    }
+    // Tem IM cadastrada mas E0116 mesmo assim — possível timing (re-emissão
+    // antes do deploy do fix do XML builder) ou IM com lixo. Padrão 2 já
+    // cobre normalização; aqui só evita o comportamento antigo de REMOVER.
+    return null;  // sem auto-fix mecânico
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Padrão 4.5: E0120 — "A IM não deve ser informada, pois não existem
+  // informações complementares registradas no CNC NFS-e do município emissor"
+  //
+  // Significado: município SEM CNC ativo e o XML enviou <IM>. Operador
+  // pode ter cadastrado IM em município que não exige (ou IM de outro
+  // contexto). Remove do cadastro pra próximas emissões não incluírem.
+  // ────────────────────────────────────────────────────────────────────
+  if (codigos.includes('E0120') && cliente.inscricao_municipal) {
+    const imAntiga = cliente.inscricao_municipal;
     _updateCliente(db, cliente.id, { inscricao_municipal: null });
     return {
       aplicou: true,
-      motivo: `IM "${cliente.inscricao_municipal}" não conferia com município (E0116); removida do cadastro pra emitir sem IM`,
+      motivo: `município do prestador não tem CNC NFS-e ativo — IM "${imAntiga}" removida do cadastro (E0120). Re-emissão sem IM.`,
       recarregar: { cliente: true },
     };
   }

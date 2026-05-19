@@ -504,11 +504,22 @@ class NfseNacionalService {
 
     <prest>
       <CNPJ>${cnpjPrestador}</CNPJ>
-      ${''/* IM do prestador omitida: NFSe Nacional rejeita com E0120 quando o
-            município emissor não tem registro complementar no CNC. Muitos
-            municípios (incluindo Porto Alegre) ainda não têm. SEFIN identifica
-            o prestador pelo CNPJ — IM é puramente informativa. Caso algum
-            município venha a exigir, adicionar flag por cliente no schema. */}
+      ${(() => {
+        // IM do prestador — incluída quando cliente tem IM cadastrada com formato
+        // numérico válido. Comportamento do SEFIN NFSe Nacional:
+        //   - Município com CNC ativo (ex: Porto Alegre p/ atividades médicas) E0116 SEM IM
+        //     "A IM deve ser informada para o emitente prestador do serviço na DPS"
+        //   - Município sem CNC ativo E0120 COM IM
+        //     "A IM não deve ser informada, pois não existem informações complementares
+        //      registradas no CNC NFS-e do município emissor"
+        //
+        // Bug histórico (commit pré-2026-05-19): IM era SEMPRE omitida, causando E0116
+        // em loop pra clientes em municípios com CNC (DDA CLINICA MEDICA tinha 3 NFs
+        // travadas com Jessica Galdino). Fix: incluir quando cadastrada; auto-fix do
+        // anaAutoFixService remove cadastro quando vem E0120 (caso município sem CNC).
+        const im = String(cliente.inscricao_municipal || '').replace(/\D/g, '');
+        return im.length >= 1 ? `<IM>${im}</IM>` : '';
+      })()}
       ${cliente.telefone ? `<fone>${cliente.telefone.replace(/\D/g, '')}</fone>` : ''}
       ${cliente.email ? `<email>${this._escapeXml(cliente.email)}</email>` : ''}
       <regTrib>
