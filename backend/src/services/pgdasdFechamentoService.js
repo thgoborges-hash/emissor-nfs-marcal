@@ -151,10 +151,21 @@ function coletarReceitaMes(clienteId, periodoApuracao) {
   }
   const ano = periodoApuracao.slice(0, 4);
   const mes = periodoApuracao.slice(4, 6);
-  const inicio = `${ano}-${mes}-01`;
-  // Último dia do mês — SQLite calcula com date('end of month')
-  const fim = `${ano}-${mes}-31`;
+  const yyyymm = `${ano}-${mes}`;
 
+  // IMPORTANTE: data_competencia tem 2 formatos no DB:
+  //   - YYYY-MM        (formato legado — NFs criadas antes da normalização v2)
+  //   - YYYY-MM-DD     (formato novo — preValidacaoNfseService normaliza on-the-fly
+  //                    durante emissão, mas só pras NFs sendo emitidas naquela hora,
+  //                    não retroativo)
+  //
+  // Bug histórico (2026-05-19): query usava `date(data_competencia) >= date('YYYY-MM-01')`,
+  // mas SQLite `date('2026-04')` retorna NULL — comparação sempre falsa, NFs com formato
+  // legado não eram contadas. Resultado: receita do Emissor retornava R$ 0 mesmo havendo
+  // NFs no mês (caso Marçal Contabilidade abril/2026: 7 NFs/R$ 14.620 invisíveis).
+  //
+  // Fix: comparar SUBSTR(data_competencia, 1, 7) com 'YYYY-MM'. Funciona com ambos
+  // formatos sem precisar migration retroativa.
   const db = getDb();
   const rows = db.prepare(`
     SELECT id, numero_nfse, numero_dps, valor_servico, valor_iss,
@@ -162,10 +173,9 @@ function coletarReceitaMes(clienteId, periodoApuracao) {
     FROM notas_fiscais
     WHERE cliente_id = ?
       AND status = 'emitida'
-      AND date(data_competencia) >= date(?)
-      AND date(data_competencia) <= date(?)
+      AND substr(data_competencia, 1, 7) = ?
     ORDER BY data_competencia ASC
-  `).all(clienteId, inicio, fim);
+  `).all(clienteId, yyyymm);
 
   const receita = rows.reduce((s, r) => s + (Number(r.valor_servico) || 0), 0);
   // NOTA: ISS retido na fonte = situação onde o tomador retém o ISS pelo prestador.
