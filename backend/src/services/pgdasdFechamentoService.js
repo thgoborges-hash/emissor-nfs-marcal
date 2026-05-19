@@ -376,7 +376,13 @@ async function calcularDraft(params = {}) {
 
   if (existente) {
     const atual = db.prepare(`SELECT status FROM pgdasd_fechamentos WHERE id = ?`).get(existente.id);
-    if (!['draft', 'pending_approval', 'failed'].includes(atual.status)) {
+    // Status que permitem recálculo: 'draft' (rascunho ainda não aprovado),
+    // 'pending_approval' (aguardando aprovação — operador pode re-rodar antes de aprovar),
+    // 'failed' (cálculo falhou, equipe corrige cadastro e re-tenta),
+    // 'cancelled' (foi cancelado intencionalmente — recálculo ressuscita pra novo draft;
+    //    sem isso, o UNIQUE(cliente_id, periodo_apuracao) bloqueia INSERT novo e o
+    //    UPDATE rejeita por status, deixando o operador travado).
+    if (!['draft', 'pending_approval', 'failed', 'cancelled'].includes(atual.status)) {
       throw new Error(`Fechamento já em status "${atual.status}" — não pode ser recalculado`);
     }
     db.prepare(`
