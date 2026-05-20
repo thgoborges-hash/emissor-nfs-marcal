@@ -575,22 +575,81 @@ router.put('/:id/draft', autenticado, apenasEscritorio, (req, res) => {
       'nbs', 'codigo_municipio_prestacao',
       'valor_liquido', 'base_calculo',
     ];
+
+    // ─── Fase 1 do aprendizado da Ana (2026-05-19) ─────────────────────────
+    // Pra cada campo que o operador mudou, registra em ana_correcoes pra
+    // termos dataset de "Ana extraiu X, operador corrigiu pra Y".
+    // Fase 2 (tela de aprendizado) e Fase 3 (few-shot dinâmico) consomem isso.
+    let snapshotMeta = null;
+    try {
+      if (nota.dados_ana_originais_json) snapshotMeta = JSON.parse(nota.dados_ana_originais_json);
+    } catch (_) { /* JSON inválido — segue sem captura de contexto */ }
+
+    // Normaliza valores pra comparação justa (string trimmed; números com
+    // tolerância de 1 centavo pra evitar registrar diff por arredondamento).
+    const _saoEquivalentes = (atual, novo) => {
+      if (atual === novo) return true;
+      if (atual == null && (novo === '' || novo == null)) return true;
+      if (novo == null && (atual === '' || atual == null)) return true;
+      const aN = Number(atual);
+      const bN = Number(novo);
+      if (Number.isFinite(aN) && Number.isFinite(bN)) {
+        return Math.abs(aN - bN) < 0.005;
+      }
+      return String(atual ?? '').trim() === String(novo ?? '').trim();
+    };
+
+    const correcoes = [];
     const sets = [];
     const values = [];
     for (const campo of camposEditaveis) {
-      if (Object.prototype.hasOwnProperty.call(req.body, campo)) {
-        sets.push(`${campo} = ?`);
-        values.push(req.body[campo]);
+      if (!Object.prototype.hasOwnProperty.call(req.body, campo)) continue;
+      const valorNovo = req.body[campo];
+      const valorAtual = nota[campo];
+      if (!_saoEquivalentes(valorAtual, valorNovo)) {
+        correcoes.push({ campo, valor_extraido_ana: valorAtual, valor_corrigido: valorNovo });
       }
+      sets.push(`${campo} = ?`);
+      values.push(valorNovo);
     }
     if (sets.length === 0) {
       return res.status(400).json({ erro: 'Nenhum campo válido pra atualizar' });
     }
+
+    const operador = req.usuario?.nome || req.usuario?.email || 'painel';
+    sets.push("corrigido_por = ?");
+    values.push(operador);
+    sets.push("corrigido_em = CURRENT_TIMESTAMP");
+
     values.push(notaId);
     db.prepare(`UPDATE notas_fiscais SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values);
 
+    // Registra cada correção (transação implícita do better-sqlite3)
+    if (correcoes.length > 0) {
+      const insertCorr = db.prepare(`
+        INSERT INTO ana_correcoes
+          (nota_fiscal_id, campo, valor_extraido_ana, valor_corrigido,
+           mensagem_original_whatsapp, conversa_id, operador)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      const msgOriginal = snapshotMeta?.mensagem_original || null;
+      const conversaId = snapshotMeta?.conversa_id || null;
+      for (const c of correcoes) {
+        insertCorr.run(
+          notaId,
+          c.campo,
+          c.valor_extraido_ana == null ? null : String(c.valor_extraido_ana),
+          c.valor_corrigido == null ? null : String(c.valor_corrigido),
+          msgOriginal,
+          conversaId,
+          operador,
+        );
+      }
+      console.log(`[Draft PUT] NF ${notaId}: ${correcoes.length} correção(ões) registrada(s) — campos: ${correcoes.map(c => c.campo).join(', ')}`);
+    }
+
     const notaAtualizada = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(notaId);
-    res.json({ ok: true, nota: notaAtualizada });
+    res.json({ ok: true, nota: notaAtualizada, correcoes_registradas: correcoes.length });
   } catch (err) {
     console.error('[Draft PUT] Erro:', err);
     res.status(500).json({ erro: err.message });

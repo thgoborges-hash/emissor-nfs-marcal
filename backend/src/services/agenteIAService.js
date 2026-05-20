@@ -1614,7 +1614,20 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                   //
                   // Modo cliente externo (cliente final pequeno) MANTÉM emissão direta
                   // — Sprint 2.1 já tem confirmação antes via "Confirma?" no chat.
-                  db.prepare('UPDATE notas_fiscais SET status = ? WHERE id = ?').run('rascunho', nfId);
+
+                  // Snapshot do que Ana extraiu — pra detectar correções do operador
+                  // (Fase 1 do plano de aprendizado, 2026-05-19). Quando PUT /:id/draft
+                  // detectar diferença com este snapshot, registra em ana_correcoes.
+                  const snapshotAna = {
+                    mensagem_original: String(contato?.mensagemOriginal || '').slice(0, 4000),
+                    conversa_id: conversaId,
+                    operador: contato?.modoEquipe?.operador || (contato?.ehAdmin ? 'admin' : null),
+                    detalhes_fiscais_extraidos: detalhesFiscais || null,
+                    nota_snapshot: notaCompleta,
+                    extraido_em: new Date().toISOString(),
+                  };
+                  db.prepare('UPDATE notas_fiscais SET status = ?, dados_ana_originais_json = ? WHERE id = ?')
+                    .run('rascunho', JSON.stringify(snapshotAna), nfId);
                   emissaoStatus = 'rascunho';
                   emissaoInfo = `https://emissor-nfs-marcal.onrender.com/escritorio/notas/draft/${nfId}`;
                   console.log(`[WhatsApp] NF ${nfId} criada como RASCUNHO em modo equipe (operador=${contato?.modoEquipe?.operador || 'admin'}) — aguarda revisão no painel`);

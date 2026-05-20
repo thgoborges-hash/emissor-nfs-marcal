@@ -206,6 +206,49 @@ function initDatabase() {
     console.warn('[migration] pgdasd_fechamentos v2:', e.message);
   }
 
+  // Migração Ana aprendizado (2026-05-19): captura de diff entre o que Ana extraiu
+  // da mensagem WhatsApp e o que o operador corrigiu no painel antes de emitir.
+  // Dataset cresce silenciosamente; Fase 2 (tela de aprendizado) e Fase 3 (few-shot
+  // dinâmico no prompt) consomem essas correções pra melhorar a Ana mensurável.
+  try {
+    const colsNf = db.prepare("PRAGMA table_info(notas_fiscais)").all();
+    if (!colsNf.some(c => c.name === 'dados_ana_originais_json')) {
+      db.exec("ALTER TABLE notas_fiscais ADD COLUMN dados_ana_originais_json TEXT");
+      console.log('[migration] notas_fiscais.dados_ana_originais_json adicionada');
+    }
+    if (!colsNf.some(c => c.name === 'corrigido_por')) {
+      db.exec("ALTER TABLE notas_fiscais ADD COLUMN corrigido_por TEXT");
+      console.log('[migration] notas_fiscais.corrigido_por adicionada');
+    }
+    if (!colsNf.some(c => c.name === 'corrigido_em')) {
+      db.exec("ALTER TABLE notas_fiscais ADD COLUMN corrigido_em DATETIME");
+      console.log('[migration] notas_fiscais.corrigido_em adicionada');
+    }
+
+    // Tabela de correções — uma linha por campo editado pelo operador
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ana_correcoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nota_fiscal_id INTEGER NOT NULL,
+        campo TEXT NOT NULL,                    -- ex: 'aliquota_iss', 'valor_iss_retido', 'iss_retido'
+        valor_extraido_ana TEXT,                -- valor que a Ana extraiu (stringified)
+        valor_corrigido TEXT,                   -- valor após edição do operador
+        mensagem_original_whatsapp TEXT,        -- contexto do input
+        conversa_id INTEGER,                    -- FK whatsapp_conversas (opcional)
+        operador TEXT,                          -- quem corrigiu (nome ou email)
+        promovido_a_regra INTEGER DEFAULT 0,    -- 1 = vira exemplo no prompt da Ana
+        regra_descricao TEXT,                   -- texto pra usar no prompt quando promovido
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (nota_fiscal_id) REFERENCES notas_fiscais(id)
+      )
+    `);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_ana_correcoes_campo ON ana_correcoes(campo)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_ana_correcoes_nf ON ana_correcoes(nota_fiscal_id)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_ana_correcoes_promovido ON ana_correcoes(promovido_a_regra)");
+  } catch (e) {
+    console.warn('[migration] ana_correcoes:', e.message);
+  }
+
   // Migração NF fiscal completo (2026-05-18): permite NFs com retenção ISSQN, retenções
   // federais individuais (PIS/COFINS retidos), PIS/COFINS débito apuração própria,
   // local da prestação diferente do emitente, IBPT explícito e NBS.
