@@ -62,6 +62,11 @@ export const notasFiscaisApi = {
   rejeitar: (id, motivo) => api.put(`/notas-fiscais/${id}/rejeitar`, { motivo }),
   emitir: (id) => api.put(`/notas-fiscais/${id}/emitir`),
   cancelar: (id, motivo) => api.put(`/notas-fiscais/${id}/cancelar`, { motivo }),
+  // Rascunhos (Sprint A+B 2026-05-19) — Ana cria draft em modo equipe,
+  // operador revisa no painel e emite via UI estruturada
+  atualizarRascunho: (id, dados) => api.put(`/notas-fiscais/${id}/draft`, dados),
+  emitirRascunho: (id) => api.post(`/notas-fiscais/${id}/emitir-rascunho`),
+  descartarRascunho: (id) => api.delete(`/notas-fiscais/${id}/draft`),
   resumo: () => api.get('/notas-fiscais/dashboard/resumo'),
   enviarEmail: (id, dados) => api.post(`/notas-fiscais/${id}/enviar-email`, dados),
   emailStatus: () => api.get('/notas-fiscais/email/status'),

@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import DashboardEscritorio from './pages/escritorio/DashboardEscritorio';
 import Aprovacoes from './pages/escritorio/Aprovacoes';
 import TodasNotas from './pages/escritorio/TodasNotas';
+import RascunhoNF from './pages/escritorio/RascunhoNF';
 import GestaoClientes from './pages/escritorio/GestaoClientes';
 import EmitirNFEscritorio from './pages/escritorio/EmitirNFEscritorio';
 import EmitirLote from './pages/escritorio/EmitirLote';
@@ -62,6 +63,7 @@ function App() {
             <Route path="entregas" element={<Entregas />} />
             <Route path="aprovacoes" element={<Aprovacoes />} />
             <Route path="notas" element={<TodasNotas />} />
+            <Route path="notas/draft/:id" element={<RascunhoNF />} />
             <Route path="clientes" element={<GestaoClientes />} />
             <Route path="emitir" element={<EmitirNFEscritorio />} />
             <Route path="emitir-lote" element={<EmitirLote />} />

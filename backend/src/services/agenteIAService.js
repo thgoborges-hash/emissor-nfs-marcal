@@ -243,7 +243,18 @@ class AgenteIAService {
         const fb = feedbackEmissao.feedback;
         let feedbackMsg = '';
 
-        if (fb.sucesso) {
+        if (fb.isDraft) {
+          // ─── Sprint A+B (2026-05-19): modo equipe cria rascunho pra revisão ───
+          // Operador abre painel, revisa campos no form estruturado, emite.
+          // PDF DANFSe será gerado e enviado automaticamente após emissão real
+          // (mesmo fluxo da emissão direta — DANFSe-Retry queue + Z-API send).
+          const valorFmt = fb.valor ? Number(fb.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00';
+          feedbackMsg = `\n\n📝 *Rascunho da NF criado!*` +
+            `\nValor: R$ ${valorFmt}` +
+            `\nTomador: ${fb.tomador}` +
+            `\n\n🔍 Revisa os campos no painel e clica em Emitir:\n${fb.painelLink}` +
+            `\n\nQuando emitir, eu te mando o PDF aqui automático.`;
+        } else if (fb.sucesso) {
           const numDisplay = fb.numero && fb.numero !== 'undefined' && fb.numero !== '(emitida)' ? fb.numero : '';
           const valorFormatado = fb.valor ? Number(fb.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00';
           feedbackMsg = `\n\n✅ *NF emitida com sucesso!*` +
@@ -295,7 +306,11 @@ class AgenteIAService {
           // resultado real). Concatenar isso com o feedback de erro gera
           // mensagem contraditória pro operador. Solução: pra falha, descarta
           // resposta do Sonnet e mantém só o feedback real.
-          if (!fb.sucesso) {
+          //
+          // Mesma coisa pra rascunho (isDraft=true): Sonnet escreve "Emitindo!"
+          // mas o sistema criou rascunho, não emitiu. Concatenar "Emitindo!"
+          // com "📝 Rascunho criado!" confunde — descarta o Sonnet.
+          if (!fb.sucesso || fb.isDraft) {
             return { texto: feedbackMsg.replace(/^\n+/, '').trim(), acoes };
           }
           const respostaLimpa = resposta.replace(/\[ACAO:[^\]]+\]/g, '').trim();
@@ -1582,6 +1597,27 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                   emissaoStatus = 'erro_emissao';
                   emissaoInfo = `Dados incompletos: ${msgErros}`;
                   console.log(`[WhatsApp] NF ${nfId}: pré-validação falhou - ${msgErros}`);
+                } else if (contato?.modoEquipe?.ehEquipe || contato?.ehAdmin) {
+                  // ─── Sprint A+B (2026-05-19): modo equipe NÃO emite direto ───
+                  // Em vez de mandar pro Sefin imediatamente, cria rascunho e espera
+                  // operador revisar no painel. Mesmo com PR #1 (JSON fiscal no action),
+                  // observamos que o Sonnet ainda extrai mal campos em casos complexos
+                  // (NF 90/91/92 LEW SERVICOS MEDICOS saíram com retenções zeradas
+                  // sequencialmente). Texto livre → LLM → emissão irreversível é frágil
+                  // por design pra dados fiscais.
+                  //
+                  // Fluxo novo: Ana extrai → cria rascunho status='rascunho' → operador
+                  // abre painel /escritorio/notas/draft/:id → revisa campos no form
+                  // estruturado → clica "Emitir" → endpoint POST /api/notas-fiscais/:id/emitir
+                  // chama nfseService.emitirNFSe + dispara DANFSe (mesmo fluxo de PDF
+                  // via WhatsApp + cockpit que já existe pra emissão direta).
+                  //
+                  // Modo cliente externo (cliente final pequeno) MANTÉM emissão direta
+                  // — Sprint 2.1 já tem confirmação antes via "Confirma?" no chat.
+                  db.prepare('UPDATE notas_fiscais SET status = ? WHERE id = ?').run('rascunho', nfId);
+                  emissaoStatus = 'rascunho';
+                  emissaoInfo = `https://emissor-nfs-marcal.onrender.com/escritorio/notas/draft/${nfId}`;
+                  console.log(`[WhatsApp] NF ${nfId} criada como RASCUNHO em modo equipe (operador=${contato?.modoEquipe?.operador || 'admin'}) — aguarda revisão no painel`);
                 } else if (process.env.NFSE_SIMULACAO === 'true') {
                   // Modo simulação
                   const numSim = `SIM-${Date.now()}`;
@@ -1689,9 +1725,12 @@ Se o cliente informar o CNPJ, inclua [ACAO:VINCULAR_CLIENTE:cnpj_do_cliente] na 
                 }
               }
 
-              // Armazena feedback para a resposta
+              // Armazena feedback para a resposta. 'rascunho' conta como "sucesso"
+              // (não é erro) — só com semantica diferente (operador precisa aprovar).
               acao.feedback = {
-                sucesso: emissaoStatus === 'emitida',
+                sucesso: emissaoStatus === 'emitida' || emissaoStatus === 'rascunho',
+                isDraft: emissaoStatus === 'rascunho',
+                painelLink: emissaoStatus === 'rascunho' ? emissaoInfo : null,
                 nfId,
                 status: emissaoStatus,
                 numero: emissaoInfo,

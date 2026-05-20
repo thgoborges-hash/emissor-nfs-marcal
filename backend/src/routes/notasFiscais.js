@@ -543,6 +543,151 @@ router.put('/:id/cancelar', autenticado, apenasEscritorio, async (req, res) => {
   }
 });
 
+// =====================================================
+// RASCUNHOS DE NF (Sprint A+B 2026-05-19)
+// =====================================================
+// Fluxo: Ana cria NF status='rascunho' em modo equipe → operador abre
+// /escritorio/notas/draft/:id no painel → revisa/edita campos no form
+// estruturado → clica "Emitir" → POST /:id/emitir-rascunho dispara
+// nfseNacionalService.emitirNFSe + cadeia DANFSe (PDF via WhatsApp +
+// disponível no cockpit).
+
+// PUT /api/notas-fiscais/:id/draft - Edita campos do rascunho antes de emitir
+router.put('/:id/draft', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const db = getDb();
+    const notaId = parseInt(req.params.id, 10);
+    const nota = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(notaId);
+    if (!nota) return res.status(404).json({ erro: 'Nota fiscal não encontrada' });
+    if (nota.status !== 'rascunho') {
+      return res.status(400).json({ erro: `Só edita NF em status 'rascunho' (atual: '${nota.status}')` });
+    }
+
+    // Campos editáveis pelo operador (subset seguro — não permite mexer em
+    // chave_acesso, numero_nfse, status diretamente, etc).
+    const camposEditaveis = [
+      'valor_servico', 'descricao_servico', 'codigo_servico', 'data_competencia',
+      'aliquota_iss', 'valor_iss', 'iss_retido', 'valor_iss_retido',
+      'valor_pis_retido', 'valor_cofins_retido', 'valor_pis_proprio', 'valor_cofins_proprio',
+      'aliquota_pis', 'aliquota_cofins', 'base_calculo_pis_cofins', 'cst_piscofins',
+      'valor_ir', 'valor_csll', 'valor_inss',
+      'p_tot_trib_fed', 'p_tot_trib_est', 'p_tot_trib_mun',
+      'nbs', 'codigo_municipio_prestacao',
+      'valor_liquido', 'base_calculo',
+    ];
+    const sets = [];
+    const values = [];
+    for (const campo of camposEditaveis) {
+      if (Object.prototype.hasOwnProperty.call(req.body, campo)) {
+        sets.push(`${campo} = ?`);
+        values.push(req.body[campo]);
+      }
+    }
+    if (sets.length === 0) {
+      return res.status(400).json({ erro: 'Nenhum campo válido pra atualizar' });
+    }
+    values.push(notaId);
+    db.prepare(`UPDATE notas_fiscais SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values);
+
+    const notaAtualizada = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(notaId);
+    res.json({ ok: true, nota: notaAtualizada });
+  } catch (err) {
+    console.error('[Draft PUT] Erro:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// POST /api/notas-fiscais/:id/emitir-rascunho - Emite NF que estava como rascunho
+router.post('/:id/emitir-rascunho', autenticado, apenasEscritorio, async (req, res) => {
+  try {
+    const db = getDb();
+    const notaId = parseInt(req.params.id, 10);
+    let nota = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(notaId);
+    if (!nota) return res.status(404).json({ erro: 'Nota fiscal não encontrada' });
+    if (nota.status !== 'rascunho') {
+      return res.status(400).json({ erro: `Só emite NF em status 'rascunho' (atual: '${nota.status}')` });
+    }
+
+    const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(nota.cliente_id);
+    if (!cliente) return res.status(400).json({ erro: 'Cliente prestador não encontrado' });
+    const tomador = db.prepare('SELECT * FROM tomadores WHERE id = ?').get(nota.tomador_id);
+    if (!tomador) return res.status(400).json({ erro: 'Tomador não encontrado' });
+
+    // Pré-validação
+    const preValidacaoService = require('../services/preValidacaoNfseService');
+    const validacao = await preValidacaoService.validarEEnriquecer(nota, cliente, tomador);
+    if (!validacao.valido) {
+      return res.status(400).json({
+        erro: 'Pré-validação falhou',
+        erros: validacao.erros,
+        avisos: validacao.avisos,
+      });
+    }
+
+    // Modo simulação (ambiente de teste)
+    if (process.env.NFSE_SIMULACAO === 'true') {
+      const numSim = `SIM-${Date.now()}`;
+      db.prepare(`UPDATE notas_fiscais SET status = 'emitida', numero_nfse = ?, data_emissao = datetime(?) WHERE id = ?`)
+        .run(numSim, new Date().toISOString(), notaId);
+      const notaSim = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(notaId);
+      return res.json({ ok: true, simulacao: true, nota: notaSim });
+    }
+
+    if (!cliente.certificado_a1_path || !cliente.certificado_a1_senha_encrypted) {
+      return res.status(400).json({ erro: 'Cliente prestador sem certificado A1 configurado' });
+    }
+
+    // Emissão real
+    db.prepare('UPDATE notas_fiscais SET status = ? WHERE id = ?').run('processando', notaId);
+    nota = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(notaId);
+
+    try {
+      const resultado = await nfseNacionalService.emitirNFSe(nota, cliente, tomador);
+      if (resultado.sucesso) {
+        db.prepare(`UPDATE notas_fiscais SET status = 'emitida', numero_nfse = ?, chave_acesso = ?, data_emissao = datetime(?) WHERE id = ?`)
+          .run(resultado.numeroNfse, resultado.chaveAcesso, new Date().toISOString(), notaId);
+        const notaEmitida = db.prepare('SELECT * FROM notas_fiscais WHERE id = ?').get(notaId);
+        return res.json({ ok: true, nota: notaEmitida, resultado });
+      }
+      // Erro de emissão estruturado
+      db.prepare(`UPDATE notas_fiscais SET status = 'rascunho', observacoes = ? WHERE id = ?`)
+        .run(resultado.erro || 'Erro na emissão', notaId);
+      return res.status(502).json({ erro: 'Sefin recusou emissão', detalhes: resultado.erro });
+    } catch (errEmissao) {
+      const msg = errEmissao.mensagem || errEmissao.message || JSON.stringify(errEmissao).substring(0, 500);
+      const detalhes = errEmissao.detalhes ? JSON.stringify(errEmissao.detalhes).substring(0, 1500) : '';
+      console.error(`[Draft Emitir] NF ${notaId} falhou: ${msg}`);
+      // Volta pra rascunho pra operador poder ajustar e re-tentar
+      db.prepare(`UPDATE notas_fiscais SET status = 'rascunho', observacoes = ? WHERE id = ?`)
+        .run(`Erro Sefin: ${msg}${detalhes ? ' | ' + detalhes : ''}`, notaId);
+      return res.status(502).json({ erro: msg, detalhes: errEmissao.detalhes });
+    }
+  } catch (err) {
+    console.error('[Draft Emitir] Erro inesperado:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// DELETE /api/notas-fiscais/:id/draft - Descarta rascunho (não emite)
+router.delete('/:id/draft', autenticado, apenasEscritorio, (req, res) => {
+  try {
+    const db = getDb();
+    const notaId = parseInt(req.params.id, 10);
+    const nota = db.prepare('SELECT id, status FROM notas_fiscais WHERE id = ?').get(notaId);
+    if (!nota) return res.status(404).json({ erro: 'Nota fiscal não encontrada' });
+    if (nota.status !== 'rascunho') {
+      return res.status(400).json({ erro: `Só descarta NF em status 'rascunho' (atual: '${nota.status}')` });
+    }
+    // Soft-delete: marca como cancelada (preserva trilha de auditoria)
+    db.prepare(`UPDATE notas_fiscais SET status = 'cancelada', data_cancelamento = CURRENT_TIMESTAMP, observacoes = COALESCE(observacoes || ' | ', '') || ? WHERE id = ?`)
+      .run('Rascunho descartado pelo operador', notaId);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Draft Delete] Erro:', err);
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 // GET /api/notas-fiscais/dashboard/resumo - Resumo para dashboard
 router.get('/dashboard/resumo', autenticado, (req, res) => {
   try {
