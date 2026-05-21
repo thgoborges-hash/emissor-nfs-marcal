@@ -550,7 +550,17 @@ class NfseNacionalService {
       </locPrest>
       <cServ>
         <cTribNac>${nota.codigo_servico}</cTribNac>
-        ${nota.nbs ? `<NBSId>${this._escapeXml(String(nota.nbs))}</NBSId>` : ''}
+        ${(() => {
+          // Schema NFS-e Nacional v1.01: tag correta é <cNBS> (caminho
+          // infDPS/serv/cServ/cNBS), NÃO <NBSId>. Bug histórico: NF 88
+          // AT CARE → Heloisa Helena Monteiro Vargas dava status 400 do
+          // SEFIN quando NBS preenchido porque <NBSId> não está no schema.
+          //
+          // Formato esperado: 9 dígitos numéricos (NBS oficial gov.br/mdic).
+          // Strip de pontos/separadores; só inclui se 9 dígitos válidos.
+          const nbsLimpo = String(nota.nbs || '').replace(/\D/g, '');
+          return nbsLimpo.length === 9 ? `<cNBS>${nbsLimpo}</cNBS>` : '';
+        })()}
         <xDescServ>${this._escapeXml(nota.descricao_servico)}</xDescServ>
       </cServ>
       ${(() => {
